@@ -67,27 +67,32 @@ async def stat(path: str):
 async def readdir(path: str):
     path = normalize_path(path)
     search_prefix = path if path.endswith("/") else path + "/"
+
     with get_db() as conn:
+        # 查询所有匹配前缀的文件
         cursor = conn.execute(
             "SELECT path, type FROM files WHERE user_id = ? AND path LIKE ? AND path != ?",
             (USER_ID, search_prefix + "%", path),
         )
-        # 使用字典来收集条目，键为名称，值为类型
-        # 如果同一个名称既出现文件又出现目录，优先保留目录（type=2）
-        entries = {}
+
+        # 收集直接子项
+        direct_children = {}  # {name: type}
+
         for row in cursor:
             full_path = row["path"]
             relative_path = full_path[len(search_prefix):]
-            # 只获取直接子项（路径中不包含额外的 /）
+
+            # 只处理直接子项（不包含额外的 /）
             if "/" not in relative_path:
                 name = relative_path
                 if name:
                     file_type = int(row["type"])
-                    # 如果名称已存在，优先保留目录类型（type=2 > type=1）
-                    if name not in entries or file_type == 2:
-                        entries[name] = file_type
-        # 转换为列表格式 [[name, type], ...]
-        return [[name, file_type] for name, file_type in entries.items()]
+                    # 如果已存在，优先保留目录类型
+                    if name not in direct_children or file_type > direct_children[name]:
+                        direct_children[name] = file_type
+
+        # 转换为列表格式
+        return [[name, file_type] for name, file_type in direct_children.items()]
 
 
 @api.get("/read")
