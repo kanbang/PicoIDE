@@ -103,6 +103,11 @@ async def read(path: str):
             "SELECT type, content FROM files WHERE user_id = ? AND path = ?",
             (USER_ID, path),
         ).fetchone()
+
+        # 如果是 .vscode 或 .git 目录下的配置文件不存在，返回空内容
+        if not row and ("/.vscode/" in path or "/.git/" in path):
+            return Response(content=b"", media_type="application/octet-stream")
+
         if not row or row["type"] != 1:
             raise HTTPException(status_code=404)
         return Response(
