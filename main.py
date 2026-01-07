@@ -1,8 +1,16 @@
+'''
+Descripttion: 
+version: 0.x
+Author: zhai
+Date: 2026-01-07 14:28:11
+LastEditors: zhai
+LastEditTime: 2026-01-07 14:38:33
+'''
 import os
 import time
 import sqlite3
 from fastapi import FastAPI, Request, Response, HTTPException, APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
@@ -23,12 +31,11 @@ def init_db():
                 PRIMARY KEY (user_id, path)
             )
         """)
-        # 为默认用户创建根目录
         conn.execute("INSERT OR IGNORE INTO files (user_id, path, type, mtime) VALUES ('default', '/', 2, ?)", (int(time.time()*1000),))
 
 init_db()
 
-# --- 文件系统接口 ---
+# --- 文件系统 API ---
 api = APIRouter(prefix="/api/vfs")
 
 @api.get("/stat")
@@ -43,11 +50,7 @@ async def readdir(user_id: str, path: str):
     with sqlite3.connect(DB_PATH) as conn:
         prefix = path if path.endswith('/') else path + '/'
         cursor = conn.execute("SELECT path, type FROM files WHERE user_id = ? AND path LIKE ? AND path != ?", (user_id, prefix + '%', path))
-        items = []
-        for p, t in cursor:
-            # 仅获取下一级名称
-            name = p[len(prefix):].split('/')[0]
-            if name: items.append([name, t])
+        items = [[p[len(prefix):].split('/')[0], t] for p, t in cursor if p[len(prefix):].split('/')[0]]
         return list(set(map(tuple, items)))
 
 @api.get("/read")
@@ -83,17 +86,15 @@ async def delete(user_id: str, path: str):
 
 app.include_router(api)
 
-# --- 静态资源与主页 ---
-# 确保 static/vscode 文件夹存在
-if os.path.exists("static/vscode"):
-    app.mount("/vscode", StaticFiles(directory="static/vscode"), name="vscode")
+# --- 网页资源托管 ---
 
-@app.get("/", response_class=HTMLResponse)
-async def get_editor():
-    with open("index.html", "r", encoding="utf-8") as f:
-        return f.read()
+# 1. 挂载 vscode 核心库路径 (对应 web/vscode 文件夹)
+app.mount("/vscode", StaticFiles(directory="web/vscode"), name="vscode")
+
+# 2. 根目录返回 web/index.html
+@app.get("/")
+async def index():
+    return FileResponse("web/index.html")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-    

@@ -1,29 +1,17 @@
-<!--
- * @Descripttion: 
- * @version: 0.x
- * @Author: zhai
- * @Date: 2026-01-07 14:28:40
- * @LastEditors: zhai
- * @LastEditTime: 2026-01-07 14:28:44
--->
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Lite Editor</title>
+    <title>Lite IDE</title>
+    <!-- 路径指向 main.py 挂载的 /vscode -->
     <link rel="stylesheet" href="/vscode/out/vs/workbench/workbench.web.main.css" />
     <style>
-        /* UI 屏蔽逻辑 */
-        .action-item:has(a[aria-label*="Menu"]), .action-item:has(a[aria-label*="菜单"]),
-        .activitybar .content .home-bar, .composite-bar .home-bar,
+        /* 深度精简 UI */
+        .action-item:has(a[aria-label*="Menu"]), .activitybar .content .home-bar,
         .action-item:has(a[aria-label*="Source Control"]), .action-item:has(a[aria-label*="Run and Debug"]),
         .action-item:has(a[aria-label*="Extensions"]), .action-item:has(a[aria-label*="Accounts"]),
-        .action-item:has(a[aria-label*="Manage"]),
+        .action-item:has(a[aria-label*="Manage"]), 
         .pane-header:has(h3[title*="Outline"]), .pane-header:has(h3[title*="Timeline"]) { display: none !important; }
-
-        .monaco-menu-container .action-item:has(span[aria-label*="Menu"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="Source Control"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="Outline"]) { display: none !important; }
     </style>
 </head>
 <body style="margin:0;overflow:hidden;">
@@ -33,7 +21,7 @@
     <script src="/vscode/out/vs/workbench/workbench.web.main.js"></script>
     <script>
         require(['vs/workbench/workbench.web.main'], function (wb) {
-            const USER_ID = "default"; // 可动态获取
+            const USER_ID = "default_user"; 
 
             class SQLiteFSProvider {
                 constructor() { this.capabilities = 2; this.onDidChangeFile = new wb.Emitter().event; }
@@ -49,7 +37,7 @@
                 async delete(uri) { await fetch(`/api/vfs/delete?user_id=${USER_ID}&path=${encodeURIComponent(uri.path)}`, { method: 'DELETE' }); }
             }
 
-            const config = {
+            wb.create(window.document.body, {
                 productConfiguration: { extensionsGallery: undefined },
                 configurationDefaults: {
                     "workbench.statusBar.visible": false,
@@ -60,31 +48,25 @@
                     "workbench.view.search.visible": true
                 },
                 fileSystemProviders: [{ scheme: 'sqlite', provider: new SQLiteFSProvider() }],
-                folderUri: wb.URI.parse('sqlite:/')
-            };
-
-            wb.create(window.document.body, {
-                ...config,
+                folderUri: wb.URI.parse('sqlite:/'),
                 workspaceProvider: {
                     trusted: true,
-                    workspace: { folderUri: config.folderUri },
+                    workspace: { folderUri: wb.URI.parse('sqlite:/') },
                     async open() { return true; }
                 }
             });
 
-            // 菜单动态清洗
+            // 右键菜单清理
             const cleanup = () => {
-                const container = document.querySelector('.monaco-menu-container');
-                if (!container) return;
-                const items = Array.from(container.querySelectorAll('.action-item'));
-                items.forEach(item => {
-                    const label = item.innerText || "";
-                    if (/Menu|Source Control|Run and Debug|Extensions|Accounts|Outline|Timeline|Move Primary/.test(label)) {
+                const menu = document.querySelector('.monaco-menu-container');
+                if (!menu) return;
+                menu.querySelectorAll('.action-item').forEach(item => {
+                    const txt = item.innerText || "";
+                    if (/Menu|Source Control|Run and Debug|Extensions|Accounts|Outline|Timeline|Move Primary|Hide Activity/.test(txt)) {
                         item.style.setProperty('display', 'none', 'important');
                     }
-                    if (label.trim() === "" && item.classList.contains('disabled')) item.classList.add('is-sep');
+                    if (txt.trim() === "" && item.classList.contains('disabled')) item.style.display = 'none';
                 });
-                // 自动隐藏首尾分割线逻辑（省略，参考前文）
             };
             new MutationObserver(() => setTimeout(cleanup, 20)).observe(document.body, { childList: true, subtree: true });
         });
