@@ -72,14 +72,22 @@ async def readdir(path: str):
             "SELECT path, type FROM files WHERE user_id = ? AND path LIKE ? AND path != ?",
             (USER_ID, search_prefix + "%", path),
         )
-        res = []
+        # 使用字典来收集条目，键为名称，值为类型
+        # 如果同一个名称既出现文件又出现目录，优先保留目录（type=2）
+        entries = {}
         for row in cursor:
             full_path = row["path"]
-            name = full_path[len(search_prefix) :].split("/")[0]
-            if name:
-                res.append([name, int(row["type"])])
-        unique_res = {tuple(x) for x in res}
-        return [list(x) for x in unique_res]
+            relative_path = full_path[len(search_prefix):]
+            # 只获取直接子项（路径中不包含额外的 /）
+            if "/" not in relative_path:
+                name = relative_path
+                if name:
+                    file_type = int(row["type"])
+                    # 如果名称已存在，优先保留目录类型（type=2 > type=1）
+                    if name not in entries or file_type == 2:
+                        entries[name] = file_type
+        # 转换为列表格式 [[name, type], ...]
+        return [[name, file_type] for name, file_type in entries.items()]
 
 
 @api.get("/read")
