@@ -1,0 +1,93 @@
+<!--
+ * @Descripttion: 
+ * @version: 0.x
+ * @Author: zhai
+ * @Date: 2026-01-07 14:28:40
+ * @LastEditors: zhai
+ * @LastEditTime: 2026-01-07 14:28:44
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Lite Editor</title>
+    <link rel="stylesheet" href="/vscode/out/vs/workbench/workbench.web.main.css" />
+    <style>
+        /* UI 屏蔽逻辑 */
+        .action-item:has(a[aria-label*="Menu"]), .action-item:has(a[aria-label*="菜单"]),
+        .activitybar .content .home-bar, .composite-bar .home-bar,
+        .action-item:has(a[aria-label*="Source Control"]), .action-item:has(a[aria-label*="Run and Debug"]),
+        .action-item:has(a[aria-label*="Extensions"]), .action-item:has(a[aria-label*="Accounts"]),
+        .action-item:has(a[aria-label*="Manage"]),
+        .pane-header:has(h3[title*="Outline"]), .pane-header:has(h3[title*="Timeline"]) { display: none !important; }
+
+        .monaco-menu-container .action-item:has(span[aria-label*="Menu"]),
+        .monaco-menu-container .action-item:has(span[aria-label*="Source Control"]),
+        .monaco-menu-container .action-item:has(span[aria-label*="Outline"]) { display: none !important; }
+    </style>
+</head>
+<body style="margin:0;overflow:hidden;">
+    <script src="/vscode/out/vs/loader.js"></script>
+    <script>require.config({baseUrl: `${window.location.origin}/vscode/out`});</script>
+    <script src="/vscode/out/nls.messages.js"></script>
+    <script src="/vscode/out/vs/workbench/workbench.web.main.js"></script>
+    <script>
+        require(['vs/workbench/workbench.web.main'], function (wb) {
+            const USER_ID = "default"; // 可动态获取
+
+            class SQLiteFSProvider {
+                constructor() { this.capabilities = 2; this.onDidChangeFile = new wb.Emitter().event; }
+                watch() { return { dispose: () => {} }; }
+                async stat(uri) { return fetch(`/api/vfs/stat?user_id=${USER_ID}&path=${encodeURIComponent(uri.path)}`).then(res => res.json()); }
+                async readDirectory(uri) { return fetch(`/api/vfs/readdir?user_id=${USER_ID}&path=${encodeURIComponent(uri.path)}`).then(res => res.json()); }
+                async readFile(uri) {
+                    const res = await fetch(`/api/vfs/read?user_id=${USER_ID}&path=${encodeURIComponent(uri.path)}`);
+                    return new Uint8Array(await res.arrayBuffer());
+                }
+                async writeFile(uri, content) { await fetch(`/api/vfs/write?user_id=${USER_ID}&path=${encodeURIComponent(uri.path)}`, { method: 'POST', body: content }); }
+                async createDirectory(uri) { await fetch(`/api/vfs/mkdir?user_id=${USER_ID}&path=${encodeURIComponent(uri.path)}`, { method: 'POST' }); }
+                async delete(uri) { await fetch(`/api/vfs/delete?user_id=${USER_ID}&path=${encodeURIComponent(uri.path)}`, { method: 'DELETE' }); }
+            }
+
+            const config = {
+                productConfiguration: { extensionsGallery: undefined },
+                configurationDefaults: {
+                    "workbench.statusBar.visible": false,
+                    "window.menuBarVisibility": "hidden",
+                    "outline.enabled": false,
+                    "timeline.enabled": false,
+                    "workbench.view.explorer.visible": true,
+                    "workbench.view.search.visible": true
+                },
+                fileSystemProviders: [{ scheme: 'sqlite', provider: new SQLiteFSProvider() }],
+                folderUri: wb.URI.parse('sqlite:/')
+            };
+
+            wb.create(window.document.body, {
+                ...config,
+                workspaceProvider: {
+                    trusted: true,
+                    workspace: { folderUri: config.folderUri },
+                    async open() { return true; }
+                }
+            });
+
+            // 菜单动态清洗
+            const cleanup = () => {
+                const container = document.querySelector('.monaco-menu-container');
+                if (!container) return;
+                const items = Array.from(container.querySelectorAll('.action-item'));
+                items.forEach(item => {
+                    const label = item.innerText || "";
+                    if (/Menu|Source Control|Run and Debug|Extensions|Accounts|Outline|Timeline|Move Primary/.test(label)) {
+                        item.style.setProperty('display', 'none', 'important');
+                    }
+                    if (label.trim() === "" && item.classList.contains('disabled')) item.classList.add('is-sep');
+                });
+                // 自动隐藏首尾分割线逻辑（省略，参考前文）
+            };
+            new MutationObserver(() => setTimeout(cleanup, 20)).observe(document.body, { childList: true, subtree: true });
+        });
+    </script>
+</body>
+</html>
