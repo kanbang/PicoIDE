@@ -1,28 +1,33 @@
-<!-- Copyright (C) Microsoft Corporation. All rights reserved. -->
 <!DOCTYPE html>
 <html>
 
 <head>
     <meta charset="utf-8" />
+    <title>Tiny Code</title>
 
     <!-- Mobile tweaks -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Code">
+    <meta name="apple-mobile-web-app-title" content="Tiny Code">
     <link rel="apple-touch-icon" href="/code-192.png" />
 
     <!-- Disable pinch zooming -->
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
 
-    <!-- Workbench Icon/Manifest/CSS -->
+    <!-- Icons/Manifest -->
     <link rel="icon" href="/favicon.ico" type="image/x-icon" />
     <link rel="manifest" href="/manifest.json">
+
+    <!-- VS Code Workbench CSS -->
     <link data-name="vs/workbench/workbench.web.main" rel="stylesheet"
         href="./vscode/out/vs/workbench/workbench.web.main.css">
 
-
     <style>
+        /* 彻底隐藏活动栏（包括图标和整个栏） */
+        /* .monaco-workbench .activitybar { display: none !important; }
+        .monaco-workbench .part.activitybar { display: none !important; } */
+
         /* 1. 物理隐藏左侧活动栏图标 (Menu, SCM, Debug, Extensions, Accounts, Manage) */
         .action-item:has(a[aria-label^="Menu"]),
         .action-item:has(a[aria-label^="菜单"]),
@@ -44,179 +49,155 @@
             display: none !important;
         }
 
-        /* 2. 物理隐藏侧边栏内的 Outline 和 Timeline 面板部分 */
-        /* 匹配面板头部标题 */
-        .pane-header:has(h3[title^="Outline"]),
-        .pane-header:has(h3[aria-label^="Outline"]),
-        .pane-header:has(h3[title^="大纲"]),
-        .pane-header:has(h3[aria-label^="大纲"]),
-        .pane-header:has(h3[title^="Timeline"]),
-        .pane-header:has(h3[aria-label^="Timeline"]),
-        .pane-header:has(h3[title^="时间线"]),
-        .pane-header:has(h3[aria-label^="时间线"]) {
+        /* 隐藏状态栏 */
+        .monaco-workbench .statusbar {
             display: none !important;
         }
 
-        /* 匹配面板内容容器 (防止隐藏标题后留下空白) */
-        .view-instance:has(.outline-tree),
-        .view-instance:has(.timeline-tree) {
+        /* 隐藏不必要的侧边栏视图标题和内容（Outline、Timeline 等） */
+        .pane-header:has([title="Outline"]),
+        .pane-header:has([title="Timeline"]),
+        .pane-header:has([title="大纲"]),
+        .pane-header:has([title="时间线"]) {
             display: none !important;
         }
 
-        /* 3. 预设右键菜单项隐藏 (CSS 快速拦截) */
-        .monaco-menu-container .action-item:has(span[aria-label*="Outline"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="大纲"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="Timeline"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="时间线"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="Menu"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="Source Control"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="Run and Debug"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="Extensions"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="Accounts"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="Move Primary Side Bar"]),
-        .monaco-menu-container .action-item:has(span[aria-label*="Hide Activity Bar"]) {
+        .view-instance .outline-tree,
+        .view-instance .timeline-tree {
+            display: none !important;
+        }
+
+        /* 右键菜单初步隐藏 */
+        .monaco-menu .action-item:hidden {
             display: none !important;
         }
     </style>
-
 </head>
 
-<body aria-label="">
-</body>
+<body aria-label="Tiny Code Editor"></body>
 
-<!-- Startup (do not modify order of script tags!) -->
+<!-- VS Code Loader -->
 <script src="./vscode/out/vs/loader.js"></script>
 <script src="./vscode/out/vs/webPackagePaths.js"></script>
 <script>
-    Object.keys(self.webPackagePaths).map(function (key, index) {
+    Object.keys(self.webPackagePaths).forEach(key => {
         self.webPackagePaths[key] = `${window.location.origin}/vscode/node_modules/${key}/${self.webPackagePaths[key]}`;
     });
     require.config({
         baseUrl: `${window.location.origin}/vscode/out`,
         recordStats: true,
         trustedTypesPolicy: window.trustedTypes?.createPolicy('amdLoader', {
-            createScriptURL(value) {
-                return value;
-            }
+            createScriptURL: v => v
         }),
         paths: self.webPackagePaths
     });
 </script>
+
 <script src="./vscode/out/vs/workbench/workbench.web.main.nls.js"></script>
 <script src="./vscode/out/vs/workbench/workbench.web.main.js"></script>
-
 
 <script>
     require(['vs/workbench/workbench.web.main'], function (wb) {
         const config = {
             additionalBuiltinExtensions: [
-                // 加载自定义内置扩展，实现 vfs:// 方案的文件系统提供者
                 wb.URI.from({
                     scheme: location.protocol.replace(':', ''),
                     authority: location.host || '',
-                    path: '/vfs-extension'  // 对应 web/vfs-extension 文件夹
+                    path: '/vfs-extension'
                 })
             ],
             productConfiguration: { extensionsGallery: undefined },
             configurationDefaults: {
+                // 极简 UI 配置
+                "workbench.activityBar.visible": true,
                 "workbench.statusBar.visible": false,
                 "workbench.layoutControl.enabled": false,
                 "window.commandCenter": false,
-                "workbench.startupEditor": "none",
                 "window.menuBarVisibility": "hidden",
-                // --- 新增：彻底禁用 Outline 和 Timeline 功能 ---
+                "workbench.startupEditor": "none",
+                "workbench.editor.enablePreview": false,
+
+                // 禁用不需要的功能
                 "outline.enabled": false,
                 "timeline.enabled": false,
-                "explorer.outline.showIcons": false,
-                // ------------------------------------------
-                "workbench.view.scm.visible": false,
-                "workbench.view.debug.visible": false,
-                "workbench.view.extensions.visible": false,
+                "scm.enabled": false,
+                "debug.enabled": false,
+                "extensions.enabled": false,
+
+                // 只保留必要的视图
                 "workbench.view.explorer.visible": true,
                 "workbench.view.search.visible": true
             }
         };
-        wb.create(window.document.body, {
+
+        wb.create(document.body, {
             ...config,
             workspaceProvider: {
                 trusted: true,
-                // 自动打开虚拟文件系统根目录
                 workspace: {
-                    folderUri: wb.URI.from({
-                        scheme: 'vfs',
-                        path: '/'
-                    })
+                    folderUri: wb.URI.from({ scheme: 'vfs', path: '/' })
                 },
-                async open(workspace, options) {
-                    console.log("openFolder requested", workspace);
-                    return true;
-                }
+                async open() { return true; }
             }
         });
     });
 
-    // 动态菜单清洗逻辑
-    const performMenuCleanup = () => {
-        const menuContainer = document.querySelector('.monaco-menu-container') || document.querySelector('.context-view');
-        if (!menuContainer) return;
+    // 增强型右键菜单清理（更可靠、更干净）
+    const MENU_BLACKLIST = [
+        /Outline/i, /大纲/i, /Timeline/i, /时间线/i,
+        /Menu/i, /菜单/i, /Source Control/i, /源代码管理/i,
+        /Run and Debug/i, /运行和调试/i, /Extensions/i, /扩展/i,
+        /Accounts/i, /账户/i, /Move Primary Side Bar/i,
+        /Hide Activity Bar/i, /Show Activity Bar/i
+    ];
 
-        const allItems = Array.from(menuContainer.querySelectorAll('.action-item'));
+    const cleanupMenu = () => {
+        const menu = document.querySelector('.monaco-menu-container, .context-view');
+        if (!menu) return;
 
-        // 扩展黑名单：加入 Outline 和 Timeline
-        const blacklistRegex = /Outline|大纲|Timeline|时间线|Menu|菜单|Source Control|Run and Debug|Extensions|Accounts|Move Primary Side Bar|Hide Activity Bar/;
+        const items = Array.from(menu.querySelectorAll('.action-item'));
+        let hasVisible = false;
 
-        allItems.forEach(item => {
-            const text = item.innerText.trim();
-            const aria = item.querySelector('.action-label')?.getAttribute('aria-label') || "";
+        items.forEach(item => {
+            const label = item.querySelector('.action-label');
+            const text = (label?.textContent || '') + (label?.getAttribute('aria-label') || '');
 
-            if (blacklistRegex.test(text) || blacklistRegex.test(aria)) {
-                item.style.setProperty('display', 'none', 'important');
+            const shouldHide = MENU_BLACKLIST.some(regex => regex.test(text));
+            if (shouldHide) {
+                item.style.display = 'none';
+                item.hidden = true;
+                return;
             }
 
-            // 识别“伪装”的分割线 (空 innerText + disabled 类)
-            if (text === "" && aria === "" && item.classList.contains('disabled')) {
-                item.classList.add('custom-separator');
+            // 处理分隔线：连续或首尾分隔线隐藏
+            if (item.classList.contains('separator') || (text.trim() === '' && item.classList.contains('disabled'))) {
+                item.classList.add('menu-separator');
+            }
+
+            if (window.getComputedStyle(item).display !== 'none') {
+                hasVisible = true;
             }
         });
 
-        // 视觉清洗循环（处理首尾和连续分割线）
-        const refreshVisibles = () => Array.from(menuContainer.querySelectorAll('.action-item'))
-            .filter(i => window.getComputedStyle(i).display !== 'none');
+        // 清理连续/首尾分隔线
+        const visibleItems = items.filter(i => window.getComputedStyle(i).display !== 'none' && !i.hidden);
+        if (visibleItems.length > 0) {
+            if (visibleItems[0].classList.contains('menu-separator')) visibleItems[0].style.display = 'none';
+            if (visibleItems[visibleItems.length - 1].classList.contains('menu-separator')) visibleItems[visibleItems.length - 1].style.display = 'none';
 
-        let changed = true;
-        while (changed) {
-            changed = false;
-            let visibles = refreshVisibles();
-            if (visibles.length === 0) break;
-
-            const first = visibles[0];
-            const last = visibles[visibles.length - 1];
-
-            if (first.classList.contains('custom-separator') || (first.innerText.trim() === "" && first.classList.contains('disabled'))) {
-                first.style.setProperty('display', 'none', 'important');
-                changed = true;
-            }
-            if (last && (last.classList.contains('custom-separator') || (last.innerText.trim() === "" && last.classList.contains('disabled')))) {
-                last.style.setProperty('display', 'none', 'important');
-                changed = true;
-            }
+            let prevSep = false;
+            visibleItems.forEach(item => {
+                const isSep = item.classList.contains('menu-separator');
+                if (isSep && prevSep) item.style.display = 'none';
+                prevSep = isSep;
+            });
         }
-
-        let visiblesAfter = refreshVisibles();
-        let prevIsSep = false;
-        visiblesAfter.forEach(item => {
-            const isSep = item.classList.contains('custom-separator') || (item.innerText.trim() === "" && item.classList.contains('disabled'));
-            if (isSep && prevIsSep) {
-                item.style.setProperty('display', 'none', 'important');
-            }
-            prevIsSep = isSep;
-        });
     };
 
     const observer = new MutationObserver(() => {
-        setTimeout(performMenuCleanup, 20);
+        requestAnimationFrame(cleanupMenu);
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
 </script>
 
 <script src="./vscode/out/vs/code/browser/workbench/workbench.js"></script>

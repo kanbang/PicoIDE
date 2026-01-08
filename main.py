@@ -1,166 +1,89 @@
-import os
-import time
-import sqlite3
-from fastapi import FastAPI, Request, Response, HTTPException, APIRouter
-from fastapi.responses import HTMLResponse, FileResponse
+"""
+主应用程序
+"""
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
-app = FastAPI()
+from db import init_db, close_db, ensure_root_directory
+from services import (
+    normalize_path,
+    stat_file,
+    list_dir,
+    read_file,
+    write_file,
+    mkdir,
+    delete_path,
+)
+
 DB_PATH = "vfs.db"
-USER_ID = "default"  # 单实例模式，固定用户
+USER_ID = "default"
 
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db(DB_PATH)
+    await ensure_root_directory(USER_ID)
+    print("Database initialized")
+    yield
+    await close_db()
+    print("Database closed")
 
 
-# 初始化数据库
-with get_db() as conn:
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS files (
-            user_id TEXT, path TEXT, type INTEGER, 
-            content BLOB, mtime INTEGER,
-            PRIMARY KEY (user_id, path)
-        )
-    """
-    )
-
-api = APIRouter(prefix="/api/vfs")
+app = FastAPI(lifespan=lifespan)
 
 
-def normalize_path(path: str):
-    p = "/" + path.strip("/")
-    return "/" if p == "//" else p
-
-
-@api.get("/stat")
+@app.get("/api/vfs/stat")
 async def stat(path: str):
     path = normalize_path(path)
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT type, mtime, length(content) as size FROM files WHERE user_id = ? AND path = ?",
-            (USER_ID, path),
-        ).fetchone()
-        if not row and path == "/":
-            now = int(time.time() * 1000)
-            conn.execute(
-                "INSERT INTO files (user_id, path, type, mtime) VALUES (?, ?, 2, ?)",
-                (USER_ID, "/", now),
-            )
-            conn.commit()
-            return {"type": 2, "mtime": now, "ctime": now, "size": 0}
-        if not row:
-            raise HTTPException(status_code=404)
-        return {
-            "type": int(row["type"]),
-            "mtime": int(row["mtime"]),
-            "ctime": int(row["mtime"]),
-            "size": int(row["size"] or 0),
-        }
+    try:
+        return await stat_file(USER_ID, path)
+    except Exception:
+        raise HTTPException(404, "File not found")
 
 
-@api.get("/readdir")
+@app.get("/api/vfs/readdir")
 async def readdir(path: str):
     path = normalize_path(path)
-    search_prefix = path if path.endswith("/") else path + "/"
-
-    with get_db() as conn:
-        # 查询所有匹配前缀的文件
-        cursor = conn.execute(
-            "SELECT path, type FROM files WHERE user_id = ? AND path LIKE ? AND path != ?",
-            (USER_ID, search_prefix + "%", path),
-        )
-
-        # 收集直接子项
-        direct_children = {}  # {name: type}
-
-        for row in cursor:
-            full_path = row["path"]
-            relative_path = full_path[len(search_prefix):]
-
-            # 只处理直接子项（不包含额外的 /）
-            if "/" not in relative_path:
-                name = relative_path
-                if name:
-                    file_type = int(row["type"])
-                    # 如果已存在，优先保留目录类型
-                    if name not in direct_children or file_type > direct_children[name]:
-                        direct_children[name] = file_type
-
-        # 转换为列表格式
-        return [[name, file_type] for name, file_type in direct_children.items()]
+    return await list_dir(USER_ID, path)
 
 
-@api.get("/read")
+@app.get("/api/vfs/read")
 async def read(path: str):
     path = normalize_path(path)
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT type, content FROM files WHERE user_id = ? AND path = ?",
-            (USER_ID, path),
-        ).fetchone()
-
-        # 如果是 .vscode 或 .git 目录下的配置文件不存在，返回空内容
-        if not row and ("/.vscode/" in path or "/.git/" in path):
-            return Response(content=b"", media_type="application/octet-stream")
-
-        if not row or row["type"] != 1:
-            raise HTTPException(status_code=404)
-        return Response(
-            content=row["content"] or b"", media_type="application/octet-stream"
-        )
+    try:
+        content = await read_file(USER_ID, path)
+        return Response(content=content, media_type="application/octet-stream")
+    except Exception:
+        raise HTTPException(404, "Not a file")
 
 
-@api.post("/write")
+@app.post("/api/vfs/write")
 async def write(path: str, request: Request):
     path = normalize_path(path)
     content = await request.body()
-    with get_db() as conn:
-        now = int(time.time() * 1000)
-        conn.execute(
-            """
-            INSERT INTO files (user_id, path, type, content, mtime) VALUES (?, ?, 1, ?, ?)
-            ON CONFLICT(user_id, path) DO UPDATE SET content=?, mtime=?
-        """,
-            (USER_ID, path, content, now, content, now),
-        )
-        conn.commit()
+    await write_file(USER_ID, path, content)
     return {"ok": True}
 
 
-@api.post("/mkdir")
-async def mkdir(path: str):
+@app.post("/api/vfs/mkdir")
+async def mkdir_api(path: str):
     path = normalize_path(path)
-    with get_db() as conn:
-        now = int(time.time() * 1000)
-        conn.execute(
-            "INSERT OR IGNORE INTO files (user_id, path, type, mtime) VALUES (?, ?, 2, ?)",
-            (USER_ID, path, now),
-        )
-        conn.commit()
+    await mkdir(USER_ID, path)
     return {"ok": True}
 
 
-@api.delete("/delete")
+@app.delete("/api/vfs/delete")
 async def delete(path: str):
     path = normalize_path(path)
-    with get_db() as conn:
-        conn.execute(
-            "DELETE FROM files WHERE user_id = ? AND (path = ? OR path LIKE ?)",
-            (USER_ID, path, path + "/%"),
-        )
-        conn.commit()
+    await delete_path(USER_ID, path)
     return {"ok": True}
 
 
-app.include_router(api)
-
-# 挂载静态文件（包括 index.html 和 vfs-extension）
 app.mount("/", StaticFiles(directory="web", html=True), name="web")
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
