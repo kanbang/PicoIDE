@@ -5,7 +5,7 @@
  * @Date: 2026-01-09
 -->
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, nextTick } from 'vue';
 import NodeFlow from '../NodeFlow/index.vue';
 
 interface SchemaItem {
@@ -39,10 +39,8 @@ const renamingSchemaId = ref<string | null>(null);
 // 新名称
 const newName = ref('');
 
-// 当前选中的 Schema
-const selectedSchema = computed(() => {
-  return schemas.value.find(s => s.id === selectedSchemaId.value) || null;
-});
+// 当前选中的 Schema（仅用于判断是否存在）
+const hasSelectedSchema = computed(() => selectedSchemaId.value !== null);
 
 // NodeFlow 组件引用
 const nodeFlowRef = ref<InstanceType<typeof NodeFlow> | null>(null);
@@ -61,7 +59,7 @@ function loadFromStorage(): void {
   }
 }
 
-// 保存到本地存储
+// 保存到本地存储（仅保存元数据 + 已确认保存的 schema）
 function saveToStorage(): void {
   const data = {
     schemas: schemas.value,
@@ -75,7 +73,7 @@ function createSchema(): void {
   const newSchema: SchemaItem = {
     id: Date.now().toString(),
     name: `Schema ${schemas.value.length + 1}`,
-    schema: { nodes: [], connections: [] },
+    schema: {},
     hasUnsavedChanges: false
   };
   schemas.value.push(newSchema);
@@ -85,49 +83,46 @@ function createSchema(): void {
 
 // 选择 Schema
 function selectSchema(id: string): void {
-  // 如果当前有未保存的更改，显示保存提示
-  const current = selectedSchema.value;
+  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
   if (current && current.hasUnsavedChanges) {
     pendingSchemaId.value = id;
     showSavePrompt.value = true;
     return;
   }
 
-  // 直接切换
   doSelectSchema(id);
 }
 
 // 实际执行选择
-function doSelectSchema(id: string): void {
+async function doSelectSchema(id: string): void {
   selectedSchemaId.value = id;
   pendingSchemaId.value = null;
   showSavePrompt.value = false;
   saveToStorage();
 
-  const schema = schemas.value.find(s => s.id === id);
-  if (schema) {
-    // 切换时先假定没有未保存更改，等待 NodeFlow 加载完毕后通过事件通知我们
-    schema.hasUnsavedChanges = false; 
-    
+  const schemaItem = schemas.value.find(s => s.id === id);
+  if (schemaItem) {
+    schemaItem.hasUnsavedChanges = false;
+
+    await nextTick();
     if (nodeFlowRef.value) {
-      nodeFlowRef.value.loadSchema(schema.schema);
+      nodeFlowRef.value.loadSchema(schemaItem.schema);
     }
   }
 }
-// 保存当前 Schema
+
+// 保存当前 Schema（用户明确操作）
 function saveCurrentSchema(): void {
-  const current = selectedSchema.value;
+  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
   if (!current || !nodeFlowRef.value) return;
 
-  // 获取当前 schema
   const currentSchemaData = nodeFlowRef.value.currentSchema;
-  if (currentSchemaData) {
+  if (currentSchemaData !== null) {
     current.schema = currentSchemaData;
     current.hasUnsavedChanges = false;
-    saveToStorage();
+    saveToStorage();  // 只有在这里才持久化
   }
 
-  // 如果有待切换的 Schema，执行切换
   if (pendingSchemaId.value) {
     doSelectSchema(pendingSchemaId.value);
   } else {
@@ -137,11 +132,6 @@ function saveCurrentSchema(): void {
 
 // 不保存并切换
 function discardAndSwitch(): void {
-  const current = selectedSchema.value;
-  if (current) {
-    current.hasUnsavedChanges = false;
-  }
-
   if (pendingSchemaId.value) {
     doSelectSchema(pendingSchemaId.value);
   } else {
@@ -163,16 +153,16 @@ function deleteSchema(id: string): void {
   if (index > -1) {
     schemas.value.splice(index, 1);
 
-    // 如果删除的是当前选中的，选中第一个
     if (selectedSchemaId.value === id) {
       if (schemas.value.length > 0) {
-        selectSchema(schemas.value[0].id);
+        doSelectSchema(schemas.value[0].id);
       } else {
         selectedSchemaId.value = null;
+        saveToStorage();
       }
+    } else {
+      saveToStorage();
     }
-
-    saveToStorage();
   }
 }
 
@@ -186,7 +176,6 @@ function renameSchema(id: string): void {
   }
 }
 
-// 确认重命名
 function confirmRename(): void {
   if (renamingSchemaId.value && newName.value.trim()) {
     const schema = schemas.value.find(s => s.id === renamingSchemaId.value);
@@ -200,52 +189,48 @@ function confirmRename(): void {
   newName.value = '';
 }
 
-// 取消重命名
 function cancelRename(): void {
   showRenameDialog.value = false;
   renamingSchemaId.value = null;
   newName.value = '';
 }
 
-// 处理 NodeFlow 的更新事件// 1. 处理数据更新：只负责静默同步数据（备份），绝对不要在这里修改 hasUnsavedChanges
+// 处理 NodeFlow 的更新事件（仅更新内存中的 schema，不自动持久化）
 function handleUpdate(schema: any): void {
-  const current = selectedSchema.value;
+  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
   if (current) {
-    // 仅更新数据模型，以便自动保存到 localStorage (防丢失)
     current.schema = schema;
-    saveToStorage(); 
-    
-    // ❌ 以前这里写了 current.hasUnsavedChanges = true; 导致了一加载就变黄
-    // ✅ 现在删除了，状态完全交给 handleUnsavedChanges 控制
+    // 移除自动 saveToStorage，避免误操作覆盖已保存版本
   }
 }
 
-// 2. 新增：专门处理未保存状态（完全听信子组件的判断）
+// 处理未保存状态（完全信任子组件）
 function handleUnsavedChanges(hasChanges: boolean): void {
-  const current = selectedSchema.value;
+  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
   if (current) {
-    // 子组件经过深度对比后，告诉我们是否真的有变化
     current.hasUnsavedChanges = hasChanges;
   }
 }
 
-// 3. 处理保存事件：保存后，状态归零
+// 处理保存事件（用户点击保存按钮）
 function handleSave(data: any): void {
-  const current = selectedSchema.value;
+  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
   if (current) {
     current.schema = data;
-    current.hasUnsavedChanges = false; // 明确标记为已保存
-    saveToStorage();
+    current.hasUnsavedChanges = false;
+    saveToStorage();  // 明确保存
   }
 }
 
 // 组件挂载时加载数据
-onMounted(() => {
+onMounted(async () => {
   loadFromStorage();
 
-  // 如果没有 Schema，创建一个默认的
   if (schemas.value.length === 0) {
     createSchema();
+  } else if (selectedSchemaId.value) {
+    await nextTick();
+    doSelectSchema(selectedSchemaId.value);
   }
 });
 </script>
@@ -276,11 +261,11 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 右侧 NodeFlow 编辑器 -->
+    <!-- 右侧 NodeFlow 编辑器（始终挂载） -->
     <div class="schema-editor">
-      <NodeFlow v-if="selectedSchema" ref="nodeFlowRef" :schema="selectedSchema.schema" :blocks="blocks"
-        @update="handleUpdate" @unsavedChanges="handleUnsavedChanges" @save="handleSave" />
-      <div v-else class="empty-editor">
+      <NodeFlow ref="nodeFlowRef" :blocks="props.blocks" @update="handleUpdate" @unsavedChanges="handleUnsavedChanges"
+        @save="handleSave" />
+      <div v-if="!hasSelectedSchema" class="empty-editor-overlay">
         请选择或创建一个 Schema
       </div>
     </div>
@@ -314,6 +299,20 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 原样式保持不变，仅新增一个 overlay 用于空状态覆盖 */
+.empty-editor-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  color: #888;
+  font-size: 16px;
+  pointer-events: none;
+  z-index: 10;
+}
+
 .schema-manager {
   display: flex;
   width: 100vw;

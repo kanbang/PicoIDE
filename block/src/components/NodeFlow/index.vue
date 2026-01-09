@@ -224,7 +224,10 @@ function setupNodeDragObserver() {
 
 // 加载 schema
 function loadSchema(newSchema: any) {
-  if (!newSchema) return;
+  if (!newSchema) 
+  {
+    return;
+  }
 
   try {
     isLoading.value = true;
