@@ -71,7 +71,7 @@ function saveToStorage(): void {
 // 创建新的 Schema
 function createSchema(): void {
   const newSchema: SchemaItem = {
-    id: Date.now().toString(),
+    id: crypto.randomUUID(),
     name: `Schema ${schemas.value.length + 1}`,
     schema: null,
     hasUnsavedChanges: false
@@ -158,11 +158,30 @@ function deleteSchema(id: string): void {
         doSelectSchema(schemas.value[0].id);
       } else {
         selectedSchemaId.value = null;
+        if (nodeFlowRef.value) {
+          nodeFlowRef.value.loadSchema(null);
+        }
         saveToStorage();
       }
     } else {
       saveToStorage();
     }
+  }
+}
+
+// 复制 Schema
+function duplicateSchema(id: string): void {
+  const original = schemas.value.find(s => s.id === id);
+  if (original) {
+    const newSchema: SchemaItem = {
+      id: crypto.randomUUID(),
+      name: `Copy of ${original.name}`,
+      schema: JSON.parse(JSON.stringify(original.schema)),
+      hasUnsavedChanges: false
+    };
+    schemas.value.push(newSchema);
+    selectSchema(newSchema.id);
+    saveToStorage();
   }
 }
 
@@ -251,6 +270,7 @@ onMounted(async () => {
             <span v-if="schema.hasUnsavedChanges" class="unsaved-indicator">●</span>
           </div>
           <div class="schema-item-actions">
+            <button @click.stop="duplicateSchema(schema.id)" class="btn-icon">📋</button>
             <button @click.stop="renameSchema(schema.id)" class="btn-icon">✎</button>
             <button @click.stop="deleteSchema(schema.id)" class="btn-icon">✕</button>
           </div>
