@@ -82,7 +82,7 @@ const props = defineProps<{
 
 
 onMounted(() => {
-  baklava.editor.registerNodeType(TestNode, { category: "Tests" });
+  // baklava.editor.registerNodeType(TestNode, { category: "Tests" });
 
   console.log(TestNode);
   props.blocks.forEach(el => {
