@@ -270,9 +270,9 @@ onMounted(async () => {
             <span v-if="schema.hasUnsavedChanges" class="unsaved-indicator">●</span>
           </div>
           <div class="schema-item-actions">
-            <button @click.stop="duplicateSchema(schema.id)" class="btn-icon">📋</button>
-            <button @click.stop="renameSchema(schema.id)" class="btn-icon">✎</button>
-            <button @click.stop="deleteSchema(schema.id)" class="btn-icon">✕</button>
+            <button @click.stop="duplicateSchema(schema.id)" class="btn-icon" title="复制">📋</button>
+            <button @click.stop="renameSchema(schema.id)" class="btn-icon" title="重命名">✎</button>
+            <button @click.stop="deleteSchema(schema.id)" class="btn-icon btn-icon-delete" title="删除">✕</button>
           </div>
         </div>
         <div v-if="schemas.length === 0" class="empty-state">
@@ -378,7 +378,7 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 32px;
+  min-height: 40px;
   box-sizing: border-box;
 }
 
@@ -425,16 +425,25 @@ onMounted(async () => {
   border: none;
   color: #aaa;
   cursor: pointer;
-  padding: 2px 6px;
+  width: 24px;
+  height: 24px;
   font-size: 12px;
-  border-radius: 3px;
+  border-radius: 4px;
   transition: color 0.2s, background 0.2s;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-icon:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
+}
+
+.btn-icon-delete:hover {
+  background: #f44336;
+  color: #fff;
 }
 
 .empty-state {
