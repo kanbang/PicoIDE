@@ -16,6 +16,7 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "baklavajs": "^2.8.1",
     "vue": "^3.5.26"
   },
   "devDependencies": {

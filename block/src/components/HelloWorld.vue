@@ -1,17 +1,20 @@
 <script setup lang="ts">
+import { reactive } from 'vue';
+import { NodeFlow } from './components/NodeFlow.vue';
+
+const block = reactive({
+  schema: {},
+  blocks: []
+});
+
 defineProps<{
   msg: string
 }>()
 </script>
 
 <template>
-  <div class="greetings">
-    <h1 class="green">{{ msg }}</h1>
-    <h3>
-      You’ve successfully created a project with
-      <a href="https://vite.dev/" target="_blank" rel="noopener">Vite</a> +
-      <a href="https://vuejs.org/" target="_blank" rel="noopener">Vue 3</a>.
-    </h3>
+  <div style="width: 100vw; height: 100vh">
+    <NodeFlow v-if="block.blocks.length > 0" v-model:schema="block.schema" :blocks="block.blocks"/>
   </div>
 </template>
 
