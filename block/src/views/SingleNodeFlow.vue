@@ -5,7 +5,7 @@
  * @Date: 2026-01-09
 -->
 <script setup lang="ts">
-import NodeFlow from '../NodeFlow/index.vue'
+import NodeFlow from '@/components/NodeFlow/index.vue'
 import { ref, onMounted } from 'vue';
 
 // Props

@@ -6,8 +6,8 @@
 -->
 <script setup lang="ts">
 import { ref } from 'vue';
-import SingleNodeFlow from './components/SingleNodeFlow/index.vue';
-import SchemaManager from './components/SchemaManager/index.vue';
+import SingleNodeFlow from '@/views/SingleNodeFlow.vue';
+import SchemaManager from '@/components/SchemaManager/index.vue';
 
 // 当前激活的标签页
 const activeTab = ref<'single' | 'manager'>('single');
