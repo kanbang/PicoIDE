@@ -104,13 +104,16 @@ function doSelectSchema(id: string): void {
   showSavePrompt.value = false;
   saveToStorage();
 
-  // 加载 Schema 到 NodeFlow
   const schema = schemas.value.find(s => s.id === id);
-  if (schema && nodeFlowRef.value) {
-    nodeFlowRef.value.loadSchema(schema.schema);
+  if (schema) {
+    // 切换时先假定没有未保存更改，等待 NodeFlow 加载完毕后通过事件通知我们
+    schema.hasUnsavedChanges = false; 
+    
+    if (nodeFlowRef.value) {
+      nodeFlowRef.value.loadSchema(schema.schema);
+    }
   }
 }
-
 // 保存当前 Schema
 function saveCurrentSchema(): void {
   const current = selectedSchema.value;
@@ -204,21 +207,34 @@ function cancelRename(): void {
   newName.value = '';
 }
 
-// 处理 NodeFlow 的更新事件
+// 处理 NodeFlow 的更新事件// 1. 处理数据更新：只负责静默同步数据（备份），绝对不要在这里修改 hasUnsavedChanges
 function handleUpdate(schema: any): void {
   const current = selectedSchema.value;
   if (current) {
-    current.hasUnsavedChanges = true;
-    saveToStorage();
+    // 仅更新数据模型，以便自动保存到 localStorage (防丢失)
+    current.schema = schema;
+    saveToStorage(); 
+    
+    // ❌ 以前这里写了 current.hasUnsavedChanges = true; 导致了一加载就变黄
+    // ✅ 现在删除了，状态完全交给 handleUnsavedChanges 控制
   }
 }
 
-// 处理 NodeFlow 的保存事件
+// 2. 新增：专门处理未保存状态（完全听信子组件的判断）
+function handleUnsavedChanges(hasChanges: boolean): void {
+  const current = selectedSchema.value;
+  if (current) {
+    // 子组件经过深度对比后，告诉我们是否真的有变化
+    current.hasUnsavedChanges = hasChanges;
+  }
+}
+
+// 3. 处理保存事件：保存后，状态归零
 function handleSave(data: any): void {
   const current = selectedSchema.value;
   if (current) {
     current.schema = data;
-    current.hasUnsavedChanges = false;
+    current.hasUnsavedChanges = false; // 明确标记为已保存
     saveToStorage();
   }
 }
@@ -243,12 +259,8 @@ onMounted(() => {
         <button @click="createSchema" class="btn btn-primary">+ 新建</button>
       </div>
       <div class="schema-list-body">
-        <div
-          v-for="schema in schemas"
-          :key="schema.id"
-          :class="['schema-item', { active: schema.id === selectedSchemaId }]"
-          @click="selectSchema(schema.id)"
-        >
+        <div v-for="schema in schemas" :key="schema.id"
+          :class="['schema-item', { active: schema.id === selectedSchemaId }]" @click="selectSchema(schema.id)">
           <div class="schema-item-content">
             <span class="schema-name">{{ schema.name }}</span>
             <span v-if="schema.hasUnsavedChanges" class="unsaved-indicator">●</span>
@@ -266,14 +278,8 @@ onMounted(() => {
 
     <!-- 右侧 NodeFlow 编辑器 -->
     <div class="schema-editor">
-      <NodeFlow
-        v-if="selectedSchema"
-        ref="nodeFlowRef"
-        :schema="selectedSchema.schema"
-        :blocks="blocks"
-        @update="handleUpdate"
-        @save="handleSave"
-      />
+      <NodeFlow v-if="selectedSchema" ref="nodeFlowRef" :schema="selectedSchema.schema" :blocks="blocks"
+        @update="handleUpdate" @unsavedChanges="handleUnsavedChanges" @save="handleSave" />
       <div v-else class="empty-editor">
         请选择或创建一个 Schema
       </div>
@@ -296,14 +302,8 @@ onMounted(() => {
     <div v-if="showRenameDialog" class="modal-overlay">
       <div class="modal">
         <h3>重命名 Schema</h3>
-        <input
-          v-model="newName"
-          @keyup.enter="confirmRename"
-          @keyup.esc="cancelRename"
-          class="input"
-          placeholder="输入新名称"
-          autofocus
-        />
+        <input v-model="newName" @keyup.enter="confirmRename" @keyup.esc="cancelRename" class="input"
+          placeholder="输入新名称" autofocus />
         <div class="modal-actions">
           <button @click="confirmRename" class="btn btn-primary">确定</button>
           <button @click="cancelRename" class="btn">取消</button>
