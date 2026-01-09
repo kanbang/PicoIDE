@@ -224,8 +224,36 @@ function setupNodeDragObserver() {
 
 // 加载 schema
 function loadSchema(newSchema: any) {
-  if (!newSchema) 
-  {
+  if (!newSchema) {
+    // 清空编辑器
+    try {
+      isLoading.value = true;
+      const graph = editor.graph;
+
+      // 移除所有节点
+      [...graph.nodes].forEach(node => {
+        graph.removeNode(node);
+      });
+
+      // 移除所有连接
+      [...graph.connections].forEach(connection => {
+        graph.removeConnection(connection);
+      });
+
+      // 重置状态
+      currentSchema.value = {};
+      lastSavedSchema.value = {};
+      hasUnsavedChanges.value = false;
+      emit('update', {});
+      emit('unsavedChanges', false);
+
+      nextTick(() => {
+        isLoading.value = false;
+      });
+    } catch (error) {
+      isLoading.value = false;
+      emit('error', `清空编辑器失败: ${error}`);
+    }
     return;
   }
 

@@ -73,7 +73,7 @@ function createSchema(): void {
   const newSchema: SchemaItem = {
     id: Date.now().toString(),
     name: `Schema ${schemas.value.length + 1}`,
-    schema: {},
+    schema: null,
     hasUnsavedChanges: false
   };
   schemas.value.push(newSchema);
