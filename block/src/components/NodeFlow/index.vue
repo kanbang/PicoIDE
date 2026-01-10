@@ -224,49 +224,31 @@ function setupNodeDragObserver() {
 
 // 加载 schema
 function loadSchema(newSchema: any) {
-  if (!newSchema) {
-    // 清空编辑器
-    try {
-      isLoading.value = true;
-      const graph = editor.graph;
-
-      // 移除所有节点
-      [...graph.nodes].forEach(node => {
-        graph.removeNode(node);
-      });
-
-      // 移除所有连接
-      [...graph.connections].forEach(connection => {
-        graph.removeConnection(connection);
-      });
-
-      // 重置状态
-      currentSchema.value = {};
-      lastSavedSchema.value = {};
-      hasUnsavedChanges.value = false;
-      emit('update', {});
-      emit('unsavedChanges', false);
-
-      nextTick(() => {
-        isLoading.value = false;
-      });
-    } catch (error) {
-      isLoading.value = false;
-      emit('error', `清空编辑器失败: ${error}`);
-    }
-    return;
-  }
-
   try {
     isLoading.value = true;
-    editor.load(newSchema);
-    currentSchema.value = newSchema;
-    emit('update', newSchema);
-    lastSavedSchema.value = deepCopy(newSchema);
 
+    if (!newSchema) {
+      // 清空编辑器
+      const graph = editor.graph;
+
+      // 移除所有节点和连接
+      [...graph.nodes].forEach(node => graph.removeNode(node));
+      [...graph.connections].forEach(connection => graph.removeConnection(connection));
+
+      // 重置当前 schema
+      currentSchema.value = editor.save();
+    } else {
+      // 加载新 Schema
+      editor.load(newSchema);
+      currentSchema.value = newSchema;
+    }
+
+    lastSavedSchema.value = deepCopy(currentSchema.value);
     hasUnsavedChanges.value = false;
+    emit('update', currentSchema.value);
     emit('unsavedChanges', false);
 
+    // 清除更新定时器
     if (updateTimeout !== null) {
       clearTimeout(updateTimeout);
       updateTimeout = null;
@@ -277,7 +259,7 @@ function loadSchema(newSchema: any) {
     });
   } catch (error) {
     isLoading.value = false;
-    emit('error', `加载数据失败: ${error}`);
+    emit('error', `操作失败: ${error}`);
   }
 }
 
