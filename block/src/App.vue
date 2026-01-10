@@ -8,13 +8,14 @@
 import { ref } from 'vue';
 import SingleNodeFlow from '@/views/SingleNodeFlow.vue';
 import SchemaManagerExample from '@/views/SchemaManagerExample.vue';
+import TinyCode from '@/views/TinyCode.vue';
 
 // 当前激活的标签页
-const activeTab = ref<'single' | 'manager'>('single');
+const activeTab = ref<'single' | 'manager' | 'tinycode'>('single');
 
 
 // 切换标签页
-function switchTab(tab: 'single' | 'manager') {
+function switchTab(tab: 'single' | 'manager' | 'tinycode') {
   activeTab.value = tab;
 }
 </script>
@@ -29,12 +30,16 @@ function switchTab(tab: 'single' | 'manager') {
       <button :class="['tab-button', { active: activeTab === 'manager' }]" @click="switchTab('manager')">
         Schema 管理
       </button>
+      <button :class="['tab-button', { active: activeTab === 'tinycode' }]" @click="switchTab('tinycode')">
+        TinyCode
+      </button>
     </div>
 
     <!-- 标签页内容 -->
     <div class="tab-content">
       <SingleNodeFlow v-if="activeTab === 'single'" />
-      <SchemaManagerExample v-else />
+      <SchemaManagerExample v-else-if="activeTab === 'manager'" />
+      <TinyCode v-else-if="activeTab === 'tinycode'" />
     </div>
   </div>
 </template>
