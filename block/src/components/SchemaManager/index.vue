@@ -8,7 +8,7 @@
 import { ref, onMounted, computed, nextTick } from 'vue';
 import NodeFlow from '../NodeFlow/index.vue';
 
-interface SchemaItem {
+export interface SchemaItem {
   id: string;
   name: string;
   schema: any;
@@ -17,17 +17,24 @@ interface SchemaItem {
 
 // Props
 interface Props {
+  schemas: SchemaItem[];
+  selectedSchemaId: string | null;
   blocks: any[];
 }
 
 const props = defineProps<Props>();
 
-const STORAGE_KEY = 'schema_manager_data';
+// Emits
+const emit = defineEmits<{
+  'update:schemas': [schemas: SchemaItem[]];
+  'update:selectedSchemaId': [id: string | null];
+  'save': [id: string, data: any];
+  'create': [schema: SchemaItem];
+  'delete': [id: string];
+  'rename': [id: string, newName: string];
+  'duplicate': [id: string, newSchema: SchemaItem];
+}>();
 
-// Schema 列表
-const schemas = ref<SchemaItem[]>([]);
-// 当前选中的 Schema ID
-const selectedSchemaId = ref<string | null>(null);
 // 是否显示保存提示
 const showSavePrompt = ref(false);
 // 待切换的目标 Schema ID
@@ -44,50 +51,26 @@ const showDeleteDialog = ref(false);
 const deletingSchemaId = ref<string | null>(null);
 
 // 当前选中的 Schema（仅用于判断是否存在）
-const hasSelectedSchema = computed(() => selectedSchemaId.value !== null);
+const hasSelectedSchema = computed(() => props.selectedSchemaId !== null);
 
 // NodeFlow 组件引用
 const nodeFlowRef = ref<InstanceType<typeof NodeFlow> | null>(null);
-
-// 从本地存储加载数据
-function loadFromStorage(): void {
-  const savedData = localStorage.getItem(STORAGE_KEY);
-  if (savedData) {
-    try {
-      const data = JSON.parse(savedData);
-      schemas.value = data.schemas || [];
-      selectedSchemaId.value = data.selectedSchemaId || null;
-    } catch (e) {
-      console.error('Failed to parse saved data:', e);
-    }
-  }
-}
-
-// 保存到本地存储
-function saveToStorage(): void {
-  const data = {
-    schemas: schemas.value,
-    selectedSchemaId: selectedSchemaId.value
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
 
 // 创建新的 Schema
 function createSchema(): void {
   const newSchema: SchemaItem = {
     id: crypto.randomUUID(),
-    name: `Schema ${schemas.value.length + 1}`,
+    name: `Schema ${props.schemas.length + 1}`,
     schema: null,
     hasUnsavedChanges: false
   };
-  schemas.value.push(newSchema);
+  emit('create', newSchema);
   selectSchema(newSchema.id);
-  saveToStorage();
 }
 
 // 选择 Schema
 function selectSchema(id: string): void {
-  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
+  const current = props.schemas.find(s => s.id === props.selectedSchemaId);
   if (current && current.hasUnsavedChanges) {
     pendingSchemaId.value = id;
     showSavePrompt.value = true;
@@ -98,23 +81,24 @@ function selectSchema(id: string): void {
 }
 
 
+
 function deepCopy(obj: any): any {
   return obj ? JSON.parse(JSON.stringify(obj)) : null;
 }
-
 // 实际执行选择
 async function doSelectSchema(id: string): void {
-  selectedSchemaId.value = id;
+  emit('update:selectedSchemaId', id);
   pendingSchemaId.value = null;
   showSavePrompt.value = false;
-  saveToStorage();  // 保存 selectedId 等元数据
 
-  const schemaItem = schemas.value.find(s => s.id === id);
+  const schemaItem = props.schemas.find(s => s.id === id);
   if (schemaItem) {
     schemaItem.hasUnsavedChanges = false;
+    emit('update:schemas', [...props.schemas]);
 
     await nextTick();
     if (nodeFlowRef.value) {
+  
       nodeFlowRef.value.loadSchema(deepCopy(schemaItem.schema));
     }
   }
@@ -122,14 +106,15 @@ async function doSelectSchema(id: string): void {
 
 // 保存当前 Schema（用户明确操作）
 function saveCurrentSchema(): void {
-  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
+  const current = props.schemas.find(s => s.id === props.selectedSchemaId);
   if (!current || !nodeFlowRef.value) return;
 
   const currentSchemaData = nodeFlowRef.value.currentSchema;
   if (currentSchemaData !== null) {
-    current.schema = currentSchemaData;  // 仅在保存时更新 parent 的 schema
+    current.schema = currentSchemaData;
     current.hasUnsavedChanges = false;
-    saveToStorage();  // 持久化
+    emit('save', current.id, currentSchemaData);
+    emit('update:schemas', [...props.schemas]);
   }
 
   if (pendingSchemaId.value) {
@@ -140,8 +125,8 @@ function saveCurrentSchema(): void {
 }
 
 // 不保存并切换（丢弃 NodeFlow 中的更改，直接切换）
-function discardAndSwitch(): void {
-  // 无需额外操作，因为更改仅在 NodeFlow 中，未更新到 parent 的 schema
+async function discardAndSwitch(): void {
+
   if (pendingSchemaId.value) {
     doSelectSchema(pendingSchemaId.value);
   } else {
@@ -164,22 +149,19 @@ function deleteSchema(id: string): void {
 function confirmDelete(): void {
   if (!deletingSchemaId.value) return;
 
-  const index = schemas.value.findIndex(s => s.id === deletingSchemaId.value);
-  if (index > -1) {
-    schemas.value.splice(index, 1);
+  emit('delete', deletingSchemaId.value);
 
-    if (selectedSchemaId.value === deletingSchemaId.value) {
-      if (schemas.value.length > 0) {
-        doSelectSchema(schemas.value[0].id);
-      } else {
-        selectedSchemaId.value = null;
-        if (nodeFlowRef.value) {
-          nodeFlowRef.value.loadSchema(null);
-        }
-        saveToStorage();
+  if (props.selectedSchemaId === deletingSchemaId.value) {
+    if (props.schemas.length > 1) {
+      const nextSchema = props.schemas.find(s => s.id !== deletingSchemaId.value);
+      if (nextSchema) {
+        doSelectSchema(nextSchema.id);
       }
     } else {
-      saveToStorage();
+      emit('update:selectedSchemaId', null);
+      if (nodeFlowRef.value) {
+        nodeFlowRef.value.loadSchema(null);
+      }
     }
   }
 
@@ -194,7 +176,7 @@ function cancelDelete(): void {
 
 // 复制 Schema
 function duplicateSchema(id: string): void {
-  const original = schemas.value.find(s => s.id === id);
+  const original = props.schemas.find(s => s.id === id);
   if (original) {
     const newSchema: SchemaItem = {
       id: crypto.randomUUID(),
@@ -202,15 +184,14 @@ function duplicateSchema(id: string): void {
       schema: JSON.parse(JSON.stringify(original.schema)),
       hasUnsavedChanges: false
     };
-    schemas.value.push(newSchema);
+    emit('duplicate', id, newSchema);
     selectSchema(newSchema.id);
-    saveToStorage();
   }
 }
 
 // 重命名 Schema
 function renameSchema(id: string): void {
-  const schema = schemas.value.find(s => s.id === id);
+  const schema = props.schemas.find(s => s.id === id);
   if (schema) {
     renamingSchemaId.value = id;
     newName.value = schema.name;
@@ -220,11 +201,7 @@ function renameSchema(id: string): void {
 
 function confirmRename(): void {
   if (renamingSchemaId.value && newName.value.trim()) {
-    const schema = schemas.value.find(s => s.id === renamingSchemaId.value);
-    if (schema) {
-      schema.name = newName.value.trim();
-      saveToStorage();
-    }
+    emit('rename', renamingSchemaId.value, newName.value.trim());
   }
   showRenameDialog.value = false;
   renamingSchemaId.value = null;
@@ -244,31 +221,29 @@ function handleUpdate(schema: any): void {
 
 // 处理未保存状态（完全信任子组件）
 function handleUnsavedChanges(hasChanges: boolean): void {
-  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
+  const current = props.schemas.find(s => s.id === props.selectedSchemaId);
   if (current) {
     current.hasUnsavedChanges = hasChanges;
+    emit('update:schemas', [...props.schemas]);
   }
 }
 
 // 处理保存事件（用户点击保存按钮）
 function handleSave(data: any): void {
-  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
+  const current = props.schemas.find(s => s.id === props.selectedSchemaId);
   if (current) {
-    current.schema = data;  // 仅在保存时更新 parent 的 schema
+    current.schema = data;
     current.hasUnsavedChanges = false;
-    saveToStorage();  // 明确保存
+    emit('save', current.id, data);
+    emit('update:schemas', [...props.schemas]);
   }
 }
 
-// 组件挂载时加载数据
+// 组件挂载时加载选中的 schema
 onMounted(async () => {
-  loadFromStorage();
-
-  if (schemas.value.length === 0) {
-    createSchema();
-  } else if (selectedSchemaId.value) {
+  if (props.selectedSchemaId) {
     await nextTick();
-    doSelectSchema(selectedSchemaId.value);
+    doSelectSchema(props.selectedSchemaId);
   }
 });
 </script>
@@ -282,8 +257,8 @@ onMounted(async () => {
         <button @click="createSchema" class="btn btn-primary">+ 新建</button>
       </div>
       <div class="schema-list-body">
-        <div v-for="schema in schemas" :key="schema.id"
-          :class="['schema-item', { active: schema.id === selectedSchemaId }]" @click="selectSchema(schema.id)">
+        <div v-for="schema in props.schemas" :key="schema.id"
+          :class="['schema-item', { active: schema.id === props.selectedSchemaId }]" @click="selectSchema(schema.id)">
           <div class="schema-item-content">
             <span class="schema-name">{{ schema.name }}</span>
             <span v-if="schema.hasUnsavedChanges" class="unsaved-indicator">●</span>
@@ -294,7 +269,7 @@ onMounted(async () => {
             <button @click.stop="deleteSchema(schema.id)" class="btn-icon btn-icon-delete" title="删除">✕</button>
           </div>
         </div>
-        <div v-if="schemas.length === 0" class="empty-state">
+        <div v-if="props.schemas.length === 0" class="empty-state">
           暂无 Schema，点击"新建"创建
         </div>
       </div>
