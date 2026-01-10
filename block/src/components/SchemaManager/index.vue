@@ -38,6 +38,10 @@ const showRenameDialog = ref(false);
 const renamingSchemaId = ref<string | null>(null);
 // 新名称
 const newName = ref('');
+// 是否显示删除确认对话框
+const showDeleteDialog = ref(false);
+// 待删除的 Schema ID
+const deletingSchemaId = ref<string | null>(null);
 
 // 当前选中的 Schema（仅用于判断是否存在）
 const hasSelectedSchema = computed(() => selectedSchemaId.value !== null);
@@ -147,13 +151,18 @@ function cancelSwitch(): void {
 
 // 删除 Schema
 function deleteSchema(id: string): void {
-  if (!confirm('确定要删除这个 Schema 吗？')) return;
+  deletingSchemaId.value = id;
+  showDeleteDialog.value = true;
+}
 
-  const index = schemas.value.findIndex(s => s.id === id);
+function confirmDelete(): void {
+  if (!deletingSchemaId.value) return;
+
+  const index = schemas.value.findIndex(s => s.id === deletingSchemaId.value);
   if (index > -1) {
     schemas.value.splice(index, 1);
 
-    if (selectedSchemaId.value === id) {
+    if (selectedSchemaId.value === deletingSchemaId.value) {
       if (schemas.value.length > 0) {
         doSelectSchema(schemas.value[0].id);
       } else {
@@ -167,6 +176,14 @@ function deleteSchema(id: string): void {
       saveToStorage();
     }
   }
+
+  showDeleteDialog.value = false;
+  deletingSchemaId.value = null;
+}
+
+function cancelDelete(): void {
+  showDeleteDialog.value = false;
+  deletingSchemaId.value = null;
 }
 
 // 复制 Schema
@@ -312,6 +329,18 @@ onMounted(async () => {
         <div class="modal-actions">
           <button @click="confirmRename" class="btn btn-primary">确定</button>
           <button @click="cancelRename" class="btn">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 删除确认对话框 -->
+    <div v-if="showDeleteDialog" class="modal-overlay">
+      <div class="modal">
+        <h3>删除 Schema</h3>
+        <p>确定要删除这个 Schema 吗？此操作无法撤销。</p>
+        <div class="modal-actions">
+          <button @click="confirmDelete" class="btn btn-danger">删除</button>
+          <button @click="cancelDelete" class="btn">取消</button>
         </div>
       </div>
     </div>
@@ -545,5 +574,14 @@ onMounted(async () => {
 
 .btn-primary:hover {
   background: #45a049;
+}
+
+.btn-danger {
+  background: #f44336;
+  border-color: #f44336;
+}
+
+.btn-danger:hover {
+  background: #d32f2f;
 }
 </style>
