@@ -63,7 +63,7 @@ function loadFromStorage(): void {
   }
 }
 
-// 保存到本地存储（仅保存元数据 + 已确认保存的 schema）
+// 保存到本地存储
 function saveToStorage(): void {
   const data = {
     schemas: schemas.value,
@@ -102,7 +102,7 @@ async function doSelectSchema(id: string): void {
   selectedSchemaId.value = id;
   pendingSchemaId.value = null;
   showSavePrompt.value = false;
-  saveToStorage();
+  saveToStorage();  // 保存 selectedId 等元数据
 
   const schemaItem = schemas.value.find(s => s.id === id);
   if (schemaItem) {
@@ -122,9 +122,9 @@ function saveCurrentSchema(): void {
 
   const currentSchemaData = nodeFlowRef.value.currentSchema;
   if (currentSchemaData !== null) {
-    current.schema = currentSchemaData;
+    current.schema = currentSchemaData;  // 仅在保存时更新 parent 的 schema
     current.hasUnsavedChanges = false;
-    saveToStorage();  // 只有在这里才持久化
+    saveToStorage();  // 持久化
   }
 
   if (pendingSchemaId.value) {
@@ -134,8 +134,9 @@ function saveCurrentSchema(): void {
   }
 }
 
-// 不保存并切换
+// 不保存并切换（丢弃 NodeFlow 中的更改，直接切换）
 function discardAndSwitch(): void {
+  // 无需额外操作，因为更改仅在 NodeFlow 中，未更新到 parent 的 schema
   if (pendingSchemaId.value) {
     doSelectSchema(pendingSchemaId.value);
   } else {
@@ -231,13 +232,9 @@ function cancelRename(): void {
   newName.value = '';
 }
 
-// 处理 NodeFlow 的更新事件（仅更新内存中的 schema，不自动持久化）
+// 处理 NodeFlow 的更新事件（不再更新 parent 的 schema，仅在保存时更新）
 function handleUpdate(schema: any): void {
-  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
-  if (current) {
-    current.schema = schema;
-    // 移除自动 saveToStorage，避免误操作覆盖已保存版本
-  }
+  // 空实现：更改仅保留在 NodeFlow 中，直到明确保存
 }
 
 // 处理未保存状态（完全信任子组件）
@@ -252,7 +249,7 @@ function handleUnsavedChanges(hasChanges: boolean): void {
 function handleSave(data: any): void {
   const current = schemas.value.find(s => s.id === selectedSchemaId.value);
   if (current) {
-    current.schema = data;
+    current.schema = data;  // 仅在保存时更新 parent 的 schema
     current.hasUnsavedChanges = false;
     saveToStorage();  // 明确保存
   }
