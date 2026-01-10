@@ -71,16 +71,12 @@ watch(activeSchemaItem, async (newItem, oldItem) => {
 // 创建
 async function createSchema() {
   const newSchema: SchemaItem = {
-    id: crypto.randomUUID(),
+    id: '', // ID 由父组件生成
     name: `Schema ${schemas.value.length + 1}`,
     schema: null,
     hasUnsavedChanges: false
   };
   emit('create', newSchema);
-
-  // 等待父组件更新 schemas 后再选中
-  await nextTick();
-  selectSchema(newSchema.id);
 }
 
 // 选择逻辑
@@ -167,13 +163,12 @@ function duplicateSchema(id: string) {
   const original = schemas.value.find(s => s.id === id);
   if (original) {
     const newSchema: SchemaItem = {
-      id: crypto.randomUUID(),
+      id: '', // ID 由父组件生成
       name: `${original.name} (副本)`,
       schema: JSON.parse(JSON.stringify(original.schema)),
       hasUnsavedChanges: false
     };
     emit('duplicate', id, newSchema);
-    nextTick(() => selectSchema(newSchema.id));
   }
 }
 

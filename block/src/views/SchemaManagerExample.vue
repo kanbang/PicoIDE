@@ -44,7 +44,16 @@ function saveToStorage(): void {
 
 // 处理创建事件
 function handleCreate(schema: SchemaItem): void {
-  schemas.value.push(schema);
+  console.log('handleCreate called with schema:', schema);
+  // 生成 ID
+  const newSchemaWithId = {
+    ...schema,
+    id: crypto.randomUUID()
+  };
+  schemas.value.push(newSchemaWithId);
+  // 自动选中新创建的 schema
+  selectedSchemaId.value = newSchemaWithId.id;
+  console.log('After push, schemas:', schemas.value);
   saveToStorage();
 }
 
@@ -77,7 +86,14 @@ function handleRename(id: string, newName: string): void {
 
 // 处理复制事件
 function handleDuplicate(originalId: string, newSchema: SchemaItem): void {
-  schemas.value.push(newSchema);
+  // 生成 ID
+  const newSchemaWithId = {
+    ...newSchema,
+    id: crypto.randomUUID()
+  };
+  schemas.value.push(newSchemaWithId);
+  // 自动选中新复制的 schema
+  selectedSchemaId.value = newSchemaWithId.id;
   saveToStorage();
 }
 
