@@ -1,16 +1,10 @@
-<!--
- * @Descripttion: SchemaManager 示例页面 - 使用 localStorage 存储数据
- * @version: 0.x
- * @Author: zhai
- * @Date: 2026-01-09
--->
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue';
+import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue'; // 确保路径正确，原代码是 @/components/...
 
 const STORAGE_KEY = 'schema_manager_example_data';
 
-// Blocks 数据
+// Blocks 数据 (保持不变)
 const blocks = [
   { "inputs": [], "name": "Sensor", "options": [{ "items": ["1000", "2000", "20000", "50000", "52000", "100000", "105000", "128000"], "name": "采样率", "properties": { "items": ["1000", "2000", "20000", "50000", "52000", "100000", "105000", "128000"] }, "type": "SelectOption", "value": "128000" }, { "items": ["Bipolar[-10V,10V]"], "name": "量程", "properties": { "items": ["Bipolar[-10V,10V]"] }, "type": "SelectOption", "value": "Bipolar[-10V,10V]" }], "outputs": [{ "name": "O-Sensor" }] },
   { "inputs": [{ "name": "I-Sensor" }], "name": "Channel", "options": [{ "name": "启用", "type": "CheckboxOption", "value": true }, { "items": ["Channel 1", "Channel 2", "Channel 3", "Channel 4"], "name": "通道", "properties": { "items": ["Channel 1", "Channel 2", "Channel 3", "Channel 4"] }, "type": "SelectOption", "value": null }, { "max": 10, "min": 0, "name": "灵敏度", "properties": { "max": 10, "min": 0 }, "type": "NumberOption", "value": null }, { "items": ["m", "m/s", "m/s²", "g"], "name": "单位", "properties": { "items": ["m", "m/s", "m/s²", "g"] }, "type": "SelectOption", "value": null }, { "name": "IEPE/ICP/CCLD", "type": "CheckboxOption", "value": true }], "outputs": [{ "name": "O-List-XY" }] },
@@ -108,7 +102,7 @@ onMounted(() => {
 
 <template>
   <SchemaManager
-    v-model="schemas"
+    v-model:schemas="schemas"
     v-model:selected-schema-id="selectedSchemaId"
     :blocks="blocks"
     @create="handleCreate"
@@ -120,5 +114,5 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 示例页面不需要额外样式，所有样式都在 SchemaManager 组件中 */
+/* 示例页面不需要额外样式 */
 </style>
