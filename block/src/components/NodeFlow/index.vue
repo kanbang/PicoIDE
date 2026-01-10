@@ -4,7 +4,7 @@
 
 <script setup lang="ts">
 import { BaklavaEditor, useBaklava, DEFAULT_TOOLBAR_COMMANDS } from "@baklavajs/renderer-vue";
-import { defineComponent, defineEmits, defineProps, h, onMounted, ref, onUnmounted, nextTick, watch, markRaw } from 'vue';
+import { defineComponent, defineEmits, defineProps, h, onMounted, onUnmounted, nextTick, ref, watch, markRaw } from 'vue';
 import SaveIcon from '@/components/icons/Save.vue';
 import { BuildBlock } from './BlockBuilder';
 import TestNode from './TestNode';
@@ -101,6 +101,8 @@ const SaveButtonIcon = markRaw(
   })
 );
 
+
+
 // 注册保存命令
 function registerCustomCommands(): void {
   baklava.commandHandler.registerCommand(SAVE_COMMAND_ID, {
@@ -177,6 +179,10 @@ function registerBlocks(blocks: BlockDefinition[] = []) {
 
 function updateBlocks(newBlocks: BlockDefinition[]) {
   registerBlocks(newBlocks);
+  // 刷新当前 schema 以匹配新块
+  if (currentSchema.value) {
+    loadSchema(currentSchema.value);
+  }
 }
 
 function registerFixedNodeTypes(): void {
@@ -184,16 +190,22 @@ function registerFixedNodeTypes(): void {
 }
 
 // 变化检测
+
+const graphEvents = ['addNode', 'removeNode', 'addConnection', 'removeConnection'];
+const nodeEvents = ['update', 'titleChanged'];
+
+const updaterToken = Symbol('ChangeDetection');
 function setupChangeDetection() {
-  const updaterToken = Symbol('ChangeDetection');
-
-  for (const prop of ['addNode', 'removeNode', 'addConnection', 'removeConnection']) {
+  graphEvents.forEach(prop => {
     editor.graphEvents[prop].subscribe(updaterToken, handleChange);
-  }
+  });
 
-  for (const prop of ['update', 'titleChanged']) {
+  nodeEvents.forEach(prop => {
     editor.nodeEvents[prop].subscribe(updaterToken, handleChange);
-  }
+  });
+
+  // 如果 Baklava 支持 positionChanged 等事件，可添加
+  // editor.nodeEvents.positionChanged.subscribe(updaterToken, handleChange);
 
   setupNodeDragObserver();
 }
@@ -213,7 +225,7 @@ function setupNodeDragObserver() {
     observer.observe(nodeContainer, {
       attributes: true,
       subtree: true,
-      attributeFilter: ['class']
+      attributeFilter: ['style']  // 优化为 style 属性，针对位置变化
     });
 
     onUnmounted(() => {
@@ -227,7 +239,7 @@ function loadSchema(newSchema: any) {
   try {
     isLoading.value = true;
 
-    if (!newSchema) {
+    if (!newSchema || Object.keys(newSchema).length === 0) {
       // 清空编辑器
       const graph = editor.graph;
 
@@ -259,6 +271,8 @@ function loadSchema(newSchema: any) {
     });
   } catch (error) {
     isLoading.value = false;
+    hasUnsavedChanges.value = false;
+    emit('unsavedChanges', false);
     emit('error', `操作失败: ${error}`);
   }
 }
@@ -274,18 +288,20 @@ onMounted(() => {
     }
   }, { deep: true });
 
-  if (props.schema && (props.schema.nodes?.length > 0 || props.schema.connections?.length > 0)) {
-    loadSchema(props.schema);
-  } else {
-    // 空图初始状态
-    nextTick(() => {
-      const initialState = editor.save();
-      lastSavedSchema.value = deepCopy(initialState);
-      currentSchema.value = initialState;
-    });
-  }
+  // 统一加载 props.schema，如果为空也处理
+  loadSchema(props.schema ?? null);
 
   setupChangeDetection();
+});
+
+onUnmounted(() => {
+  graphEvents.forEach(prop => {
+    editor.graphEvents[prop].unsubscribe(updaterToken);
+  });
+
+  nodeEvents.forEach(prop => {
+    editor.nodeEvents[prop].unsubscribe(updaterToken);
+  });
 });
 
 defineExpose({

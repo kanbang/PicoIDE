@@ -97,6 +97,11 @@ function selectSchema(id: string): void {
   doSelectSchema(id);
 }
 
+
+function deepCopy(obj: any): any {
+  return obj ? JSON.parse(JSON.stringify(obj)) : null;
+}
+
 // 实际执行选择
 async function doSelectSchema(id: string): void {
   selectedSchemaId.value = id;
@@ -110,7 +115,7 @@ async function doSelectSchema(id: string): void {
 
     await nextTick();
     if (nodeFlowRef.value) {
-      nodeFlowRef.value.loadSchema(schemaItem.schema);
+      nodeFlowRef.value.loadSchema(deepCopy(schemaItem.schema));
     }
   }
 }
