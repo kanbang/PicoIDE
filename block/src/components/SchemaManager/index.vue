@@ -253,9 +253,7 @@ function handleRun(data: any) {
     <div v-show="isListVisible" class="schema-list" :style="{ width: listWidth + 'px' }">
       <div class="schema-list-header">
         <h3>Schemas</h3>
-
-          <button @click="createSchema" class="btn btn-primary">+ 新建</button>
-       
+        <button @click="createSchema" class="btn btn-primary">+ 新建</button>
       </div>
       <div class="schema-list-body">
         <div v-for="schema in schemas" :key="schema.id"
@@ -276,21 +274,30 @@ function handleRun(data: any) {
       </div>
     </div>
 
-    <div v-show="isListVisible" ref="splitterRef" class="splitter" @mousedown="startDrag"></div>
+    <div v-show="isListVisible" class="splitter" @mousedown="startDrag"></div>
 
     <div class="schema-editor">
       <button @click="toggleList" class="btn-toggle-overlay" :title="isListVisible ? '隐藏列表' : '显示列表'">
         <svg v-if="isListVisible" width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d="M6 1L2 5L6 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M6 1L2 5L6 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+            stroke-linejoin="round" />
         </svg>
         <svg v-else width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d="M4 1L8 5L4 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 1L8 5L4 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+            stroke-linejoin="round" />
         </svg>
       </button>
-      <NodeFlow ref="nodeFlowRef" :blocks="props.blocks" :show-run="props.showRun" @update="handleUpdate" @unsavedChanges="handleUnsavedChanges"
-        @save="handleSave" @run="handleRun" />
-      <div v-if="!hasSelectedSchema" class="empty-editor-overlay">
-        请选择或创建一个 Schema
+
+      <!-- 关键优化：只有在有选中 Schema 时才渲染 NodeFlow -->
+      <NodeFlow v-if="hasSelectedSchema" ref="nodeFlowRef" :blocks="props.blocks" :show-run="props.showRun"
+        @update="handleUpdate" @unsavedChanges="handleUnsavedChanges" @save="handleSave" @run="handleRun" />
+
+      <!-- 无选中 Schema 时显示全屏居中大提示（覆盖整个编辑区） -->
+      <div v-if="!hasSelectedSchema" class="empty-editor-full">
+        <div class="empty-message">
+          <div class="empty-title">暂无 Schema</div>
+          <div class="empty-subtitle">请在左侧列表中新建或选择一个 Schema 开始编辑</div>
+        </div>
       </div>
     </div>
 
@@ -331,6 +338,39 @@ function handleRun(data: any) {
 </template>
 
 <style scoped>
+/* 新增：全屏空状态提示（更符合交互习惯：大、居中、清晰） */
+.empty-editor-full {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 30, 30, 0.95);
+  /* 略深背景，突出提示 */
+  color: #888;
+  font-size: 18px;
+  text-align: center;
+  z-index: 10;
+  pointer-events: none;
+  /* 不阻挡潜在交互，但实际无 NodeFlow 可交互 */
+}
+
+.empty-message {
+  max-width: 400px;
+  padding: 32px;
+}
+
+.empty-title {
+  font-size: 24px;
+  color: #ccc;
+  margin-bottom: 12px;
+}
+
+.empty-subtitle {
+  font-size: 16px;
+  color: #999;
+}
+
 /* 原样式保持不变，仅新增一个 overlay 用于空状态覆盖 */
 .empty-editor-overlay {
   position: absolute;
@@ -494,35 +534,48 @@ function handleRun(data: any) {
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 16px; /* 稍宽，更易点击 */
-  height: 60px; /* 稍高，手感更好 */
-  background: rgba(30, 30, 30, 0.7); /* 更深但透明，避免与暗主题融合 */
-  backdrop-filter: blur(8px); /* 增强毛玻璃质感，现代感强 */
+  width: 16px;
+  /* 稍宽，更易点击 */
+  height: 60px;
+  /* 稍高，手感更好 */
+  background: rgba(30, 30, 30, 0.7);
+  /* 更深但透明，避免与暗主题融合 */
+  backdrop-filter: blur(8px);
+  /* 增强毛玻璃质感，现代感强 */
   border: none;
-  border-radius: 0 6px 6px 0; /* 更圆润 */
-  color: #aaa; /* 默认灰色 */
+  border-radius: 0 6px 6px 0;
+  /* 更圆润 */
+  color: #aaa;
+  /* 默认灰色 */
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
-  transition: all 0.25s ease; /* 平滑过渡 */
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3); /* 轻微阴影，增加层次感 */
+  transition: all 0.25s ease;
+  /* 平滑过渡 */
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
+  /* 轻微阴影，增加层次感 */
   padding: 0;
 }
 
 .btn-toggle-overlay:hover {
-  width: 20px; /* hover 时轻微扩展 */
-  background: rgba(50, 50, 50, 0.9); /* 更实色 */
-  color: #fff; /* 箭头变亮 */
-  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5); /* 阴影增强 */
+  width: 20px;
+  /* hover 时轻微扩展 */
+  background: rgba(50, 50, 50, 0.9);
+  /* 更实色 */
+  color: #fff;
+  /* 箭头变亮 */
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
+  /* 阴影增强 */
 }
 
 /* SVG 箭头优化：更大、更清晰 */
 .btn-toggle-overlay svg {
   width: 12px;
   height: 12px;
-  stroke-width: 2; /* 加粗线条 */
+  stroke-width: 2;
+  /* 加粗线条 */
 }
 
 .empty-editor {
