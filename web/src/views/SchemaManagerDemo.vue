@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue'; // 确保路径正确，原代码是 @/components/...
+import { getBlocks } from '@/api/index';
 
 const STORAGE_KEY = 'schema_manager_example_data';
 
@@ -15,13 +16,7 @@ const selectedSchemaId = ref<string | null>(null);
 // 从后端加载 blocks
 async function loadBlocks() {
   try {
-    const response = await fetch('http://localhost:8000/api/blocks');
-    if (response.ok) {
-      const data = await response.json();
-      blocks.value = data.blocks || [];
-    } else {
-      console.error('Failed to load blocks:', response.statusText);
-    }
+    blocks.value = await getBlocks();
   } catch (error) {
     console.error('Error loading blocks:', error);
   }

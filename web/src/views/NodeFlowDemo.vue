@@ -7,19 +7,22 @@
 <script setup lang="ts">
 import NodeFlow from '@/components/NodeFlow/index.vue'
 import { ref, onMounted } from 'vue';
+import { getBlocks } from '@/api/index';
 
 // Props
-// Blocks 数据
-const blocks = [
-  { "inputs": [], "name": "Sensor", "options": [{ "items": ["1000", "2000", "20000", "50000", "52000", "100000", "105000", "128000"], "name": "采样率", "properties": { "items": ["1000", "2000", "20000", "50000", "52000", "100000", "105000", "128000"] }, "type": "SelectOption", "value": "128000" }, { "items": ["Bipolar[-10V,10V]"], "name": "量程", "properties": { "items": ["Bipolar[-10V,10V]"] }, "type": "SelectOption", "value": "Bipolar[-10V,10V]" }], "outputs": [{ "name": "O-Sensor" }] },
-  { "inputs": [{ "name": "I-Sensor" }], "name": "Channel", "options": [{ "name": "启用", "type": "CheckboxOption", "value": true }, { "items": ["Channel 1", "Channel 2", "Channel 3", "Channel 4"], "name": "通道", "properties": { "items": ["Channel 1", "Channel 2", "Channel 3", "Channel 4"] }, "type": "SelectOption", "value": null }, { "max": 10, "min": 0, "name": "灵敏度", "properties": { "max": 10, "min": 0 }, "type": "NumberOption", "value": null }, { "items": ["m", "m/s", "m/s²", "g"], "name": "单位", "properties": { "items": ["m", "m/s", "m/s²", "g"] }, "type": "SelectOption", "value": null }, { "name": "IEPE/ICP/CCLD", "type": "CheckboxOption", "value": true }], "outputs": [{ "name": "O-List-XY" }] },
-  { "inputs": [{ "name": "I-List-XY" }], "name": "ToList1D", "options": [{ "items": ["X", "Y"], "name": "输出", "properties": { "items": ["X", "Y"] }, "type": "SelectOption", "value": "Y" }], "outputs": [{ "name": "O-List-V" }] },
-  { "inputs": [{ "name": "I-List-X" }, { "name": "I-List-Y" }], "name": "ToList2D", "options": [], "outputs": [{ "name": "O-List-XY" }] },
-  { "inputs": [{ "name": "I-List-V" }], "name": "FourierTransform", "options": [{ "name": "绝对值", "type": "CheckboxOption", "value": true }], "outputs": [{ "name": "O-List-XY" }] },
-  { "inputs": [{ "name": "List-XY" }], "name": "Result", "options": [{ "items": ["时域", "频域", "FREE"], "name": "类型", "properties": { "items": ["时域", "频域", "FREE"] }, "type": "SelectOption", "value": null }, { "name": "名称", "type": "InputOption", "value": "" }], "outputs": [] }
-];
+// Blocks 数据从后端获取
+const blocks = ref<any[]>([]);
 
 const STORAGE_KEY = 'nodeflow_schema';
+
+// 从后端加载 blocks
+async function loadBlocks() {
+  try {
+    blocks.value = await getBlocks();
+  } catch (error) {
+    console.error('Error loading blocks:', error);
+  }
+}
 
 // 使用 ref 引用 NodeFlow 组件实例
 const nodeFlowRef = ref<InstanceType<typeof NodeFlow> | null>(null);
@@ -72,6 +75,7 @@ function handleRun(data: any): void {
 
 // 组件挂载后加载存储的数据
 onMounted(() => {
+  loadBlocks();
   loadFromStorage();
 });
 
