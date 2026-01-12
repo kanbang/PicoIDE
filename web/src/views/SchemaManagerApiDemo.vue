@@ -8,8 +8,8 @@ const blocks = ref<any[]>([]);
 
 // Schema 列表
 const schemas = ref<ApiSchemaItem[]>([]);
-// 当前选中的 Schema ID (number 类型，因为后端使用 ID)
-const selectedSchemaId = ref<number | null>(null);
+// 当前选中的 Schema ID (string 类型，因为后端使用 UUID)
+const selectedSchemaId = ref<string | null>(null);
 
 // 从后端加载 blocks
 async function loadBlocks() {
@@ -44,7 +44,7 @@ async function handleCreate(schema: SchemaItem) {
 }
 
 // 处理保存事件
-async function handleSave(id: number, data: any) {
+async function handleSave(id: string, data: any) {
   try {
     const updated = await updateSchema(id, { schema: data });
     const index = schemas.value.findIndex(s => s.id === id);
@@ -57,7 +57,7 @@ async function handleSave(id: number, data: any) {
 }
 
 // 处理删除事件
-async function handleDelete(id: number) {
+async function handleDelete(id: string) {
   try {
     await deleteSchema(id);
     const index = schemas.value.findIndex(s => s.id === id);
@@ -73,7 +73,7 @@ async function handleDelete(id: number) {
 }
 
 // 处理重命名事件
-async function handleRename(id: number, newName: string) {
+async function handleRename(id: string, newName: string) {
   try {
     const updated = await updateSchema(id, { name: newName });
     const index = schemas.value.findIndex(s => s.id === id);
@@ -86,7 +86,7 @@ async function handleRename(id: number, newName: string) {
 }
 
 // 处理复制事件
-async function handleDuplicate(originalId: number, newSchema: SchemaItem) {
+async function handleDuplicate(originalId: string, newSchema: SchemaItem) {
   try {
     const duplicated = await duplicateSchema(originalId, newSchema.name);
     schemas.value.push(duplicated);
@@ -96,7 +96,7 @@ async function handleDuplicate(originalId: number, newSchema: SchemaItem) {
   }
 }
 
-function handleRun(id: number, data: any) {
+function handleRun(id: string, data: any) {
   alert('run: \n' + id + '\n' + JSON.stringify(data));
 }
 

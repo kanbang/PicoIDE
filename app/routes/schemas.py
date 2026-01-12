@@ -4,6 +4,7 @@ Schemas 路由
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
+from uuid import UUID
 
 from schema_service import (
     get_schemas,
@@ -21,7 +22,7 @@ router = APIRouter(prefix="/api/schemas", tags=["schemas"])
 
 # Schema 数据模型
 class SchemaItem(BaseModel):
-    id: int
+    id: str
     name: str
     schema: Optional[dict] = None
     hasUnsavedChanges: bool = False
@@ -44,7 +45,7 @@ class DuplicateSchemaRequest(BaseModel):
 def to_schema_item(db_schema) -> SchemaItem:
     """将数据库模型转换为 SchemaItem"""
     return SchemaItem(
-        id=db_schema.id,
+        id=str(db_schema.id),
         name=db_schema.name,
         schema=db_schema.schema_data,
         hasUnsavedChanges=False,
@@ -76,7 +77,7 @@ async def create_new_schema(request: CreateSchemaRequest):
 
 
 @router.get("/{schema_id}", response_model=SchemaItem)
-async def get_schema_by_id(schema_id: int):
+async def get_schema_by_id(schema_id: UUID):
     """
     获取单个 schema
     """
@@ -92,7 +93,7 @@ async def get_schema_by_id(schema_id: int):
 
 
 @router.put("/{schema_id}", response_model=SchemaItem)
-async def update_schema_by_id(schema_id: int, request: UpdateSchemaRequest):
+async def update_schema_by_id(schema_id: UUID, request: UpdateSchemaRequest):
     """
     更新 schema
     """
@@ -109,7 +110,7 @@ async def update_schema_by_id(schema_id: int, request: UpdateSchemaRequest):
 
 
 @router.delete("/{schema_id}")
-async def delete_schema_by_id(schema_id: int):
+async def delete_schema_by_id(schema_id: UUID):
     """
     删除 schema
     """
@@ -125,7 +126,7 @@ async def delete_schema_by_id(schema_id: int):
 
 
 @router.post("/{schema_id}/duplicate", response_model=SchemaItem)
-async def duplicate_schema_by_id(schema_id: int, request: DuplicateSchemaRequest):
+async def duplicate_schema_by_id(schema_id: UUID, request: DuplicateSchemaRequest):
     """
     复制 schema
     """
