@@ -1,9 +1,43 @@
 /**
  * API 服务模块
  */
+import axios from 'axios';
 
-const API_BASE_URL = '/api';
+// 创建 axios 实例
+const api = axios.create({
+  baseURL: '/api',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
+// 请求拦截器
+api.interceptors.request.use(
+  (config) => {
+    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+    return config;
+  },
+  (error) => {
+    console.error('[API Request Error]', error);
+    return Promise.reject(error);
+  }
+);
+
+// 响应拦截器
+api.interceptors.response.use(
+  (response) => {
+    console.log(`[API Response] ${response.config.url}`, response.data);
+    return response.data;
+  },
+  (error) => {
+    console.error('[API Response Error]', error);
+    const message = error.response?.data?.message || error.message || '请求失败';
+    return Promise.reject(new Error(message));
+  }
+);
+
+// 类型定义
 interface BlocksResponse {
   blocks: any[];
 }
@@ -22,18 +56,7 @@ interface ExecuteResponse {
  * 获取所有可用的 blocks
  */
 export async function getBlocks(): Promise<any[]> {
-  const response = await fetch(`${API_BASE_URL}/flow/blocks`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch blocks: ${response.statusText}`);
-  }
-
-  const data: BlocksResponse = await response.json();
+  const data: BlocksResponse = await api.get('/blocks');
   return data.blocks || [];
 }
 
@@ -41,17 +64,5 @@ export async function getBlocks(): Promise<any[]> {
  * 执行 block 计算
  */
 export async function executeBlocks(request: ExecuteRequest): Promise<ExecuteResponse> {
-  const response = await fetch(`${API_BASE_URL}/flow/execute`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to execute blocks: ${response.statusText}`);
-  }
-
-  return response.json();
+  return await api.post('/blocks/execute', request);
 }
