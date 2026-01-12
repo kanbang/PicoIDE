@@ -3,16 +3,16 @@
  */
 import { api } from './request';
 
-interface BlocksResponse {
+export interface BlocksResponse {
   blocks: any[];
 }
 
-interface ExecuteRequest {
+export interface ExecuteRequest {
   scripts?: string[];
   data?: Record<string, any>;
 }
 
-interface ExecuteResponse {
+export interface ExecuteResponse {
   ok: boolean;
   result?: any;
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue';
-import { getBlocks, getSchemas, createSchema, updateSchema, deleteSchema, duplicateSchema, SchemaItem as ApiSchemaItem } from '@/api/index';
+import { getBlocks, getSchemas, createSchema, updateSchema, deleteSchema, duplicateSchema, executeBlocks, SchemaItem as ApiSchemaItem } from '@/api/index';
 
 // Blocks 数据从后端获取
 const blocks = ref<any[]>([]);
@@ -96,8 +96,14 @@ async function handleDuplicate(originalId: string, newSchema: SchemaItem) {
   }
 }
 
-function handleRun(id: string, data: any) {
-  alert('run: \n' + id + '\n' + JSON.stringify(data));
+async function handleRun(id: string, data: any) {
+  try {
+    const result = await executeBlocks({ scripts: [], data });
+    alert('执行结果:\n' + JSON.stringify(result, null, 2));
+  } catch (error) {
+    console.error('Error executing blocks:', error);
+    alert('执行失败: ' + (error instanceof Error ? error.message : String(error)));
+  }
 }
 
 // 组件挂载时加载数据

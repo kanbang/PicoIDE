@@ -1,3 +1,11 @@
+'''
+Descripttion: 
+version: 0.x
+Author: zhai
+Date: 2026-01-12 19:36:16
+LastEditors: zhai
+LastEditTime: 2026-01-12 20:36:15
+'''
 """
 Blocks 路由
 """
@@ -7,6 +15,7 @@ from typing import List, Optional, Dict, Any
 
 from node.engine import make_dynamic_engine, get_json_blocks
 from services import read_file, normalize_path
+from flow.schema import build_flow_schema_from_dict
 
 USER_ID = "default"
 
@@ -38,13 +47,14 @@ async def execute(request: ExecuteRequest):
     """
     try:
         scripts = request.scripts or []
-        data = request.data or {}
+        data = request.data['graph'] or {}
 
         # 创建动态引擎
         engine = make_dynamic_engine(scripts)
 
         # 执行计算
-        result = engine.execute(data)
+        schema = build_flow_schema_from_dict(data)
+        result = engine.execute(schema)
 
         return {"ok": True, "result": result}
     except Exception as e:

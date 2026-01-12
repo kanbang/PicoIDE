@@ -7,7 +7,7 @@
 <script setup lang="ts">
 import NodeFlow from '@/components/NodeFlow/index.vue'
 import { ref, onMounted } from 'vue';
-import { getBlocks } from '@/api/index';
+import { getBlocks, executeBlocks } from '@/api/index';
 
 // Props
 // Blocks 数据从后端获取
@@ -68,9 +68,14 @@ function handleUnsavedChanges(changes: boolean): void {
   console.log('Unsaved changes:', changes);
 }
 
-function handleRun(data: any): void {
-  // 通过 ref 调用 NodeFlow 的 run 方法
-  alert('run: \n' + JSON.stringify(data));
+async function handleRun(data: any) {
+  try {
+    const result = await executeBlocks({ scripts: [], data });
+    alert('执行结果:\n' + JSON.stringify(result, null, 2));
+  } catch (error) {
+    console.error('Error executing blocks:', error);
+    alert('执行失败: ' + (error instanceof Error ? error.message : String(error)));
+  }
 }
 
 // 组件挂载后加载存储的数据

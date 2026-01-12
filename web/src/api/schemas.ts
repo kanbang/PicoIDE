@@ -10,12 +10,12 @@ export interface SchemaItem {
   hasUnsavedChanges: boolean;
 }
 
-interface CreateSchemaRequest {
+export interface CreateSchemaRequest {
   name: string;
   schema?: any;
 }
 
-interface UpdateSchemaRequest {
+export interface UpdateSchemaRequest {
   name?: string;
   schema?: any;
 }

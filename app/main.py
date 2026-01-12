@@ -24,7 +24,7 @@ import uvicorn
 
 from db import init_db, close_db, ensure_root_directory
 from routes.vfs import router as vfs_router
-from routes.blocks import router as blocks_router
+from routes.flow import router as blocks_router
 from routes.schemas import router as schemas_router
 
 DB_PATH = "vfs.db"
