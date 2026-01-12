@@ -70,6 +70,7 @@ function handleUnsavedChanges(changes: boolean): void {
 
 async function handleRun(data: any) {
   try {
+    console.log(data);
     const result = await executeBlocks({ scripts: [], data });
     alert('执行结果:\n' + JSON.stringify(result, null, 2));
   } catch (error) {

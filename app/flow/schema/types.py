@@ -173,7 +173,10 @@ class FlowSchema:
 
 def build_flow_schema_from_dict(schema_dict: dict) -> FlowSchema:
     # TODO move this to a classmethod of FlowSchema import()
+    
+    SCHEMA_VERSION = "1.0"
     return FlowSchema(
+        version=schema_dict.get("version", SCHEMA_VERSION),
         nodes=[
             FlowNode(
                 **{
