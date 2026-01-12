@@ -40,6 +40,36 @@ const deletingSchemaId = ref<string | null>(null);
 
 const nodeFlowRef = ref<InstanceType<typeof NodeFlow> | null>(null);
 
+// 分割条拖拽
+const listWidth = ref(300);
+const isDragging = ref(false);
+const splitterRef = ref<HTMLElement | null>(null);
+const isListVisible = ref(true);
+
+function startDrag(e: MouseEvent) {
+  isDragging.value = true;
+  document.addEventListener('mousemove', onDrag);
+  document.addEventListener('mouseup', stopDrag);
+}
+
+function onDrag(e: MouseEvent) {
+  if (!isDragging.value) return;
+  const newWidth = e.clientX;
+  if (newWidth >= 200 && newWidth <= 600) {
+    listWidth.value = newWidth;
+  }
+}
+
+function stopDrag() {
+  isDragging.value = false;
+  document.removeEventListener('mousemove', onDrag);
+  document.removeEventListener('mouseup', stopDrag);
+}
+
+function toggleList() {
+  isListVisible.value = !isListVisible.value;
+}
+
 // 计算当前选中的对象
 const activeSchemaItem = computed(() =>
   schemas.value.find(s => s.id === selectedSchemaId.value)
@@ -212,7 +242,7 @@ function handleSave(data: any) {
 
 <template>
   <div class="schema-manager">
-    <div class="schema-list">
+    <div v-show="isListVisible" class="schema-list" :style="{ width: listWidth + 'px' }">
       <div class="schema-list-header">
         <h3>Schemas</h3>
         <button @click="createSchema" class="btn btn-primary">+ 新建</button>
@@ -236,7 +266,17 @@ function handleSave(data: any) {
       </div>
     </div>
 
+    <div v-show="isListVisible" ref="splitterRef" class="splitter" @mousedown="startDrag"></div>
+
     <div class="schema-editor">
+      <button @click="toggleList" class="btn-toggle-overlay" :title="isListVisible ? '隐藏列表' : '显示列表'">
+        <svg v-if="isListVisible" width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M6 1L2 5L6 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <svg v-else width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M4 1L8 5L4 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
       <NodeFlow ref="nodeFlowRef" :blocks="props.blocks" @update="handleUpdate" @unsavedChanges="handleUnsavedChanges"
         @save="handleSave" />
       <div v-if="!hasSelectedSchema" class="empty-editor-overlay">
@@ -303,11 +343,28 @@ function handleSave(data: any) {
 }
 
 .schema-list {
-  width: 300px;
+  min-width: 200px;
+  max-width: 600px;
   background: #2d2d2d;
   border-right: 1px solid #444;
   display: flex;
   flex-direction: column;
+}
+
+.splitter {
+  width: 4px;
+  background: #444;
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+.splitter:hover {
+  background: #666;
+}
+
+.splitter:active {
+  background: #4caf50;
 }
 
 .schema-list-header {
@@ -418,6 +475,34 @@ function handleSave(data: any) {
 .schema-editor {
   flex: 1;
   overflow: hidden;
+  position: relative;
+}
+
+.btn-toggle-overlay {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 32px;
+  background: rgba(45, 45, 45, 0.9);
+  border: none;
+  border-radius: 0 2px 2px 0;
+  color: #999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: all 0.15s ease;
+  backdrop-filter: blur(4px);
+  padding: 0;
+}
+
+.btn-toggle-overlay:hover {
+  background: rgba(61, 61, 61, 0.95);
+  color: #fff;
+  width: 14px;
 }
 
 .empty-editor {
