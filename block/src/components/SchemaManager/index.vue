@@ -478,31 +478,41 @@ function handleSave(data: any) {
   position: relative;
 }
 
+/* 新设计：更优雅、现代、易见 */
 .btn-toggle-overlay {
   position: absolute;
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 12px;
-  height: 32px;
-  background: rgba(45, 45, 45, 0.9);
+  width: 16px; /* 稍宽，更易点击 */
+  height: 60px; /* 稍高，手感更好 */
+  background: rgba(30, 30, 30, 0.7); /* 更深但透明，避免与暗主题融合 */
+  backdrop-filter: blur(8px); /* 增强毛玻璃质感，现代感强 */
   border: none;
-  border-radius: 0 2px 2px 0;
-  color: #999;
+  border-radius: 0 6px 6px 0; /* 更圆润 */
+  color: #aaa; /* 默认灰色 */
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
-  transition: all 0.15s ease;
-  backdrop-filter: blur(4px);
+  transition: all 0.25s ease; /* 平滑过渡 */
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3); /* 轻微阴影，增加层次感 */
   padding: 0;
 }
 
 .btn-toggle-overlay:hover {
-  background: rgba(61, 61, 61, 0.95);
-  color: #fff;
-  width: 14px;
+  width: 20px; /* hover 时轻微扩展 */
+  background: rgba(50, 50, 50, 0.9); /* 更实色 */
+  color: #fff; /* 箭头变亮 */
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5); /* 阴影增强 */
+}
+
+/* SVG 箭头优化：更大、更清晰 */
+.btn-toggle-overlay svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2; /* 加粗线条 */
 }
 
 .empty-editor {
