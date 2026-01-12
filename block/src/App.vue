@@ -6,8 +6,8 @@
 -->
 <script setup lang="ts">
 import { ref } from 'vue';
-import SingleNodeFlow from '@/views/SingleNodeFlow.vue';
-import SchemaManagerExample from '@/views/SchemaManagerExample.vue';
+import SingleNodeFlow from '@/views/NodeFlowDemo.vue';
+import SchemaManagerExample from '@/views/SchemaManagerDemo.vue';
 import TinyCode from '@/views/TinyCode.vue';
 
 // 当前激活的标签页
@@ -25,7 +25,7 @@ function switchTab(tab: 'single' | 'manager' | 'tinycode') {
     <!-- 标签页导航 -->
     <div class="tab-nav">
       <button :class="['tab-button', { active: activeTab === 'single' }]" @click="switchTab('single')">
-        单个编辑器
+        Schema 编辑
       </button>
       <button :class="['tab-button', { active: activeTab === 'manager' }]" @click="switchTab('manager')">
         Schema 管理

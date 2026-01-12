@@ -13,6 +13,7 @@ import "@baklavajs/themes/dist/syrup-dark.css";
 
 const SAVE_COMMAND_ID = "SAVE";
 const RUN_COMMAND_ID = "RUN";
+
 const emit = defineEmits<{
   save: [data: any];
   error: [message: string];
@@ -121,6 +122,21 @@ const RunButtonIcon = markRaw(
   })
 );
 
+const SeparatorIcon = markRaw(
+  defineComponent({
+    name: 'SeparatorIcon',
+    setup() {
+      return () => h('div', {
+        style: {
+          width: '1px',
+          height: '20px',
+          background: '#555',
+          margin: '0 4px'
+        }
+      });
+    }
+  })
+);
 
 
 // 注册保存命令
@@ -160,31 +176,46 @@ function registerCustomCommands(): void {
         emit('error', `运行失败: ${error}`);
       }
     },
-    canExecute: () => true,
+    canExecute: () => editor.graph.nodes.length > 0,
   });
 
-  baklava.settings.toolbar.commands = [
+
+  const commands = [
     ...DEFAULT_TOOLBAR_COMMANDS.slice(0, -1),
-    {
+  ];
+
+  commands.push({
+    command: SAVE_COMMAND_ID,
+    title: "保存",
+    icon: SaveButtonIcon,
+  });
+
+
+  if (props.showRun) {
+    commands.push({
+      command: 'SEPARATOR',
+      title: "",
+      icon: SeparatorIcon,
+    });
+    commands.push({
       command: RUN_COMMAND_ID,
       title: "运行",
       icon: RunButtonIcon,
-    },
-    {
-      command: SAVE_COMMAND_ID,
-      title: "保存",
-      icon: SaveButtonIcon,
-    },
-  ];
+    });
+  }
+
+  baklava.settings.toolbar.commands = commands;
 }
-registerCustomCommands();
 
 // Props
 interface Props {
   schema?: any;
   blocks?: BlockDefinition[];
+  showRun?: boolean;
 }
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  showRun: true
+});
 
 // 跟踪自定义节点类型（用于清空）
 const registeredCustomNodeTypes = new Set<any>();
@@ -316,6 +347,7 @@ function loadSchema(newSchema: any) {
 
 // 生命周期
 onMounted(() => {
+  registerCustomCommands();
   registerFixedNodeTypes();
   registerBlocks(props.blocks || []);
 

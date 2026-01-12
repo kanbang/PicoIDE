@@ -12,9 +12,12 @@ export interface SchemaItem {
 // Props
 interface Props {
   blocks: any[];
+  showRun?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  showRun: true
+});
 
 // Model 绑定
 const schemas = defineModel<SchemaItem[]>('schemas', { default: () => [] });
@@ -27,6 +30,7 @@ const emit = defineEmits<{
   'delete': [id: string];
   'rename': [id: string, newName: string];
   'duplicate': [id: string, newSchema: SchemaItem];
+  'run': [id: string, data: any];
 }>();
 
 // 状态控制
@@ -238,6 +242,13 @@ function handleSave(data: any) {
     // schemas.value = [...schemas.value];
   }
 }
+
+function handleRun(data: any) {
+  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
+  if (current) {
+    emit('run', current.id, data);
+  }
+}
 </script>
 
 <template>
@@ -245,7 +256,9 @@ function handleSave(data: any) {
     <div v-show="isListVisible" class="schema-list" :style="{ width: listWidth + 'px' }">
       <div class="schema-list-header">
         <h3>Schemas</h3>
-        <button @click="createSchema" class="btn btn-primary">+ 新建</button>
+
+          <button @click="createSchema" class="btn btn-primary">+ 新建</button>
+       
       </div>
       <div class="schema-list-body">
         <div v-for="schema in schemas" :key="schema.id"
@@ -277,8 +290,8 @@ function handleSave(data: any) {
           <path d="M4 1L8 5L4 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
-      <NodeFlow ref="nodeFlowRef" :blocks="props.blocks" @update="handleUpdate" @unsavedChanges="handleUnsavedChanges"
-        @save="handleSave" />
+      <NodeFlow ref="nodeFlowRef" :blocks="props.blocks" :show-run="props.showRun" @update="handleUpdate" @unsavedChanges="handleUnsavedChanges"
+        @save="handleSave" @run="handleRun" />
       <div v-if="!hasSelectedSchema" class="empty-editor-overlay">
         请选择或创建一个 Schema
       </div>
