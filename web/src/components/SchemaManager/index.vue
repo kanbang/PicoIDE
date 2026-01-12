@@ -25,12 +25,12 @@ const selectedSchemaId = defineModel<string | null>('selectedSchemaId', { defaul
 
 // Emits
 const emit = defineEmits<{
-  'save': [id: string, data: any];
-  'create': [schema: SchemaItem];
-  'delete': [id: string];
-  'rename': [id: string, newName: string];
-  'duplicate': [id: string, newSchema: SchemaItem];
-  'run': [id: string, data: any];
+  save: [id: string, data: any];
+  create: [schema: SchemaItem];
+  delete: [id: string];
+  rename: [id: string, newName: string];
+  duplicate: [id: string, newSchema: SchemaItem];
+  run: [id: string, data: any];
 }>();
 
 // 状态控制
@@ -73,34 +73,43 @@ function toggleList() {
   isListVisible.value = !isListVisible.value;
 }
 
-// 计算当前选中的对象（仅用于读取 schema 等）
+// 当前选中项
 const activeSchemaItem = computed(() =>
   schemas.value.find(s => s.id === selectedSchemaId.value)
 );
 
-const hasSelectedSchema = computed(() => !!selectedSchemaId.value);
+const hasSelectedSchema = computed(() => !!selectedSchemaId.value && !!activeSchemaItem.value);
 
-// --- 监听选中变化并加载到 NodeFlow ---
+// 关键：schemas 变化时维护 selectedSchemaId
+watch(schemas, () => {
+  if (schemas.value.length === 0) {
+    selectedSchemaId.value = null;
+    return;
+  }
+
+  if (!selectedSchemaId.value || !schemas.value.some(s => s.id === selectedSchemaId.value)) {
+    doSelectSchema(schemas.value[0].id);
+  }
+}, { deep: true, immediate: true });
+
+// 监听选中变化并加载到 NodeFlow
 function deepCopy(obj: any): any {
-  return obj ? JSON.parse(JSON.stringify(obj)) : {};
+  return obj ? JSON.parse(JSON.stringify(obj)) : null;
 }
 
-watch(activeSchemaItem, async (newItem, oldItem) => {
-  if (!newItem) return;
-
-  // 仅在 ID 变化时重载（切换或首次选中）
-  if (!oldItem || newItem.id !== oldItem.id) {
-    await nextTick();
-    if (nodeFlowRef.value) {
-      nodeFlowRef.value.loadSchema(deepCopy(newItem.schema));
-    }
+watch(activeSchemaItem, async (newItem) => {
+  await nextTick();
+  if (!newItem) {
+    nodeFlowRef.value?.loadSchema(null);
+    return;
   }
+  nodeFlowRef.value?.loadSchema(deepCopy(newItem.schema));
 }, { immediate: true });
 
 // 创建
-async function createSchema() {
+function createSchema() {
   const newSchema: SchemaItem = {
-    id: '', // 父组件生成 ID
+    id: '',
     name: `Schema ${schemas.value.length + 1}`,
     schema: null,
     hasUnsavedChanges: false
@@ -108,7 +117,7 @@ async function createSchema() {
   emit('create', newSchema);
 }
 
-// 选择逻辑（未保存提示）
+// 选择逻辑
 function selectSchema(id: string) {
   if (activeSchemaItem.value?.hasUnsavedChanges) {
     pendingSchemaId.value = id;
@@ -119,31 +128,29 @@ function selectSchema(id: string) {
 }
 
 function doSelectSchema(id: string) {
-  selectedSchemaId.value = id;
-  pendingSchemaId.value = null;
-  showSavePrompt.value = false;
-
   // 清除未保存标记（切换成功即视为已“确认”当前状态）
-  const schemaItem = schemas.value.find(s => s.id === id);
+  const schemaItem = schemas.value.find(s => s.id === selectedSchemaId.value);
   if (schemaItem) {
     schemaItem.hasUnsavedChanges = false;
   }
+
+  selectedSchemaId.value = id;
+  pendingSchemaId.value = null;
+  showSavePrompt.value = false;
 }
 
 // 保存当前
 function saveCurrentSchema() {
   if (!selectedSchemaId.value || !nodeFlowRef.value) return;
 
-  const currentSchemaData = nodeFlowRef.value.currentSchema;
-  if (currentSchemaData !== null) {
-    // 直接更新列表中的 schema（响应式）
+  const data = nodeFlowRef.value.currentSchema;
+  if (data !== null) {
     const current = schemas.value.find(s => s.id === selectedSchemaId.value);
     if (current) {
-      current.schema = currentSchemaData;
+      current.schema = data;
       current.hasUnsavedChanges = false;
     }
-
-    emit('save', selectedSchemaId.value, currentSchemaData);
+    emit('save', selectedSchemaId.value, data);
   }
 
   if (pendingSchemaId.value) {
@@ -166,7 +173,7 @@ function cancelSwitch() {
   showSavePrompt.value = false;
 }
 
-// 删除、重命名、复制
+// 删除（修复索引：删除后原下一个变成 oldIndex）
 function deleteSchema(id: string) {
   deletingSchemaId.value = id;
   showDeleteDialog.value = true;
@@ -175,41 +182,58 @@ function deleteSchema(id: string) {
 function confirmDelete() {
   if (!deletingSchemaId.value) return;
   const idToDelete = deletingSchemaId.value;
+
+  // 预记录是否删除当前 + 旧索引
+  const isDeletingCurrent = selectedSchemaId.value === idToDelete;
+  let oldIndex = -1;
+  if (isDeletingCurrent) {
+    oldIndex = schemas.value.findIndex(s => s.id === idToDelete);
+  }
+
   emit('delete', idToDelete);
 
-  if (selectedSchemaId.value === idToDelete) {
-    const remaining = schemas.value.filter(s => s.id !== idToDelete);
-    if (remaining.length > 0) {
-      doSelectSchema(remaining[0].id);
-    } else {
+  nextTick(() => {
+    if (schemas.value.length === 0) {
       selectedSchemaId.value = null;
-      nodeFlowRef.value?.loadSchema(null);
+      return;
     }
-  }
+
+    if (isDeletingCurrent && oldIndex !== -1) {
+      // 删除后：
+      let newIndex = oldIndex;
+      if (oldIndex >= schemas.value.length) {
+        // 删除最后一个 → 选中上一个
+        newIndex = schemas.value.length - 1;
+      }
+      doSelectSchema(schemas.value[newIndex].id);
+    }
+    // 非当前删除：watch 已处理
+  });
+
   showDeleteDialog.value = false;
   deletingSchemaId.value = null;
 }
 
 function duplicateSchema(id: string) {
   const original = schemas.value.find(s => s.id === id);
-  if (original) {
-    const newSchema: SchemaItem = {
-      id: '',
-      name: `${original.name} (副本)`,
-      schema: JSON.parse(JSON.stringify(original.schema)),
-      hasUnsavedChanges: false
-    };
-    emit('duplicate', id, newSchema);
-  }
+  if (!original) return;
+
+  const newSchema: SchemaItem = {
+    id: '',
+    name: `${original.name} (副本)`,
+    schema: deepCopy(original.schema),
+    hasUnsavedChanges: false
+  };
+  emit('duplicate', id, newSchema);
 }
 
 function renameSchema(id: string) {
   const schema = schemas.value.find(s => s.id === id);
-  if (schema) {
-    renamingSchemaId.value = id;
-    newName.value = schema.name;
-    showRenameDialog.value = true;
-  }
+  if (!schema) return;
+
+  renamingSchemaId.value = id;
+  newName.value = schema.name;
+  showRenameDialog.value = true;
 }
 
 function confirmRename() {
@@ -219,7 +243,7 @@ function confirmRename() {
   showRenameDialog.value = false;
 }
 
-// NodeFlow 事件处理（优化：直接使用 selectedSchemaId）
+// NodeFlow 事件处理
 function handleUpdate(_schema: any) {
   // 若需要实时更新，可在这里处理（当前未使用）
 }
@@ -227,9 +251,7 @@ function handleUpdate(_schema: any) {
 function handleUnsavedChanges(hasChanges: boolean) {
   if (!selectedSchemaId.value) return;
   const current = schemas.value.find(s => s.id === selectedSchemaId.value);
-  if (current) {
-    current.hasUnsavedChanges = hasChanges;
-  }
+  if (current) current.hasUnsavedChanges = hasChanges;
 }
 
 function handleSave(data: any) {
@@ -247,7 +269,6 @@ function handleRun(data: any) {
   emit('run', selectedSchemaId.value, data);
 }
 </script>
-
 <template>
   <div class="schema-manager">
     <div v-show="isListVisible" class="schema-list" :style="{ width: listWidth + 'px' }">
@@ -268,7 +289,7 @@ function handleRun(data: any) {
             <button @click.stop="deleteSchema(schema.id)" class="btn-icon btn-icon-delete" title="删除">✕</button>
           </div>
         </div>
-        <div v-if="!schemas || schemas.length === 0" class="empty-state">
+        <div v-if="schemas.length === 0" class="empty-state">
           暂无 Schema，点击"新建"创建
         </div>
       </div>
@@ -288,11 +309,9 @@ function handleRun(data: any) {
         </svg>
       </button>
 
-      <!-- 关键优化：只有在有选中 Schema 时才渲染 NodeFlow -->
       <NodeFlow v-if="hasSelectedSchema" ref="nodeFlowRef" :blocks="props.blocks" :show-run="props.showRun"
         @update="handleUpdate" @unsavedChanges="handleUnsavedChanges" @save="handleSave" @run="handleRun" />
 
-      <!-- 无选中 Schema 时显示全屏居中大提示（覆盖整个编辑区） -->
       <div v-if="!hasSelectedSchema" class="empty-editor-full">
         <div class="empty-message">
           <div class="empty-title">暂无 Schema</div>
@@ -301,6 +320,7 @@ function handleRun(data: any) {
       </div>
     </div>
 
+    <!-- 模态框保持不变 -->
     <div v-if="showSavePrompt" class="modal-overlay">
       <div class="modal">
         <h3>未保存的更改</h3>
@@ -338,7 +358,6 @@ function handleRun(data: any) {
 </template>
 
 <style scoped>
-/* 新增：全屏空状态提示（更符合交互习惯：大、居中、清晰） */
 .empty-editor-full {
   position: absolute;
   inset: 0;
@@ -346,13 +365,10 @@ function handleRun(data: any) {
   align-items: center;
   justify-content: center;
   background: rgba(30, 30, 30, 0.95);
-  /* 略深背景，突出提示 */
   color: #888;
-  font-size: 18px;
   text-align: center;
   z-index: 10;
   pointer-events: none;
-  /* 不阻挡潜在交互，但实际无 NodeFlow 可交互 */
 }
 
 .empty-message {
@@ -371,19 +387,6 @@ function handleRun(data: any) {
   color: #999;
 }
 
-/* 原样式保持不变，仅新增一个 overlay 用于空状态覆盖 */
-.empty-editor-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
-  color: #888;
-  font-size: 16px;
-  pointer-events: none;
-  z-index: 10;
-}
 
 .schema-manager {
   display: flex;
@@ -528,65 +531,42 @@ function handleRun(data: any) {
   position: relative;
 }
 
-/* 新设计：更优雅、现代、易见 */
 .btn-toggle-overlay {
   position: absolute;
   left: 0;
   top: 50%;
   transform: translateY(-50%);
   width: 16px;
-  /* 稍宽，更易点击 */
   height: 60px;
-  /* 稍高，手感更好 */
   background: rgba(30, 30, 30, 0.7);
-  /* 更深但透明，避免与暗主题融合 */
   backdrop-filter: blur(8px);
-  /* 增强毛玻璃质感，现代感强 */
   border: none;
   border-radius: 0 6px 6px 0;
-  /* 更圆润 */
   color: #aaa;
-  /* 默认灰色 */
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
   transition: all 0.25s ease;
-  /* 平滑过渡 */
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
-  /* 轻微阴影，增加层次感 */
   padding: 0;
 }
 
 .btn-toggle-overlay:hover {
   width: 20px;
-  /* hover 时轻微扩展 */
   background: rgba(50, 50, 50, 0.9);
-  /* 更实色 */
   color: #fff;
-  /* 箭头变亮 */
   box-shadow: 4px 0 12px rgba(0, 0, 0, 0.5);
-  /* 阴影增强 */
 }
 
-/* SVG 箭头优化：更大、更清晰 */
 .btn-toggle-overlay svg {
   width: 12px;
   height: 12px;
   stroke-width: 2;
-  /* 加粗线条 */
 }
 
-.empty-editor {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #888;
-  font-size: 16px;
-}
-
+/* 模态框样式保持不变 */
 .modal-overlay {
   position: fixed;
   top: 0;

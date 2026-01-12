@@ -11,9 +11,15 @@ dependencies = [
     "fastapi (>=0.128.0,<0.129.0)",
     "uvicorn (>=0.40.0,<0.41.0)",
     "tortoise-orm (>=0.21.0,<0.22.0)",
-    "aiosqlite (>=0.20.0,<0.21.0)"
+    "aiosqlite (>=0.20.0,<0.21.0)",
+    "numpy (==2.2.4)"
 ]
 
+
+[[tool.poetry.source]]
+name = "tsinghua-source"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+priority = "supplemental"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

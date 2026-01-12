@@ -1,3 +1,11 @@
+'''
+Descripttion: 
+version: 0.x
+Author: zhai
+Date: 2026-01-07 14:28:11
+LastEditors: zhai
+LastEditTime: 2026-01-12 18:17:59
+'''
 """
 主应用程序
 """
@@ -82,7 +90,7 @@ async def delete(path: str):
     return {"ok": True}
 
 
-app.mount("/", StaticFiles(directory="web", html=True), name="web")
+app.mount("/", StaticFiles(directory="web-code", html=True), name="web")
 
 
 if __name__ == "__main__":
