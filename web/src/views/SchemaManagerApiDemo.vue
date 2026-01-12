@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue'; // 确保路径正确，原代码是 @/components/...
-import { getBlocks } from '@/api/index';
-
-const STORAGE_KEY = 'schema_manager_example_data';
+import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue';
+import { getBlocks, getSchemas, createSchema, updateSchema, deleteSchema, duplicateSchema, SchemaItem as ApiSchemaItem } from '@/api/index';
 
 // Blocks 数据从后端获取
 const blocks = ref<any[]>([]);
 
 // Schema 列表
-const schemas = ref<SchemaItem[]>([]);
-// 当前选中的 Schema ID
-const selectedSchemaId = ref<string | null>(null);
+const schemas = ref<ApiSchemaItem[]>([]);
+// 当前选中的 Schema ID (number 类型，因为后端使用 ID)
+const selectedSchemaId = ref<number | null>(null);
 
 // 从后端加载 blocks
 async function loadBlocks() {
@@ -22,105 +20,90 @@ async function loadBlocks() {
   }
 }
 
-// 从 localStorage 加载数据
-function loadFromStorage(): void {
-  const savedData = localStorage.getItem(STORAGE_KEY);
-  if (savedData) {
-    try {
-      const data = JSON.parse(savedData);
-      schemas.value = data.schemas || [];
-      selectedSchemaId.value = data.selectedSchemaId || null;
-    } catch (e) {
-      console.error('Failed to parse saved data:', e);
+// 从后端加载 schemas
+async function loadSchemas() {
+  try {
+    schemas.value = await getSchemas();
+    if (schemas.value.length > 0 && !selectedSchemaId.value) {
+      selectedSchemaId.value = schemas.value[0].id;
     }
+  } catch (error) {
+    console.error('Error loading schemas:', error);
   }
 }
 
-// 保存到 localStorage
-function saveToStorage(): void {
-  const data = {
-    schemas: schemas.value,
-    selectedSchemaId: selectedSchemaId.value
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
 // 处理创建事件
-function handleCreate(schema: SchemaItem): void {
-  console.log('handleCreate called with schema:', schema);
-  // 生成 ID
-  const newSchemaWithId = {
-    ...schema,
-    id: crypto.randomUUID()
-  };
-  schemas.value.push(newSchemaWithId);
-  // 自动选中新创建的 schema
-  selectedSchemaId.value = newSchemaWithId.id;
-  console.log('After push, schemas:', schemas.value);
-  saveToStorage();
+async function handleCreate(schema: SchemaItem) {
+  try {
+    const newSchema = await createSchema({ name: schema.name, schema: schema.schema });
+    schemas.value.push(newSchema);
+    selectedSchemaId.value = newSchema.id;
+  } catch (error) {
+    console.error('Error creating schema:', error);
+  }
 }
 
 // 处理保存事件
-function handleSave(id: string, data: any): void {
-  const schema = schemas.value.find(s => s.id === id);
-  if (schema) {
-    schema.schema = data;
-    saveToStorage();
+async function handleSave(id: number, data: any) {
+  try {
+    const updated = await updateSchema(id, { schema: data });
+    const index = schemas.value.findIndex(s => s.id === id);
+    if (index !== -1) {
+      schemas.value[index] = updated;
+    }
+  } catch (error) {
+    console.error('Error saving schema:', error);
   }
 }
 
 // 处理删除事件
-function handleDelete(id: string): void {
-  const index = schemas.value.findIndex(s => s.id === id);
-  if (index > -1) {
-    schemas.value.splice(index, 1);
-    saveToStorage();
+async function handleDelete(id: number) {
+  try {
+    await deleteSchema(id);
+    const index = schemas.value.findIndex(s => s.id === id);
+    if (index !== -1) {
+      schemas.value.splice(index, 1);
+    }
+    if (selectedSchemaId.value === id) {
+      selectedSchemaId.value = schemas.value.length > 0 ? schemas.value[0].id : null;
+    }
+  } catch (error) {
+    console.error('Error deleting schema:', error);
   }
 }
 
 // 处理重命名事件
-function handleRename(id: string, newName: string): void {
-  const schema = schemas.value.find(s => s.id === id);
-  if (schema) {
-    schema.name = newName;
-    saveToStorage();
+async function handleRename(id: number, newName: string) {
+  try {
+    const updated = await updateSchema(id, { name: newName });
+    const index = schemas.value.findIndex(s => s.id === id);
+    if (index !== -1) {
+      schemas.value[index] = updated;
+    }
+  } catch (error) {
+    console.error('Error renaming schema:', error);
   }
 }
 
 // 处理复制事件
-function handleDuplicate(originalId: string, newSchema: SchemaItem): void {
-  // 生成 ID
-  const newSchemaWithId = {
-    ...newSchema,
-    id: crypto.randomUUID()
-  };
-  schemas.value.push(newSchemaWithId);
-  // 自动选中新复制的 schema
-  selectedSchemaId.value = newSchemaWithId.id;
-  saveToStorage();
+async function handleDuplicate(originalId: number, newSchema: SchemaItem) {
+  try {
+    const duplicated = await duplicateSchema(originalId, newSchema.name);
+    schemas.value.push(duplicated);
+    selectedSchemaId.value = duplicated.id;
+  } catch (error) {
+    console.error('Error duplicating schema:', error);
+  }
 }
 
-function handleRun(id: string, data: any) {
+function handleRun(id: number, data: any) {
   alert('run: \n' + id + '\n' + JSON.stringify(data));
 }
 
 // 组件挂载时加载数据
 onMounted(() => {
   loadBlocks();
-  loadFromStorage();
-
-  // 如果没有 schema，创建一个默认的
-  // if (schemas.value.length === 0) {
-  //   const defaultSchema: SchemaItem = {
-  //     id: crypto.randomUUID(),
-  //     name: 'Schema 1',
-  //     schema: null,
-  //     hasUnsavedChanges: false
-  //   };
-  //   schemas.value.push(defaultSchema);
-  //   selectedSchemaId.value = defaultSchema.id;
-  //   saveToStorage();
-  // }
+  loadSchemas();
 });
 </script>
 

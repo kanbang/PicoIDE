@@ -25,6 +25,7 @@ import uvicorn
 from db import init_db, close_db, ensure_root_directory
 from routes.vfs import router as vfs_router
 from routes.blocks import router as blocks_router
+from routes.schemas import router as schemas_router
 
 DB_PATH = "vfs.db"
 USER_ID = "default"
@@ -45,6 +46,7 @@ app = FastAPI(lifespan=lifespan)
 # 注册路由
 app.include_router(vfs_router)
 app.include_router(blocks_router)
+app.include_router(schemas_router)
 
 
 app.mount("/", StaticFiles(directory="../web-code", html=True), name="web")

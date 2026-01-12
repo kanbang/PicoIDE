@@ -28,6 +28,17 @@ class File(Model):
         unique_together = (("user_id", "path"),)
 
 
+class Schema(Model):
+    """Schema 模型"""
+    user_id = fields.CharField(max_length=255)
+    name = fields.CharField(max_length=255)
+    schema_data = fields.JSONField(null=True)
+    mtime = fields.BigIntField()
+
+    class Meta:
+        table = "schemas"
+
+
 async def init_db(db_path: str):
     """初始化数据库"""
     await Tortoise.init(

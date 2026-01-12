@@ -7,7 +7,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import SingleNodeFlow from '@/views/NodeFlowDemo.vue';
-import SchemaManagerExample from '@/views/SchemaManagerDemo.vue';
+import SchemaManagerExample from '@/views/SchemaManagerApiDemo.vue';
 import TinyCode from '@/views/TinyCode.vue';
 
 // 当前激活的标签页
