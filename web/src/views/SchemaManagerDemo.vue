@@ -4,20 +4,28 @@ import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue'
 
 const STORAGE_KEY = 'schema_manager_example_data';
 
-// Blocks 数据 (保持不变)
-const blocks = [
-  { "inputs": [], "name": "Sensor", "options": [{ "items": ["1000", "2000", "20000", "50000", "52000", "100000", "105000", "128000"], "name": "采样率", "properties": { "items": ["1000", "2000", "20000", "50000", "52000", "100000", "105000", "128000"] }, "type": "SelectOption", "value": "128000" }, { "items": ["Bipolar[-10V,10V]"], "name": "量程", "properties": { "items": ["Bipolar[-10V,10V]"] }, "type": "SelectOption", "value": "Bipolar[-10V,10V]" }], "outputs": [{ "name": "O-Sensor" }] },
-  { "inputs": [{ "name": "I-Sensor" }], "name": "Channel", "options": [{ "name": "启用", "type": "CheckboxOption", "value": true }, { "items": ["Channel 1", "Channel 2", "Channel 3", "Channel 4"], "name": "通道", "properties": { "items": ["Channel 1", "Channel 2", "Channel 3", "Channel 4"] }, "type": "SelectOption", "value": null }, { "max": 10, "min": 0, "name": "灵敏度", "properties": { "max": 10, "min": 0 }, "type": "NumberOption", "value": null }, { "items": ["m", "m/s", "m/s²", "g"], "name": "单位", "properties": { "items": ["m", "m/s", "m/s²", "g"] }, "type": "SelectOption", "value": null }, { "name": "IEPE/ICP/CCLD", "type": "CheckboxOption", "value": true }], "outputs": [{ "name": "O-List-XY" }] },
-  { "inputs": [{ "name": "I-List-XY" }], "name": "ToList1D", "options": [{ "items": ["X", "Y"], "name": "输出", "properties": { "items": ["X", "Y"] }, "type": "SelectOption", "value": "Y" }], "outputs": [{ "name": "O-List-V" }] },
-  { "inputs": [{ "name": "I-List-X" }, { "name": "I-List-Y" }], "name": "ToList2D", "options": [], "outputs": [{ "name": "O-List-XY" }] },
-  { "inputs": [{ "name": "I-List-V" }], "name": "FourierTransform", "options": [{ "name": "绝对值", "type": "CheckboxOption", "value": true }], "outputs": [{ "name": "O-List-XY" }] },
-  { "inputs": [{ "name": "List-XY" }], "name": "Result", "options": [{ "items": ["时域", "频域", "FREE"], "name": "类型", "properties": { "items": ["时域", "频域", "FREE"] }, "type": "SelectOption", "value": null }, { "name": "名称", "type": "InputOption", "value": "" }], "outputs": [] }
-];
+// Blocks 数据从后端获取
+const blocks = ref<any[]>([]);
 
 // Schema 列表
 const schemas = ref<SchemaItem[]>([]);
 // 当前选中的 Schema ID
 const selectedSchemaId = ref<string | null>(null);
+
+// 从后端加载 blocks
+async function loadBlocks() {
+  try {
+    const response = await fetch('http://localhost:8000/api/blocks');
+    if (response.ok) {
+      const data = await response.json();
+      blocks.value = data.blocks || [];
+    } else {
+      console.error('Failed to load blocks:', response.statusText);
+    }
+  } catch (error) {
+    console.error('Error loading blocks:', error);
+  }
+}
 
 // 从 localStorage 加载数据
 function loadFromStorage(): void {
@@ -103,6 +111,7 @@ function handleRun(id: string, data: any) {
 
 // 组件挂载时加载数据
 onMounted(() => {
+  loadBlocks();
   loadFromStorage();
 
   // 如果没有 schema，创建一个默认的
