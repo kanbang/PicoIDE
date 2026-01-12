@@ -47,7 +47,6 @@ const nodeFlowRef = ref<InstanceType<typeof NodeFlow> | null>(null);
 // 分割条拖拽
 const listWidth = ref(300);
 const isDragging = ref(false);
-const splitterRef = ref<HTMLElement | null>(null);
 const isListVisible = ref(true);
 
 function startDrag(e: MouseEvent) {
@@ -74,29 +73,25 @@ function toggleList() {
   isListVisible.value = !isListVisible.value;
 }
 
-// 计算当前选中的对象
+// 计算当前选中的对象（仅用于读取 schema 等）
 const activeSchemaItem = computed(() =>
   schemas.value.find(s => s.id === selectedSchemaId.value)
 );
 
 const hasSelectedSchema = computed(() => !!selectedSchemaId.value);
 
-// --- 核心修复：监听选中的 Schema 变化并加载到编辑器 ---
-
+// --- 监听选中变化并加载到 NodeFlow ---
 function deepCopy(obj: any): any {
   return obj ? JSON.parse(JSON.stringify(obj)) : {};
 }
 
-
 watch(activeSchemaItem, async (newItem, oldItem) => {
   if (!newItem) return;
 
-  // 仅在 ID 变化时（切换或初次加载）重载 NodeFlow 
+  // 仅在 ID 变化时重载（切换或首次选中）
   if (!oldItem || newItem.id !== oldItem.id) {
     await nextTick();
     if (nodeFlowRef.value) {
-
-      // deepCopy 切断引用
       nodeFlowRef.value.loadSchema(deepCopy(newItem.schema));
     }
   }
@@ -105,7 +100,7 @@ watch(activeSchemaItem, async (newItem, oldItem) => {
 // 创建
 async function createSchema() {
   const newSchema: SchemaItem = {
-    id: '', // ID 由父组件生成
+    id: '', // 父组件生成 ID
     name: `Schema ${schemas.value.length + 1}`,
     schema: null,
     hasUnsavedChanges: false
@@ -113,10 +108,9 @@ async function createSchema() {
   emit('create', newSchema);
 }
 
-// 选择逻辑
+// 选择逻辑（未保存提示）
 function selectSchema(id: string) {
-  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
-  if (current && current.hasUnsavedChanges) {
+  if (activeSchemaItem.value?.hasUnsavedChanges) {
     pendingSchemaId.value = id;
     showSavePrompt.value = true;
     return;
@@ -129,24 +123,27 @@ function doSelectSchema(id: string) {
   pendingSchemaId.value = null;
   showSavePrompt.value = false;
 
+  // 清除未保存标记（切换成功即视为已“确认”当前状态）
   const schemaItem = schemas.value.find(s => s.id === id);
   if (schemaItem) {
     schemaItem.hasUnsavedChanges = false;
-    // schemas.value = [...schemas.value];
   }
 }
 
-// 保存
+// 保存当前
 function saveCurrentSchema() {
-  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
-  if (!current || !nodeFlowRef.value) return;
+  if (!selectedSchemaId.value || !nodeFlowRef.value) return;
 
   const currentSchemaData = nodeFlowRef.value.currentSchema;
   if (currentSchemaData !== null) {
-    current.schema = currentSchemaData;
-    current.hasUnsavedChanges = false;
-    emit('save', current.id, currentSchemaData);
-    // schemas.value = [...schemas.value];
+    // 直接更新列表中的 schema（响应式）
+    const current = schemas.value.find(s => s.id === selectedSchemaId.value);
+    if (current) {
+      current.schema = currentSchemaData;
+      current.hasUnsavedChanges = false;
+    }
+
+    emit('save', selectedSchemaId.value, currentSchemaData);
   }
 
   if (pendingSchemaId.value) {
@@ -169,7 +166,7 @@ function cancelSwitch() {
   showSavePrompt.value = false;
 }
 
-// 删除、重命名、复制逻辑
+// 删除、重命名、复制
 function deleteSchema(id: string) {
   deletingSchemaId.value = id;
   showDeleteDialog.value = true;
@@ -186,7 +183,7 @@ function confirmDelete() {
       doSelectSchema(remaining[0].id);
     } else {
       selectedSchemaId.value = null;
-      if (nodeFlowRef.value) nodeFlowRef.value.loadSchema(null);
+      nodeFlowRef.value?.loadSchema(null);
     }
   }
   showDeleteDialog.value = false;
@@ -197,7 +194,7 @@ function duplicateSchema(id: string) {
   const original = schemas.value.find(s => s.id === id);
   if (original) {
     const newSchema: SchemaItem = {
-      id: '', // ID 由父组件生成
+      id: '',
       name: `${original.name} (副本)`,
       schema: JSON.parse(JSON.stringify(original.schema)),
       hasUnsavedChanges: false
@@ -222,32 +219,32 @@ function confirmRename() {
   showRenameDialog.value = false;
 }
 
-// 子组件事件处理
-function handleUpdate(schema: any) { }
+// NodeFlow 事件处理（优化：直接使用 selectedSchemaId）
+function handleUpdate(_schema: any) {
+  // 若需要实时更新，可在这里处理（当前未使用）
+}
 
 function handleUnsavedChanges(hasChanges: boolean) {
+  if (!selectedSchemaId.value) return;
   const current = schemas.value.find(s => s.id === selectedSchemaId.value);
   if (current) {
     current.hasUnsavedChanges = hasChanges;
-    // schemas.value = [...schemas.value];
   }
 }
 
 function handleSave(data: any) {
+  if (!selectedSchemaId.value) return;
   const current = schemas.value.find(s => s.id === selectedSchemaId.value);
   if (current) {
     current.schema = data;
     current.hasUnsavedChanges = false;
-    emit('save', current.id, data);
-    // schemas.value = [...schemas.value];
+    emit('save', selectedSchemaId.value, data);
   }
 }
 
 function handleRun(data: any) {
-  const current = schemas.value.find(s => s.id === selectedSchemaId.value);
-  if (current) {
-    emit('run', current.id, data);
-  }
+  if (!selectedSchemaId.value) return;
+  emit('run', selectedSchemaId.value, data);
 }
 </script>
 
