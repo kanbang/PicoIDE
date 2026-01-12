@@ -6,16 +6,19 @@
 import { BaklavaEditor, useBaklava, DEFAULT_TOOLBAR_COMMANDS } from "@baklavajs/renderer-vue";
 import { defineComponent, defineEmits, defineProps, h, onMounted, onUnmounted, nextTick, ref, watch, markRaw } from 'vue';
 import SaveIcon from '@/components/icons/Save.vue';
+import RunIcon from '@/components/icons/Run.vue';
 import { BuildBlock } from './BlockBuilder';
 import TestNode from './TestNode';
 import "@baklavajs/themes/dist/syrup-dark.css";
 
 const SAVE_COMMAND_ID = "SAVE";
+const RUN_COMMAND_ID = "RUN";
 const emit = defineEmits<{
   save: [data: any];
   error: [message: string];
   update: [schema: any];
   unsavedChanges: [hasChanges: boolean];
+  run: [data: any];
 }>();
 
 const baklava = useBaklava();
@@ -101,6 +104,23 @@ const SaveButtonIcon = markRaw(
   })
 );
 
+const RunButtonIcon = markRaw(
+  defineComponent({
+    name: 'RunButtonIcon',
+    setup() {
+      return () => h('div', {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          height: '100%'
+        }
+      }, [h(RunIcon)]);
+    }
+  })
+);
+
 
 
 // 注册保存命令
@@ -131,8 +151,25 @@ function registerCustomCommands(): void {
     canExecute: () => hasUnsavedChanges.value,
   });
 
+  baklava.commandHandler.registerCommand(RUN_COMMAND_ID, {
+    execute: () => {
+      try {
+        const data = editor.save();
+        emit('run', data);
+      } catch (error) {
+        emit('error', `运行失败: ${error}`);
+      }
+    },
+    canExecute: () => true,
+  });
+
   baklava.settings.toolbar.commands = [
     ...DEFAULT_TOOLBAR_COMMANDS.slice(0, -1),
+    {
+      command: RUN_COMMAND_ID,
+      title: "运行",
+      icon: RunButtonIcon,
+    },
     {
       command: SAVE_COMMAND_ID,
       title: "保存",
