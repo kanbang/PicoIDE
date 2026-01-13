@@ -1,6 +1,6 @@
 from typing import List, Union, Dict
 from dataclasses import dataclass, field, asdict
-from flow.block import Block
+from flow2.block import Block
 
 NodeOptionValue = Union[int, float, str, None, bool]
 NodeInterfaceValue = Union[int, float, str, None, bool]

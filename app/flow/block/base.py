@@ -3,8 +3,8 @@ import inspect
 from types import MethodType
 from typing import Callable, Any, Dict, List, Type
 from dataclasses import asdict, dataclass, field
-from flow2.block.option import BlockOption, BlockOptionValue
-from flow2.block.interface import BlockInterface, IT, is_valid_interface_type
+from flow.block.option import BlockOption, BlockOptionValue
+from flow.block.interface import BlockInterface, IT, is_valid_interface_type
 
 
 @dataclass

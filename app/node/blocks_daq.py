@@ -1,5 +1,7 @@
 
 
+import math
+import time
 from flow import Block
 from typing import List
 import numpy as np
@@ -43,6 +45,22 @@ class AdlinkBridge:
         self.ch_data = ch_data
 
     def get_channel_data(self, channel):
+        if self.ch_data is None:
+            # 模拟 100 个点，采样间隔 0.001s (1kHz)
+            count = 100
+            fs = 1000 
+            start_time = time.time()
+            
+            # 生成时间轴 x 和 振幅 y (简谐振动 + 噪声)
+            x_data = [start_time + i * (1/fs) for i in range(count)]
+            y_data = [
+                math.sin(2 * math.pi * 50 * (i/fs) + channel) + # 50Hz 信号
+                0.2 * math.sin(2 * math.pi * 120 * (i/fs))         # 120Hz 谐波
+                for i in range(count)
+            ]
+            
+            return {"x": x_data, "y": y_data}
+
         return self.ch_data.get(channel)
 
     def add_data_t(self, data_t):
@@ -159,7 +177,7 @@ ChannelMap = {
 
 
 def channel_func(self):
-    sensor = self.get_interface(name="I-Sensor")
+    # sensor = self.get_interface(name="I-Sensor")
     on = self.get_option("启用")
     if not on:
         return

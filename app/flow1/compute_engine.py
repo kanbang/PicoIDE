@@ -1,5 +1,5 @@
 import copy
-from barfi.v0.block_builder import Block
+from flow.block_builder import Block
 from typing import List, Dict
 
 try:

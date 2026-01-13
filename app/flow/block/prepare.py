@@ -1,5 +1,13 @@
+'''
+Descripttion: 
+version: 0.x
+Author: zhai
+Date: 2026-01-13 16:08:06
+LastEditors: zhai
+LastEditTime: 2026-01-13 16:19:20
+'''
 from typing import Union, List, Dict
-from flow2.block import Block
+from flow.block import Block
 
 
 def prepare_blocks_export(

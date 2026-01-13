@@ -2,7 +2,7 @@ import gzip
 import json
 import os
 from typing import Dict, List
-from flow.schema.types import FlowSchema, build_flow_schema_from_dict
+from flow2.schema.types import FlowSchema, build_flow_schema_from_dict
 
 
 class SchemaManager:

@@ -2,9 +2,9 @@ import os
 from typing import List, Dict, Union
 
 from barfi.config import RELEASE
-from barfi.v0.block_builder import Block
-from barfi.v0.compute_engine import ComputeEngine
-from barfi.v0.manage_schema import load_schema_name, load_schemas, save_schema
+from flow.block_builder import Block
+from flow.compute_engine import ComputeEngine
+from flow.manage_schema import load_schema_name, load_schemas, save_schema
 
 try:
     import streamlit.components.v1 as components

@@ -1,1 +1,1 @@
-from flow.block.base import Block as Block
+from flow2.block.base import Block as Block

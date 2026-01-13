@@ -1,6 +1,6 @@
-from flow import Block, ComputeEngine, prepare_blocks_export
+from flow import Block, NodeEngine
 from node.blocks_daq import daq_blocks
-from typing import Any, List
+from typing import List
 
 
 def _build_blocks(scripts: List[str]):
@@ -31,53 +31,15 @@ def make_dynamic_engine(scripts: List[str]):
     script_blocks = _build_blocks(scripts)
     base_blocks.extend(script_blocks)
 
-    engine_instance = ComputeEngine(base_blocks)
+    engine_instance = NodeEngine(base_blocks)
     return engine_instance
-
 
 def get_json_blocks(scripts: List[str]):
     base_blocks = daq_blocks.copy()
     script_blocks = _build_blocks(scripts)
     base_blocks.extend(script_blocks)
-
-    return prepare_blocks_export(base_blocks)
-
-
-
-async def run_schema(scripts: List[Any], schema: dict):
-    base_blocks = daq_blocks.copy()
-
-    script_blocks = _build_blocks(scripts)
-    base_blocks.extend(script_blocks)
-
-    engine = ComputeEngine(base_blocks)
-    engine.set_schema(schema)
-    engine.run()
-
-
-# -------------------------------------------------------------------------
-# Mock 外部依赖 (确保代码可运行)
-# -------------------------------------------------------------------------
-class MockAdlinkBridge:
-    def get_channel_data(self, channel_id):
-        # 模拟耗时操作，以便观察并行效果
-        return [float(i + channel_id) for i in range(100)]
-
-    def add_data_t(self, data):
-        print(f"💾 [Storage] 保存时域: {data['name']}")
-
-    def add_data_p(self, data):
-        print(f"💾 [Storage] 保存频域: {data['name']}")
-
-    def add_data_xy(self, data):
-        print(f"💾 [Storage] 保存XY: {data['name']}")
-
-
-adlink_bridge_instance = MockAdlinkBridge()
-
-
-def fourier_transform(data):
-    return [x * 0.1 for x in data]
+    json_blocks = [block._export() for block in base_blocks]
+    return json_blocks
 
 
 class BlockEngine:

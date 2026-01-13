@@ -1,4 +1,4 @@
-from flow import Block, ComputeEngine
+from flow2 import Block, ComputeEngine
 from flow2.block.prepare import prepare_blocks_export
 from node.blocks_daq import daq_blocks
 from typing import List

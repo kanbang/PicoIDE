@@ -6,5 +6,5 @@ Date: 2026-01-12 18:21:50
 LastEditors: zhai
 LastEditTime: 2026-01-12 20:37:11
 '''
-from flow.schema.manage import SchemaManager as SchemaManager
-from flow.schema.types import build_flow_schema_from_dict as build_flow_schema_from_dict
+from flow2.schema.manage import SchemaManager as SchemaManager
+from flow2.schema.types import build_flow_schema_from_dict as build_flow_schema_from_dict

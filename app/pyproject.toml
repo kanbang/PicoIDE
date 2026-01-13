@@ -12,7 +12,8 @@ dependencies = [
     "uvicorn (>=0.40.0,<0.41.0)",
     "tortoise-orm (>=0.21.0,<0.22.0)",
     "aiosqlite (>=0.20.0,<0.21.0)",
-    "numpy (==2.2.4)"
+    "numpy (==2.2.4)",
+    "networkx (==3.4.2)"
 ]
 
 
