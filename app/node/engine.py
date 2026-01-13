@@ -1,5 +1,5 @@
-from flow import Block, ComputeEngine, prepare_blocks_export
-from node.blocks_daq import daq_blocks
+from node.compute_engine import Block, ComputeEngine
+from node.daq import daq_blocks
 from typing import Any, List
 
 
@@ -40,7 +40,13 @@ def get_json_blocks(scripts: List[str]):
     script_blocks = _build_blocks(scripts)
     base_blocks.extend(script_blocks)
 
-    return prepare_blocks_export(base_blocks)
+    engine = ComputeEngine()
+    engine.register_blocks(base_blocks  )
+
+    blocks_def_json = engine.export_all_blocks()
+    return blocks_def_json
+
+    # return prepare_blocks_export(base_blocks)
 
 
 
