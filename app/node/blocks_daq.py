@@ -5,6 +5,7 @@ import time
 from flow import Block
 from typing import List
 import numpy as np
+import debugpy
 
 # from iot import NodeEngine
 # from iot import Block
@@ -177,6 +178,7 @@ ChannelMap = {
 
 
 def channel_func(self):
+    debugpy.debug_this_thread()
     # sensor = self.get_interface(name="I-Sensor")
     on = self.get_option("启用")
     if not on:

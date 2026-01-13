@@ -277,13 +277,17 @@ class Block:
             "options": [asdict(option) for option in self._options.values()],
         }
 
-    async def _on_compute(self) -> None:
-        """
-        Default compute method for the block.
-        This method is meant to be overridden by the user-defined compute function.
-        Can be either synchronous or asynchronous.
-        """
+    def _on_compute(self) -> Any:
+        """默认实现为普通函数，确保基类本身不产生协程对象"""
         pass
+
+    # async def _on_compute(self) -> None:
+    #     """
+    #     Default compute method for the block.
+    #     This method is meant to be overridden by the user-defined compute function.
+    #     Can be either synchronous or asynchronous.
+    #     """
+    #     pass
 
     def add_compute(self, _func: Callable[["Block"], Any]) -> None:
         """
@@ -313,11 +317,15 @@ class Block:
             >>> block.add_compute(compute)
         """
 
-        if inspect.iscoroutinefunction(_func):
-            self._on_compute = MethodType(_func, self)
-        else:
-            # Wrap synchronous functions to make them async-compatible
-            async def wrapper(self):
-                return _func(self)
+        # 直接绑定函数到实例上，不进行强制异步包装
+        self._on_compute = MethodType(_func, self)
 
-            self._on_compute = MethodType(wrapper, self)
+
+        # if inspect.iscoroutinefunction(_func):
+        #     self._on_compute = MethodType(_func, self)
+        # else:
+        #     # Wrap synchronous functions to make them async-compatible
+        #     async def wrapper(self):
+        #         return _func(self)
+
+        #     self._on_compute = MethodType(wrapper, self)

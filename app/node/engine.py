@@ -50,9 +50,12 @@ async def run_schema(scripts: List[Any], schema: dict):
     script_blocks = _build_blocks(scripts)
     base_blocks.extend(script_blocks)
 
-    engine = ComputeEngine(base_blocks)
+    engine = ComputeEngine()
+    engine.register_blocks(base_blocks)
     engine.set_schema(schema)
     engine.run()
+    await engine.async_run()
+
 
 
 # -------------------------------------------------------------------------

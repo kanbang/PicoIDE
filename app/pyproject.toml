@@ -13,7 +13,8 @@ dependencies = [
     "tortoise-orm (>=0.21.0,<0.22.0)",
     "aiosqlite (>=0.20.0,<0.21.0)",
     "numpy (==2.2.4)",
-    "networkx (==3.4.2)"
+    "networkx (==3.4.2)",
+    "debugpy (>=1.8.19,<2.0.0)"
 ]
 
 

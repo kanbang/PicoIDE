@@ -1,229 +1,149 @@
-import copy
-import time
-import uuid
 import asyncio
-import threading
+import networkx as nx
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Any, Callable, Optional
-from collections import defaultdict
+from dataclasses import asdict
 
 class ComputeEngine:
-    def __init__(self, block_registry: List[Any] = None):
-        """
-        Args:
-            block_registry: Block 原型列表，自动解析 name 注册
-        """
-        
-        # 1. 拓扑与映射存储
-        self.schema: Optional[Dict] = None
-        self.nodes: Dict[str, Any] = {}          # node_id -> Block Instance
-        self.port_map: Dict[str, tuple] = {}     # port_id -> (node_id, port_name, port_type)
-        self.connections_map = defaultdict(list) # from_port_id -> [to_port_id]
-        self.adjacency = defaultdict(list)       # node_id -> [downstream_node_ids]
-        self.initial_in_degree = defaultdict(int)# node_id -> input_connection_count
-        self._output_port_cache = {}             # (node_id, port_name) -> port_id
+    def __init__(self):
+        self.registry: Dict[str, Any] = {} # 注册的 Block 模板
+        self.instances: Dict[str, Any] = {}       # Schema 实例化的节点容器
+        self.graph = nx.DiGraph()
+        self.schema: Dict[str, Any] = {}
+        # 默认日志处理器，可以被外部覆盖以对接到 UI 或 WebSocket
+        self.on_log: Callable[[str], None] = print
 
-        # 2. 外部反馈与同步
-        self.event_handler: Optional[Callable[[Dict], None]] = None
-        self._sync_lock = threading.Lock()
-        
-        # 3. 注册表初始化 (支持 List 输入并转为 Dict 以提高查找效率)
-        self.registry: Dict[str, Any] = {}
-        if block_registry:
-            self.update_blocks(block_registry)
+    def log(self, message: str):
+        """统一日志输出入口"""
+        if self.on_log:
+            self.on_log(message)
 
-    def update_blocks(self, blocks: List[Any]):
-        """友好提示：动态更新 Block 库"""
-        self.registry.clear()
-        for b in blocks:
-            self.registry[b.name] = b
-        self._emit("registry_updated", {"types": list(self.registry.keys())})
+    def register_blocks(self, blocks: List[Any]):
+        """注册可用的 Block 类型"""
+        for block in blocks:
+            # 使用 block 的 name 作为注册 key
+            self.registry[block.name] = block
+        self.log(f"✅ 已成功注册 {len(blocks)} 个节点类型。")
 
-    def set_handler(self, handler: Callable[[Dict], None]):
-        """设置反馈处理器，用于 UI 更新或日志记录"""
-        self.event_handler = handler
-
-    def _emit(self, event_type: str, data: Dict):
-        """统一的信息反馈口"""
-        if self.event_handler:
-            self.event_handler({"timestamp": time.time(), "event": event_type, "data": data})
-
-    def set_schema(self, schema: Dict):
-        """外部接口：设置新的 Schema 并立即构建计算图"""
+    def set_schema(self, schema: Dict[str, Any]):
+        """根据 Schema 结构构建执行图并初始化节点实例"""
+        self.log("🛠️  正在构建计算流图...")
         self.schema = schema
-        self._build_graph()
-
-    def _build_graph(self):
-        """逻辑参考：解析 JSON 建立节点实例与端口映射"""
-        if not self.schema: return
-        
-        print("🛠️  正在构建计算图...")
-        self.nodes.clear()
-        self.port_map.clear()
-        self.connections_map.clear()
-        self.adjacency.clear()
-        self.initial_in_degree.clear()
-        self._output_port_cache.clear()
+        self.instances = {}
+        self.graph.clear()
 
         try:
             # 1. 实例化节点
-            for node_data in self.schema["nodes"]:
-                node_id = node_data["id"]
+            for node_data in schema["nodes"]:
                 node_type = node_data["type"]
-                node_title = node_data.get("title", node_type)
+                node_id = node_data["id"]
                 
-                if node_type not in self.registry:
-                    self._emit("error", {"msg": f"未知的 Block 类型: {node_type}"})
-                    raise ValueError(f"未知的 Block 类型: {node_type}")
-                
-                # 使用 deepcopy 确保实例独立
-                instance = copy.deepcopy(self.registry[node_type])
-                instance.name = f"{node_title}_{node_id[:4]}"
-                self.nodes[node_id] = instance
-                self.initial_in_degree[node_id] = 0
-
-                # 2. 处理 Inputs/Options (友好区分参数与连接端口)
-                for key, info in node_data.get("inputs", {}).items():
-                    p_id, val = info["id"], info["value"]
-                    if key in instance._options:
-                        if val is not None: instance.set_option(key, val)
-                    elif key in instance._inputs:
-                        self.port_map[p_id] = (node_id, key, "input")
-
-                # 3. 处理 Outputs
-                for key, info in node_data.get("outputs", {}).items():
-                    p_id = info["id"]
-                    self.port_map[p_id] = (node_id, key, "output")
-                    self._output_port_cache[(node_id, key)] = p_id
-
-            # 4. 构建连接关系
-            for conn in self.schema["connections"]:
-                f_id, t_id = conn["from"], conn["to"]
-                if f_id not in self.port_map or t_id not in self.port_map:
-                    print(f"⚠️  警告: 发现悬空连接 {conn.get('id', 'unknown')}，跳过。")
+                template = self.registry.get(node_type)
+                if not template:
+                    self.log(f"⚠️  警告: 找不到类型为 {node_type} 的模板，跳过节点 {node_id}")
                     continue
+
+                # 创建实例：克隆模板的配置和 compute 函数
+                import copy
+                from types import MethodType
                 
-                f_node, _, _ = self.port_map[f_id]
-                t_node, _, _ = self.port_map[t_id]
-                self.connections_map[f_id].append(t_id)
-                self.adjacency[f_node].append(t_node)
-                self.initial_in_degree[t_node] += 1
-            
-            print(f"✅ 图构建完成: {len(self.nodes)} 个节点, {len(self.schema['connections'])} 条连接")
-            self._emit("graph_ready", {"nodes": len(self.nodes)})
+                # 简单模拟实例化过程，确保每个节点有独立的状态
+                instance = copy.deepcopy(template)
+                instance.name = node_data.get("title", template.name)
+                
+                # 设置选项值
+                for opt_name, opt_meta in node_data.get("inputs", {}).items():
+                    if opt_name in instance._options:
+                        instance.set_option(opt_name, value=opt_meta["value"])
 
+                self.instances[node_id] = instance
+                self.graph.add_node(node_id)
+
+            # 2. 建立连接关系 (用于数据传递和拓扑排序)
+            # 建立 ID 到 (节点ID, 接口名) 的映射表
+            interface_map = {}
+            for node in schema["nodes"]:
+                nid = node["id"]
+                for name, meta in node["inputs"].items(): interface_map[meta["id"]] = (nid, name)
+                for name, meta in node["outputs"].items(): interface_map[meta["id"]] = (nid, name)
+
+            for conn in schema["connections"]:
+                from_nid, from_port = interface_map.get(conn["from"], (None, None))
+                to_nid, to_port = interface_map.get(conn["to"], (None, None))
+                
+                if from_nid and to_nid:
+                    self.graph.add_edge(from_nid, to_nid, link=(from_port, to_port))
+
+            self.log(f"✅ 计算流构建完成：{len(self.instances)} 个节点，{len(schema['connections'])} 条连线。")
         except Exception as e:
-            self._emit("error", {"stage": "build", "msg": str(e)})
-            traceback.print_exc()
+            self.log(f"❌ 构建过程中出现错误: {e}")
 
-    # --- 公共逻辑：数据传播 ---
-    def _propagate_data(self, node_id: str):
-        block = self.nodes[node_id]
-        for out_name, out_interface in block._outputs.items():
-            src_p_id = self._output_port_cache.get((node_id, out_name))
-            if src_p_id in self.connections_map:
-                val = out_interface.value
-                for target_p_id in self.connections_map[src_p_id]:
-                    t_node_id, t_p_name, _ = self.port_map[target_p_id]
-                    self.nodes[t_node_id].set_interface(t_p_name, val)
+    def _transfer_data(self, target_node_id: str):
+        """执行节点前，从上游输出端口拉取数据到下游输入端口"""
+        for pred_id in self.graph.predecessors(target_node_id):
+            edge_data = self.graph.get_edge_data(pred_id, target_node_id)
+            out_name, in_name = edge_data["link"]
+            
+            val = self.instances[pred_id].get_interface(out_name)
+            self.instances[target_node_id].set_interface(in_name, val)
 
-    # ==========================================
-    # 模式一：异步并行 (asyncio)
-    # ==========================================
+    def run(self):
+        """同步执行"""
+        self.log("🚀 开始同步执行流程...")
+        try:
+            # 拓扑排序确保顺序
+            order = list(nx.topological_sort(self.graph))
+            for node_id in order:
+                self._transfer_data(node_id)
+                block = self.instances[node_id]
+                try:
+                    block._on_compute()
+                    self.log(f"✅ 节点 {block.name} 执行完成")
+                except Exception as e:
+                    self.log(f"❌ 节点 {block.name} 执行出错: {e}")
+                    raise e
+            self.log("✨ 流程全部执行完毕")
+        except nx.NetworkXUnfeasible:
+            self.log("❌ 错误: 检测到循环依赖，无法执行")
+
     async def async_run(self):
-        if not self.nodes: return
-        print("🚀 [Async] 开始执行计算流程...")
+        """异步执行 (支持并行运算)"""
+        self.log("🚀 开始异步并行执行流程...")
         
-        ctx = {
-            'in_degree': self.initial_in_degree.copy(),
-            'finished_count': 0,
-            'event': asyncio.Event(),
-            'failed': False
-        }
-
-        seeds = [nid for nid, deg in ctx['in_degree'].items() if deg == 0]
-        for nid in seeds:
-            asyncio.create_task(self._async_execute_task(nid, ctx))
-
-        await ctx['event'].wait()
-        print(f"🏁 [Async] 执行结束。共执行 {ctx['finished_count']} 个节点。")
-
-    async def _async_execute_task(self, node_id: str, ctx: Dict):
-        if ctx['failed']: return
-        block = self.nodes[node_id]
-        try:
-            # 执行计算
-            if hasattr(block, '_on_compute'):
-                res = block._on_compute()
-                if asyncio.iscoroutine(res): await res
-            
-            self._propagate_data(node_id)
-            
-            # 拓扑触发下游
-            for next_id in set(self.adjacency[node_id]):
-                ctx['in_degree'][next_id] -= 1
-                if ctx['in_degree'][next_id] == 0:
-                    asyncio.create_task(self._async_execute_task(next_id, ctx))
-        except Exception as e:
-            ctx['failed'] = True
-            self._emit("node_error", {"node": block.name, "msg": str(e)})
-            print(f"❌ 节点 {block.name} 执行出错: {e}")
-            traceback.print_exc()
-            ctx['event'].set() # 发生严重错误时提前终止等待
-        finally:
-            ctx['finished_count'] += 1
-            if ctx['finished_count'] == len(self.nodes):
-                ctx['event'].set()
-
-    # ==========================================
-    # 模式二：同步并行 (线程池)
-    # ==========================================
-    def run(self, max_workers: int = 4):
-        if not self.nodes: return
-        print("🚀 [Sync] 开始线程并行执行...")
+        # 记录每个节点的 Future 对象
+        node_tasks = {}
         
-        done_event = threading.Event()
-        ctx = {
-            'in_degree': self.initial_in_degree.copy(),
-            'finished_count': 0,
-            'done_event': done_event,
-            'failed': False
-        }
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            seeds = [nid for nid, deg in ctx['in_degree'].items() if deg == 0]
-            for nid in seeds:
-                executor.submit(self._sync_execute_task, nid, ctx, executor)
+        async def execute_node_task(node_id):
+            block = self.instances[node_id]
             
-            done_event.wait()
+            # 1. 等待所有前置依赖节点完成
+            predecessors = list(self.graph.predecessors(node_id))
+            if predecessors:
+                await asyncio.gather(*(node_tasks[p] for p in predecessors))
+            
+            # 2. 准备数据
+            self._transfer_data(node_id)
+            
+            # 3. 执行计算
+            try:
+                if asyncio.iscoroutinefunction(block._on_compute):
+                    await block._on_compute()
+                else:
+                    # 如果是同步函数，放入线程池避免阻塞
+                    await asyncio.to_thread(block._on_compute)
+                self.log(f"✅ 节点 {block.name} 执行完成")
+            except Exception as e:
+                self.log(f"❌ 节点 {block.name} 执行出错: {e}")
+                # 打印详细堆栈方便调试
+                # traceback.print_exc() 
+                raise e
 
-        print(f"🏁 [Sync] 执行结束。共执行 {ctx['finished_count']} 个节点。")
+        # 创建所有节点的协程任务
+        for node_id in self.instances:
+            node_tasks[node_id] = asyncio.create_task(execute_node_task(node_id))
 
-    def _sync_execute_task(self, node_id: str, ctx: Dict, executor: ThreadPoolExecutor):
-        if ctx['failed']: return
-        block = self.nodes[node_id]
         try:
-            self._emit("node_started", {"name": block.name})
-            
-            if hasattr(block, '_on_compute'):
-                block._on_compute()
-            
-            self._propagate_data(node_id)
-            
-            with self._sync_lock:
-                for next_id in set(self.adjacency[node_id]):
-                    ctx['in_degree'][next_id] -= 1
-                    if ctx['in_degree'][next_id] == 0:
-                        executor.submit(self._sync_execute_task, next_id, ctx, executor)
-        except Exception as e:
-            ctx['failed'] = True
-            self._emit("node_error", {"node": block.name, "msg": str(e)})
-            print(f"❌ 节点 {block.name} 执行出错: {e}")
-            traceback.print_exc()
-            ctx['done_event'].set()
-        finally:
-            with self._sync_lock:
-                ctx['finished_count'] += 1
-                if ctx['finished_count'] == len(self.nodes):
-                    ctx['done_event'].set()
+            await asyncio.gather(*node_tasks.values())
+            self.log("✨ 异步流程全部执行完毕")
+        except Exception:
+            self.log("⚠️  由于某个节点执行失败，流程已中断")
