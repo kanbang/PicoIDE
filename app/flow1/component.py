@@ -3,7 +3,7 @@ from typing import List, Dict, Union
 
 from barfi.config import RELEASE
 from flow.block_builder import Block
-from flow.compute_engine import ComputeEngine
+from app.flow.compute import ComputeEngine
 from flow.manage_schema import load_schema_name, load_schemas, save_schema
 
 try:

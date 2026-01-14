@@ -4,7 +4,7 @@ import numpy as np
 import asyncio
 from types import MethodType
 
-from node.block import Block
+from app.flow.block import Block
 
 # 假设这是你的 bridge 实例
 # from your_module import adlink_bridge_instance

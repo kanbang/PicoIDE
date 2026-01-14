@@ -1,7 +1,7 @@
 import asyncio
 import copy
 from typing import Any, Dict, List
-from node.block import Block
+from app.flow.block import Block
 import networkx as nx
 
 
@@ -31,7 +31,6 @@ class ComputeEngine:
         self.graph.clear()
 
         # 建立 ID 映射表，用于解析连接
-        # interface_id -> (node_instance, port_name, type['in'|'out'])
         port_map = {}
 
         # 1. 创建实例并填充配置

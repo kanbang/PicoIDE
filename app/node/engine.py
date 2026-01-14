@@ -1,4 +1,4 @@
-from node.compute_engine import Block, ComputeEngine
+from app.flow.compute import Block, ComputeEngine
 from node.daq import daq_blocks
 from typing import Any, List
 
@@ -62,31 +62,6 @@ async def run_schema(scripts: List[Any], schema: dict):
     engine.run()
     await engine.async_run()
 
-
-
-# -------------------------------------------------------------------------
-# Mock 外部依赖 (确保代码可运行)
-# -------------------------------------------------------------------------
-class MockAdlinkBridge:
-    def get_channel_data(self, channel_id):
-        # 模拟耗时操作，以便观察并行效果
-        return [float(i + channel_id) for i in range(100)]
-
-    def add_data_t(self, data):
-        print(f"💾 [Storage] 保存时域: {data['name']}")
-
-    def add_data_p(self, data):
-        print(f"💾 [Storage] 保存频域: {data['name']}")
-
-    def add_data_xy(self, data):
-        print(f"💾 [Storage] 保存XY: {data['name']}")
-
-
-adlink_bridge_instance = MockAdlinkBridge()
-
-
-def fourier_transform(data):
-    return [x * 0.1 for x in data]
 
 
 class BlockEngine:
