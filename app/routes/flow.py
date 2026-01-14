@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 
-from node.engine import make_dynamic_engine, get_json_blocks, BlockEngine, run_schema
+from node.run import make_dynamic_engine, get_json_blocks, run_schema
 
 
 USER_ID = "default"

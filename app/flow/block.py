@@ -137,6 +137,16 @@ class Block:
                     value = min(opt.max, value)
             opt.value = value
 
+    def reset(self):
+        """重置运行时状态，保持配置不变"""
+        # 清除输入
+        for key in self._inputs:
+            self._inputs[key] = None
+        # 清除输出
+        for key in self._outputs:
+            self._outputs[key] = None
+        # 如果有缓存的中间计算状态（如累计和、历史 buffer），也在这里清除
+
     def on_compute(self):
         pass
 
