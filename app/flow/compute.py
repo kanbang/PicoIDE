@@ -125,41 +125,43 @@ class ComputeEngine:
         异步执行：基于 Event 驱动的最大化并行调度
         """
         self.log("🚀 开始异步并行执行...")
+        
+        # 1. 准备所有节点的事件
         done_events = {n_id: asyncio.Event() for n_id in self.instances}
 
         async def execute_node(n_id: str, block: Block, transfers: List[Tuple[Block, str, str]]):
-            # 1. 等待所有父节点完成（并行监听）
-            parent_ids = [nid for nid, b in self.instances.items() if any(t[0] == b for t in transfers)]
-            if parent_ids:
-                await asyncio.gather(*(done_events[pid].wait() for pid in parent_ids))
+            # 2. 等待当前节点的所有前驱节点完成
+            # 我们通过 transfers 列表直接获取依赖的源 Block
+            if transfers:
+                # 提取所有源 Block 的 instance_id
+                dependency_ids = [src_b.instance_id for src_b, _, _ in transfers]
+                # 并行等待这些 ID 对应的 Event
+                await asyncio.gather(*(done_events[dep_id].wait() for dep_id in dependency_ids))
 
-            # 2. 准备数据流
+            # 3. 静态数据搬运（此时前驱节点已确保 outputs 就绪）
             for src_block, src_port, dst_port in transfers:
                 block._inputs[dst_port] = src_block._outputs.get(src_port)
 
-            # 3. 异步计算
+            # 4. 执行异步计算逻辑
             try:
+                # 调用 Block 的异步执行接口
                 await block.async_on_compute()
                 self.log(f"✅ 节点 {block.name} [{block.instance_id}] 执行完成")
             except Exception as e:
                 self.log(f"💥 节点 {block.name} [{block.instance_id}] 执行出错: {e}")
-                raise e
+                raise e # 向上抛出以触发 gather 的异常终止
             finally:
+                # 无论成功失败都必须 set，防止下游节点永久死锁
                 done_events[n_id].set()
 
-        # 并发启动所有节点
+        # 5. 启动所有任务
         try:
-            tasks = [
-                execute_node(nid, block, trans) 
-                for nid, (block, trans) in zip(self.instances.keys(), [s[1] for s in self._compiled_sequence])
+            # 直接从预编译序列创建任务，保证数据一致性
+            async_tasks = [
+                execute_node(block.instance_id, block, transfers)
+                for block, transfers in self._compiled_sequence
             ]
-            # 修正：我们需要按实例查找 transfers，这里通过预编译序列更安全
-            async_tasks = []
-            for n_id, inst in self.instances.items():
-                # 找到该实例对应的 transfers
-                _, trans = next(item for item in self._compiled_sequence if item[0] == inst)
-                async_tasks.append(execute_node(n_id, inst, trans))
-
+            
             await asyncio.gather(*async_tasks)
             self.log("✨ 异步流程全部执行完毕")
         except Exception as e:
