@@ -40,8 +40,9 @@ class Option:
 
 
 class Block:
-    def __init__(self, name: str):
+    def __init__(self, name: str, category: str = None):
         self.name = name
+        self.category = category
         self._inputs: Dict[str, Any] = {}
         self._outputs: Dict[str, Any] = {}
         self._options: Dict[str, Option] = {}
@@ -156,6 +157,7 @@ class Block:
     def export_config(self):
         return {
             "name": self.name,
+            "category": self.category,
             "inputs": [{"name": n} for n in self._input_names],
             "outputs": [{"name": n} for n in self._output_names],
             "options": [opt.to_dict() for opt in self._options.values()],
