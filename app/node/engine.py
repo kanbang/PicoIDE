@@ -1,4 +1,4 @@
-from app.flow.compute import Block, ComputeEngine
+from flow.compute import Block, ComputeEngine
 from node.daq import daq_blocks
 from typing import Any, List
 
