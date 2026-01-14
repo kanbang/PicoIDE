@@ -452,27 +452,51 @@ class AngularResamplingBlock(Block):
         self.add_input("I-RPM-XY")
         self.add_output("O-List-XY")
         self.add_integer_option("每转采样点数", default=128, min_val=16, max_val=1024)
-
+    
     def on_compute(self):
         vib_data = self.get_interface("I-Vibration-XY")
         rpm_data = self.get_interface("I-RPM-XY")
         if not (vib_data and rpm_data):
             return
-        vib = vib_data["data"]
-        rpm = rpm_data["data"]
-        t = np.array(vib["x"])
-        vib_y = np.array(vib["y"])
-        rpm_y = np.array(rpm["y"])
-        dt = np.diff(t, prepend=t[0])
-        angular_speed_deg_s = rpm_y * 6
+
+        # 1. 提取数据
+        vib_x = np.array(vib_data["data"]["x"]) # 20000 点
+        vib_y = np.array(vib_data["data"]["y"])
+        
+        rpm_x = np.array(rpm_data["data"]["x"]) # 5000 点
+        rpm_y = np.array(rpm_data["data"]["y"])
+
+        # 2. 核心修复：对齐时间轴
+        # 将转速值插值到振动的时间戳上，确保两者长度一致
+        rpm_interp_func = interp1d(rpm_x, rpm_y, kind='linear', bounds_error=False, fill_value="extrapolate")
+        aligned_rpm_y = rpm_interp_func(vib_x)  # 现在是 20000 点
+
+        # 3. 计算累计角度 (基于振动的高精时间轴)
+        dt = np.diff(vib_x, prepend=vib_x[0])
+        angular_speed_deg_s = aligned_rpm_y * 6  # RPM to Deg/s (1 RPM = 6 Deg/s)
         cumulative_angle = np.cumsum(angular_speed_deg_s * dt)
+
+        # 4. 执行重采样
         points_per_rev = self.get_option("每转采样点数")
         total_revs = cumulative_angle[-1] / 360
+        
+        if total_revs <= 0: return
+
+        # 生成等角度的目标刻度
         target_angles = np.linspace(0, total_revs * 360, int(total_revs * points_per_rev), endpoint=False)
+        
+        # 建立 角度->振动幅值 的映射
         interp_func = interp1d(cumulative_angle, vib_y, kind='linear', bounds_error=False, fill_value=0)
         resampled_y = interp_func(target_angles)
-        self.set_interface("O-List-XY", {"type": "angular", "data": {"x": target_angles.tolist(), "y": resampled_y.tolist()}})
 
+        # 5. 输出
+        self.set_interface("O-List-XY", {
+            "type": "angular", 
+            "data": {
+                "x": target_angles.tolist(), 
+                "y": resampled_y.tolist()
+            }
+        })
 
 class StatisticsBlock(Block):
     def __init__(self):
@@ -545,23 +569,22 @@ class WriteCSVBlock(Block):
             df.to_csv(file_path, mode=mode, header=header, index=False)
         except Exception as e:
             print(f"WriteCSVBlock 错误: {e}")
+import json
+
 class GenerateHTMLChartBlock(Block):
     def __init__(self):
         super().__init__("GenerateHTMLChart", category="Sink")
         self.add_input("I-List-XY")
         self.add_text_input_option("文件路径", default="chart.html")
-        self.add_text_input_option("图表标题", default="DAQ Chart")
+        self.add_text_input_option("图表标题", default="DAQ Interactive Chart")
         self.add_select_option("图表类型", items=["line", "scatter", "bar"], default="line")
-        
-        # 尺寸配置（保持之前优化）
-        self.add_integer_option("图表宽度 (px)", default=1200, min_val=600, max_val=2000)
-        self.add_integer_option("图表高度 (px)", default=700, min_val=400, max_val=1200)
-        
-        # 新增交互选项
-        self.add_checkbox_option("启用X轴缩放/拖动", default=True)
-        self.add_checkbox_option("显示重置缩放按钮", default=True)
+        self.add_integer_option("图表宽度 (px)", default=1200)
+        self.add_integer_option("图表高度 (px)", default=700)
         self.add_checkbox_option("显示网格线", default=True)
         self.add_checkbox_option("显示图例", default=True)
+        # 新增控制选项
+        self.add_checkbox_option("允许滚轮缩放", default=True)
+        self.add_checkbox_option("允许鼠标拖拽", default=True)
 
     def on_compute(self):
         i_data = self.get_interface("I-List-XY")
@@ -575,154 +598,112 @@ class GenerateHTMLChartBlock(Block):
         file_path = self.get_option("文件路径")
         title = self.get_option("图表标题")
         chart_type = self.get_option("图表类型")
-        
         width = self.get_option("图表宽度 (px)")
         height = self.get_option("图表高度 (px)")
-        enable_zoom = self.get_option("启用X轴缩放/拖动")
-        show_reset_btn = self.get_option("显示重置缩放按钮")
         show_grid = self.get_option("显示网格线")
         show_legend = self.get_option("显示图例")
+        enable_zoom = self.get_option("允许滚轮缩放")
+        enable_pan = self.get_option("允许鼠标拖拽")
 
-        # 自动判断X轴标签
         typ = i_data.get("type", "")
-        x_label = ("Time (s)" if typ in ["channel", "filtered", "envelope"] else
+        x_label = ("Time (s)" if typ in ["channel", "filtered", "envelope", "torsional"] else
                    "Frequency (Hz)" if typ == "fourier" else
                    "Order" if typ == "order" else "X")
 
-        # Zoom插件配置字符串（仅在启用时注入）
-        zoom_plugin_script = ""
-        zoom_options = ""
-        if enable_zoom:
-            zoom_plugin_script = '<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>'
-            zoom_options = """
-                zoom: {
-                    wheel: {
-                        enabled: true,
-                    },
-                    drag: {
-                        enabled: true,
-                        backgroundColor: 'rgba(75,192,192,0.2)',
-                        borderColor: 'rgb(75,192,192)',
-                        borderWidth: 1
-                    },
-                    mode: 'x',
-                },
-                pan: {
-                    enabled: true,
-                    mode: 'x',
-                },
-            """
-
-        # 重置按钮HTML（仅在启用且用户选择时显示）
-        reset_btn_html = ""
-        if enable_zoom and show_reset_btn:
-            reset_btn_html = '''
-                <div style="text-align:center; margin:15px 0;">
-                    <button onclick="myChart.resetZoom()" style="padding:8px 16px; font-size:14px; cursor:pointer;">
-                        重置缩放
-                    </button>
-                </div>
-            '''
-
+        # HTML 模板包含 Zoom 插件
         html_content = f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{title}</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    {zoom_plugin_script}
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
     <style>
-        body {{
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f9f9f9;
-        }}
-        .chart-container {{
-            max-width: {width}px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }}
-        canvas {{
-            width: 100% !important;
-            height: {height}px !important;
-        }}
-        h2 {{
-            text-align: center;
-            color: #333;
+        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 20px; }}
+        .header {{ text-align: center; margin-bottom: 10px; }}
+        .hint {{ font-size: 0.85em; color: #666; text-align: center; margin-bottom: 10px; }}
+        .chart-container {{ 
+            width: {width}px; height: {height}px; 
+            margin: 0 auto; background: white; padding: 15px;
+            border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            position: relative;
         }}
     </style>
 </head>
 <body>
-    <h2>{title}</h2>
-    {reset_btn_html}
+    <div class="header"><h2>{title}</h2></div>
+    <div class="hint">提示：滚轮缩放，按住鼠标拖拽平移，<b>双击图表重置视图</b></div>
     <div class="chart-container">
         <canvas id="myChart"></canvas>
     </div>
+
     <script>
         const ctx = document.getElementById('myChart').getContext('2d');
-        const myChart = new Chart(ctx, {{
+        const chart = new Chart(ctx, {{
             type: '{chart_type}',
             data: {{
                 labels: {x},
                 datasets: [{{
                     label: '{title}',
                     data: {y},
-                    borderColor: 'rgb(75, 192, 192)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    tension: 0.2,
-                    fill: false,
-                    pointRadius: 2
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    borderWidth: 1.5,
+                    tension: 0.1,
+                    pointRadius: 1,
+                    fill: { 'true' if chart_type == 'area' else 'false' }
                 }}]
             }},
             options: {{
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {{
-                    legend: {{
-                        display: {str(show_legend).lower()}
-                    }},
-                    {zoom_options}
+                    legend: {{ display: {str(show_legend).lower()} }},
+                    zoom: {{
+                        pan: {{
+                            enabled: {str(enable_pan).lower()},
+                            mode: 'x', // 仅在 X 轴拖拽
+                            threshold: 10
+                        }},
+                        zoom: {{
+                            wheel: {{ enabled: {str(enable_zoom).lower()} }},
+                            pinch: {{ enabled: true }},
+                            mode: 'x', // 仅在 X 轴缩放
+                        }}
+                    }}
                 }},
                 scales: {{
                     x: {{
-                        title: {{
-                            display: true,
-                            text: '{x_label}',
-                            font: {{ size: 14 }}
-                        }},
-                        grid: {{
-                            display: {str(show_grid).lower()}
-                        }}
+                        title: {{ display: true, text: '{x_label}' }},
+                        grid: {{ display: {str(show_grid).lower()} }}
                     }},
                     y: {{
-                        title: {{
-                            display: true,
-                            text: 'Amplitude',
-                            font: {{ size: 14 }}
-                        }},
-                        grid: {{
-                            display: {str(show_grid).lower()}
-                        }}
+                        title: {{ display: true, text: 'Amplitude' }},
+                        grid: {{ display: {str(show_grid).lower()} }}
                     }}
+                }},
+                onHover: (e) => {{
+                    e.native.target.style.cursor = 'crosshair';
                 }}
             }}
+        }});
+
+        // 双击重置缩放逻辑
+        window.addEventListener('dblclick', () => {{
+            chart.resetZoom();
         }});
     </script>
 </body>
 </html>
-        """
-
+"""
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
-            print(f"HTML图表已保存: {file_path} (尺寸: {width}x{height}px, X轴缩放: {'启用' if enable_zoom else '禁用'})")
+            print(f"✅ 交互式图表已生成: {file_path}")
         except Exception as e:
-            print(f"GenerateHTMLChartBlock 错误: {e}")
+            print(f"❌ 写入文件失败: {e}")
 
 class MQTTPublishBlock(Block):
     def __init__(self):

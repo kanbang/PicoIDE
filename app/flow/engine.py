@@ -9,51 +9,41 @@ class ComputeEngine:
         self.block_templates: Dict[str, Block] = {}
         self.instances: Dict[str, Block] = {}
         self.on_log = print
-        
-        # 预编译生成的执行指令集：[(当前节点, [(源节点, 源端口, 目标端口), ...]), ...]
-        # 这种结构在 run 时完全避开了字典查找，直接操作对象指针
         self._compiled_sequence: List[Tuple[Block, List[Tuple[Block, str, str]]]] = []
 
     def log(self, msg: str):
-        if self.on_log:
-            self.on_log(f"[Engine] {msg}")
+        if self.on_log: self.on_log(f"[Engine] {msg}")
 
     def register_blocks(self, blocks: List[Block]):
-        """注册 Block 模板库"""
-        for b in blocks:
-            self.block_templates[b.name] = b
+        for b in blocks: self.block_templates[b.name] = b
 
     def export_all_blocks(self) -> List[Dict]:
         """导出所有注册节点的配置描述"""
         return [b.export_config() for b in self.block_templates.values()]
 
-    def set_schema(self, schema: Dict[str, Any]):
-        """
-        静态编译阶段：解析、校验、排序并生成高性能执行指令
-        """
-        self.log("🛠️  正在预编译流图并进行静态安全检查...")
-        
-        temp_graph = nx.DiGraph()
-        self.instances = {}
-        port_to_node = {} # 临时映射：port_id -> (node_id, port_name)
 
-        # 1. 节点实例化与配置解析
+    def set_schema(self, schema: Dict[str, Any]):
+        self.log("🛠️  正在修复预编译逻辑以支持多重连接...")
+        
+        # --- 使用 MultiDiGraph 而不是 DiGraph ---
+        temp_graph = nx.MultiDiGraph() 
+        self.instances = {}
+        port_to_node = {} 
+
+        # 1. 节点实例化
         for node_data in schema["nodes"]:
             t_name = node_data["type"]
             n_id = node_data["id"]
             template = self.block_templates.get(t_name)
             
             if not template:
-                self.log(f"⚠️  警告: 找不到类型为 {t_name} 的 Block 模板")
                 continue
 
-            # 使用 deepcopy 实现状态隔离，每个实例独立运行
             instance = copy.deepcopy(template)
-            instance.instance_id = n_id  # 关键：注入 ID 用于日志寻址
+            instance.instance_id = n_id
             self.instances[n_id] = instance
             temp_graph.add_node(n_id)
 
-            # 解析端口与配置项
             for key, info in node_data.get("inputs", {}).items():
                 p_id = info["id"]
                 if key in instance._options:
@@ -69,34 +59,35 @@ class ComputeEngine:
             src = port_to_node.get(conn["from"])
             dst = port_to_node.get(conn["to"])
             if src and dst:
-                # src[0] 是 node_id, src[1] 是端口名
-                temp_graph.add_edge(src[0], dst[0], link=(src[1], dst[1]))
+                # --- 核心修改 2: MultiDiGraph 的 add_edge 不会覆盖旧边 ---
+                temp_graph.add_edge(src[0], dst[0], out_p=src[1], in_p=dst[1])
 
-        # 3. 工业级安全校验：环路检测
+        # 3. 环路检测 (MultiDiGraph 同样支持)
         try:
-            cycle = list(nx.find_cycle(temp_graph, orientation="original"))
-            self.log(f"❌ 关键错误: 检测到环路依赖 {cycle}。编译终止。")
+            nx.find_cycle(temp_graph, orientation="original")
             raise ValueError("Flowchart contains cycles")
         except nx.NetworkXNoCycle:
             pass
 
-        # 4. 极致性能编译：生成指令序列
+        # 4. 生成指令序列
         self._compiled_sequence = []
+        # 注意：topological_sort 在 MultiDiGraph 上工作正常
         execution_order = list(nx.topological_sort(temp_graph))
         
         for n_id in execution_order:
             current_instance = self.instances[n_id]
             transfers = []
             
-            # 找到所有前驱节点，预存其引用
-            for pred_id in temp_graph.predecessors(n_id):
-                edge = temp_graph.get_edge_data(pred_id, n_id)
-                out_p, in_p = edge["link"]
+            # --- 核心修改 3: 遍历所有入边 (in_edges)，处理多重连接 ---
+            # data=True 会返回我们存储在 edge 中的属性字典
+            for pred_id, _, edge_data in temp_graph.in_edges(n_id, data=True):
+                out_p = edge_data["out_p"]
+                in_p = edge_data["in_p"]
                 transfers.append((self.instances[pred_id], out_p, in_p))
             
             self._compiled_sequence.append((current_instance, transfers))
 
-        self.log(f"✅ 完成：构建了 {len(self.instances)} 个节点，执行序列已就绪")
+        self.log(f"✅ 编译完成。执行序列中包含多重数据流转指令。")
 
     def run(self):
         """
