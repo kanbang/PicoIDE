@@ -785,7 +785,21 @@ result.add_compute(result_func)
 7. 运行过程中打印有好的提示信息，并可以反馈到外部，
 
 
-
+### option 类型
+Button
+Checkbox
+Integer
+Number
+Select
+Slider
+Text
+TextInput
+TextareaInput
+其中
+Button不需要value
+其他的可以有默认值
+Integer、Number、Slider支持min, max
+Select支持Option
 
 
 

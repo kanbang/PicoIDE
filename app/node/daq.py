@@ -7,7 +7,7 @@ from types import MethodType
 from node.block import Block
 
 # 假设这是你的 bridge 实例
-# from your_module import adlink_bridge_instance 
+# from your_module import adlink_bridge_instance
 
 
 class AdlinkBridge:
@@ -45,17 +45,17 @@ class AdlinkBridge:
         if self.ch_data is None:
             # 模拟 100 个点，采样间隔 0.001s (1kHz)
             count = 100
-            fs = 1000 
+            fs = 1000
             start_time = time.time()
-            
+
             # 生成时间轴 x 和 振幅 y (简谐振动 + 噪声)
-            x_data = [start_time + i * (1/fs) for i in range(count)]
+            x_data = [start_time + i * (1 / fs) for i in range(count)]
             y_data = [
-                math.sin(2 * math.pi * 50 * (i/fs) + channel) + # 50Hz 信号
-                0.2 * math.sin(2 * math.pi * 120 * (i/fs))         # 120Hz 谐波
+                math.sin(2 * math.pi * 50 * (i / fs) + channel)  # 50Hz 信号
+                + 0.2 * math.sin(2 * math.pi * 120 * (i / fs))  # 120Hz 谐波
                 for i in range(count)
             ]
-            
+
             return {"x": x_data, "y": y_data}
 
         return self.ch_data.get(channel)
@@ -100,38 +100,40 @@ class ChannelBlock(Block):
     def __init__(self):
         super().__init__("Channel")
         self.add_output("O-List-XY")
-        self.add_option("启用", "CheckboxOption", True)
-        self.add_option("通道", "SelectOption", "Channel 0", 
-                        [f"Channel {i}" for i in range(8)])
+        self.add_checkbox_option("启用", default=True)
+        self.add_select_option(
+            "通道", items=[f"Channel {i}" for i in range(8)], default="Channel 0"
+        )
 
     def on_compute(self):
-        on = self.get_option("启用")
-        if not on: return
-
+        if not self.get_option("启用"):
+            return
         channel_str = self.get_option("通道")
-        channel_idx = int(channel_str.split(" ")[1]) # 提取数字
+        channel_idx = int(channel_str.split(" ")[1])
 
-        # 调用硬件接口
-        data = adlink_bridge_instance.get_channel_data(channel_idx)
-
+        data = {
+            "x": list(range(100)),
+            "y": np.sin(np.linspace(0, 10, 100)).tolist(),
+        }  # 模拟数据
         self.set_interface("O-List-XY", {"type": "channel", "data": data})
+
 
 class ToList1DBlock(Block):
     def __init__(self):
         super().__init__("ToList1D")
         self.add_input("I-List-XY")
         self.add_output("O-List-V")
-        self.add_option("输出", "SelectOption", "Y", ["X", "Y"])
+        self.add_select_option("输出", items=["X", "Y"], default="Y")
 
     def on_compute(self):
         i_data_xy = self.get_interface("I-List-XY")
-        if not i_data_xy: return
-        
-        vout = self.get_option("输出")
-        # 这里的 i_data_xy["data"] 结构取决于 Channel 或其他节点的输出
-        data_source = i_data_xy["data"]["x"] if vout == "X" else i_data_xy["data"]["y"]
-        
+        if not i_data_xy:
+            return
+
+        vout = self.get_option("输出").lower()  # 转为小写 x 或 y
+        data_source = i_data_xy["data"].get(vout, [])
         self.set_interface("O-List-V", {"type": "list1d", "data": data_source})
+
 
 class ToList2DBlock(Block):
     def __init__(self):
@@ -143,54 +145,57 @@ class ToList2DBlock(Block):
     def on_compute(self):
         i_data_x = self.get_interface("I-List-X")
         i_data_y = self.get_interface("I-List-Y")
-        if not (i_data_x and i_data_y): return
+        if not (i_data_x and i_data_y):
+            return
 
-        self.set_interface("O-List-XY", {
-            "type": "list2d",
-            "data": {"x": i_data_x["data"], "y": i_data_y["data"]}
-        })
+        self.set_interface(
+            "O-List-XY",
+            {"type": "list2d", "data": {"x": i_data_x["data"], "y": i_data_y["data"]}},
+        )
+
 
 class FourierTransformBlock(Block):
     def __init__(self):
         super().__init__("FourierTransform")
         self.add_input("I-List-V")
         self.add_output("O-List-XY")
-        self.add_option("绝对值", "CheckboxOption", True)
+        self.add_checkbox_option("绝对值", default=True)
 
     def _do_fft(self, signal, seconds=1.0):
-        """内部傅里叶算法逻辑"""
         N = len(signal)
+        if N == 0:
+            return {"x": [], "y": []}
         fs = N / seconds
         fft_result = np.fft.fft(signal)
         magnitude = np.abs(fft_result) / N * 2
-        magnitude = magnitude[:N//2]
-        freqs = np.fft.fftfreq(N, 1/fs)[:N//2]
+        magnitude = magnitude[: N // 2]
+        freqs = np.fft.fftfreq(N, 1 / fs)[: N // 2]
         return {"x": freqs.tolist(), "y": magnitude.tolist()}
 
     def on_compute(self):
         i_data = self.get_interface("I-List-V")
-        if not i_data: return
-        
-        # 执行算法
+        if not i_data:
+            return
         fdata = self._do_fft(i_data["data"])
-        
         self.set_interface("O-List-XY", {"type": "fourier", "data": fdata})
+
 
 class ResultBlock(Block):
     def __init__(self):
         super().__init__("Result")
         self.add_input("List-XY")
-        self.add_option("类型", "SelectOption", "时域", ["时域", "频域", "FREE"])
-        self.add_option("名称", "InputOption", "")
+        self.add_select_option("类型", items=["时域", "频域", "FREE"], default="时域")
+        self.add_text_input_option("名称", default="New Plot")
 
     def on_compute(self):
         i_data = self.get_interface("List-XY")
-        if not i_data: return
+        if not i_data:
+            return
 
         t = self.get_option("类型")
         name = self.get_option("名称")
         payload = {"name": name, "value": i_data["data"]}
-        
+
         if t == "时域":
             adlink_bridge_instance.add_data_t(payload)
         elif t == "频域":
@@ -204,5 +209,5 @@ daq_blocks = [
     ToList1DBlock(),
     ToList2DBlock(),
     FourierTransformBlock(),
-    ResultBlock()
+    ResultBlock(),
 ]
