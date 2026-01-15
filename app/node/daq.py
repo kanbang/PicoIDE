@@ -775,22 +775,22 @@ class ChannelSource(BaseBlock):
 class TurbineSimulator(BaseBlock):
     """
     核电汽轮机高精度扭振模拟器 (V2.0 修正版)
-
+    
     功能：
     - 模拟核电长轴系的多阶扭振模态 (12.5Hz SSR, 100Hz 电气波动)
     - 采用脉冲差分算法，使平均转速能够追踪瞬时趋势
     - 模拟径向振动与叶片通过频率 (BPF)
     """
-
+    
     def __init__(self):
         super().__init__("TurbineSimulator", category="Source")
-
+        
         # --- 基础运行参数 ---
         self.add_number_option("额定转速 (RPM)", default=1500.0, min_val=0.0)
         self.add_number_option("电网频率 (Hz)", default=50.0, min_val=40.0)
         self.add_number_option("采样率 (Hz)", default=12800.0, min_val=1000.0)
         self.add_number_option("模拟时长 (s)", default=5.0, min_val=0.1)
-
+        
         # --- 扭振与稳定性参数 ---
         self.add_number_option(
             "转速稳定性 (%)", default=99.98, min_val=0.0, max_val=100.0
@@ -798,14 +798,14 @@ class TurbineSimulator(BaseBlock):
         self.add_number_option("扭振模态1频率 (Hz)", default=12.5, min_val=0.1)
         self.add_number_option("扭振阻尼比", default=0.01, min_val=0.001)
         self.add_number_option("电气激励占比 (%)", default=5.0, min_val=0.0)
-
+        
         # --- 机械特征参数 ---
         self.add_integer_option(
             "键相脉冲 PPR", default=64, min_val=1
         )  # 推荐设为64以看清趋势
         self.add_number_option("1X 振幅 (μm)", default=25.0, min_val=0.0)
         self.add_integer_option("叶片数 (BPF)", default=50, min_val=1)
-
+        
         # 输出
         self.add_output("O-Pulse-XY")  # 原始脉冲信号 (TTL)
         self.add_output("O-InstantRPM-XY")  # 物理真值转速
@@ -888,11 +888,16 @@ class TurbineSimulator(BaseBlock):
             # 寻找上升沿索引
             rising_edges = np.where((pulse[:-1] < 2.5) & (pulse[1:] >= 2.5))[0]
             if len(rising_edges) > 1:
-                t_edges = t[rising_edges]
-                dt_edges = np.diff(t_edges)  # 相邻齿通过的时间差
-                # 每一齿转过的角度是 (1/PPR) 转
+                t_edges = np.zeros(len(rising_edges))
+                for j, idx in enumerate(rising_edges):
+                    if pulse[idx-1] < 2.5 and pulse[idx] >= 2.5:
+                        fraction = (2.5 - pulse[idx-1]) / (pulse[idx] - pulse[idx-1])
+                        t_edges[j] = t[idx-1] + fraction * dt
+                dt_edges = np.diff(t_edges)
+                # 避免除零
+                dt_edges[dt_edges == 0] = dt  # 如果dt=0，用最小dt替换
                 rpm_avg_val = (60.0 / ppr) / dt_edges
-                t_rpm_avg = t_edges[1:]  # 采样时刻对齐
+                t_rpm_avg = t_edges[1:]  # 对齐
             else:
                 t_rpm_avg, rpm_avg_val = [], []
 
@@ -991,8 +996,7 @@ class TurbineSimulator(BaseBlock):
 
         except Exception as e:
             self._log_error(e, "TurbineSimulator")
-
-
+            
 class CSVReader(BaseBlock):
     """
     从CSV文件读取XY数据
