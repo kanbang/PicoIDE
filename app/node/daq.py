@@ -738,7 +738,7 @@ class ChannelSource(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("ChannelSource", category="Source")
+        super().__init__("ChannelSource", category="输入")
         self.add_output("O-List-XY")
         self.add_checkbox_option("启用", default=True)
         self.add_select_option(
@@ -783,7 +783,7 @@ class TurbineSimulator(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("TurbineSimulator", category="Source")
+        super().__init__("TurbineSimulator", category="输入")
 
         # --- 基础运行参数 ---
         self.add_number_option("额定转速 (RPM)", default=1500.0, min_val=0.0)
@@ -1004,7 +1004,7 @@ class CSVReader(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("CSVReader", category="Source")
+        super().__init__("CSVReader", category="输入")
         self.add_text_input_option("文件路径", default="data.csv")
         self.add_text_input_option("X列名 (可选)", default="")
         self.add_text_input_option("Y列名 (可选)", default="")
@@ -1077,7 +1077,7 @@ class ConstantSource(BaseBlock):
     """输出常量值（用于测试或参数注入）"""
 
     def __init__(self):
-        super().__init__("ConstantSource", category="Source")
+        super().__init__("ConstantSource", category="输入")
         self.add_text_input_option("常量值", default="0.0")
         self.add_output("O-Value")
 
@@ -1110,7 +1110,7 @@ class XYSplitter(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("XYSplitter", category="Conversion")
+        super().__init__("XYSplitter", category="预处理")
         self.add_input("I-List-XY")
         self.add_output("O-List-X")
         self.add_output("O-List-Y")
@@ -1145,7 +1145,7 @@ class XYMerger(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("XYMerger", category="Conversion")
+        super().__init__("XYMerger", category="预处理")
         self.add_input("I-List-X")
         self.add_input("I-List-Y")
         self.add_output("O-List-XY")
@@ -1211,7 +1211,7 @@ class TimeWindow(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("TimeWindow", category="Processing")
+        super().__init__("TimeWindow", category="信号处理")
 
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
@@ -1348,7 +1348,7 @@ class SignalFilter(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("SignalFilter", category="Processing")
+        super().__init__("SignalFilter", category="信号处理")
 
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
@@ -1434,7 +1434,7 @@ class EnvelopeDetector(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("EnvelopeDetector", category="Processing")
+        super().__init__("EnvelopeDetector", category="信号处理")
 
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
@@ -1492,7 +1492,7 @@ class FFT(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("FFT", category="Transform")
+        super().__init__("FFT", category="分析")
 
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
@@ -1577,7 +1577,7 @@ class SpectralAverager(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("SpectralAverager", category="Analysis")
+        super().__init__("SpectralAverager", category="分析")
 
         self.add_input("I-Spectrum-List")
         self.add_output("O-Spectrum")
@@ -1645,7 +1645,7 @@ class Stats(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("Stats", category="Analysis")
+        super().__init__("Stats", category="分析")
 
         self.add_input("I-List-XY")
         self.add_output("O-Dict")
@@ -1700,7 +1700,7 @@ class TachoToRPM(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("TachoToRPM", category="Order Analysis")
+        super().__init__("TachoToRPM", category="阶次分析")
 
         self.add_input("I-Pulse-XY")
         self.add_output("O-RPM-XY")
@@ -1786,7 +1786,7 @@ class AngularResampler(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("AngularResampler", category="Order Analysis")
+        super().__init__("AngularResampler", category="阶次分析")
 
         self.add_input("I-Vibration-XY")
         self.add_input("I-Pulse-XY")
@@ -1913,7 +1913,7 @@ class RPMTrackedFFT(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("RPMTrackedFFT", category="Advanced")
+        super().__init__("RPMTrackedFFT", category="阶次分析")
 
         self.add_input("I-Signal-XY")
         self.add_input("I-Speed-XY")
@@ -2013,7 +2013,7 @@ class OrderMap(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("OrderMap", category="Advanced")
+        super().__init__("OrderMap", category="阶次分析")
 
         self.add_input("I-Signal-XY")   # 振动信号（时间域）
         self.add_input("I-Speed-XY")    # 转速信号（RPM）
@@ -2161,7 +2161,7 @@ class ResultSink(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("ResultSink", category="Sink")
+        super().__init__("ResultSink", category="输出")
 
         self.add_input("List-XY")
         self.add_select_option("类型", items=["时域", "频域", "FREE"], default="时域")
@@ -2208,7 +2208,7 @@ class CSVSink(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("CSVSink", category="Sink")
+        super().__init__("CSVSink", category="输出")
 
         self.add_input("I-List-XY")
         self.add_text_input_option("文件路径", default="output.csv")
@@ -2262,7 +2262,7 @@ class BaseChartViewer(BaseBlock):
     - 可配置样式和交互
     """
 
-    def __init__(self, name: str, category: str = "Sink", default_type: str = "line"):
+    def __init__(self, name: str, category: str = "输出", default_type: str = "line"):
         super().__init__(name, category=category)
 
         self.add_input("I-List-XY")
@@ -2553,7 +2553,7 @@ class OrderMapChartViewer(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("OrderMapChartViewer", category="Sink")
+        super().__init__("OrderMapChartViewer", category="输出")
 
         self.add_input("I-OrderMap")
         self.add_text_input_option("文件路径", default="order_map_chart.html")
@@ -2814,7 +2814,7 @@ class MQTTPublisher(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("MQTTPublisher", category="Communication")
+        super().__init__("MQTTPublisher", category="通信")
 
         self.add_input("I-Any")
         self.add_text_input_option("Broker地址", default="broker.hivemq.com")
@@ -2865,7 +2865,7 @@ class Logger(BaseBlock):
     """
 
     def __init__(self):
-        super().__init__("Logger", category="Debug")
+        super().__init__("Logger", category="工具")
 
         self.add_input("I-Any")
         self.add_text_input_option("前缀", default="LOG:")
