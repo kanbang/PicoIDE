@@ -158,64 +158,85 @@ class ChannelSource(Block):
         data = adlink_bridge_instance.get_channel_data(channel_idx)
         self.set_interface("O-List-XY", {"type": "channel", "data": data})
 
-
 class TurbineSimulator(Block):
-    """汽轮机振动模拟器（核电典型工况：3000RPM，高稳定性）"""
+    """核电汽轮机振动模拟器（高稳定性基线 + 可控转速不稳工况，脉冲生成优化确保与转速严格一致）"""
     def __init__(self):
         super().__init__("TurbineSimulator", category="Source")
-        self.add_number_option("额定转速 (RPM)", default=3000.0, min_val=0.0, max_val=4500.0)
-        self.add_number_option("转速稳定性 (%)", default=99.5, min_val=80.0, max_val=100.0)
+        
+        self.add_number_option("额定转速 (RPM)", default=3000.0, min_val=1000.0, max_val=4500.0)
+        self.add_number_option("转速稳定性 (%)", default=99.9, min_val=90.0, max_val=100.0)
+        self.add_number_option("低频波动频率 (Hz)", default=0.01, min_val=0.0, max_val=1.0)
+        self.add_number_option("随机噪声幅度 (%)", default=0.001, min_val=0.0, max_val=0.5)
         self.add_integer_option("键相脉冲 PPR", default=1, min_val=1, max_val=120)
-        self.add_number_option("振动烈度 (μm)", default=50.0, min_val=0.0, max_val=500.0)
+        self.add_number_option("振动烈度 (μm pp)", default=50.0, min_val=0.0, max_val=500.0)
+        self.add_integer_option("叶片数 (BPF模拟)", default=0, min_val=0, max_val=200)
 
         self.add_output("O-Pulse-XY")
         self.add_output("O-Vibration-XY")
         self.add_output("O-InstantRPM-XY")
 
     def on_compute(self):
-        # 参数转换
         rpm_target = self.get_option("额定转速 (RPM)")
         f0 = rpm_target / 60.0
         stability = self.get_option("转速稳定性 (%)")
-        mod_depth = (100.0 - stability) / 100.0
+        mod_depth = max(0.0, (100.0 - stability) / 100.0)
+        f_mod = self.get_option("低频波动频率 (Hz)")
+        noise_amp = self.get_option("随机噪声幅度 (%)")
         ppr = self.get_option("键相脉冲 PPR")
-        scale = self.get_option("振动烈度 (μm)")
+        scale = self.get_option("振动烈度 (μm pp)") / 2.0
+        blade_count = self.get_option("叶片数 (BPF模拟)")
 
-        # 仿真时域（10秒数据）
         t_start, t_end = 0.0, 10.0
-        pulse_pts = 5000
-        vib_pts = 20000
-        f_mod = 0.1  # 慢速调节波动
+        high_res_pts = 50000
+        t = np.linspace(t_start, t_end, high_res_pts)
+        dt = t[1] - t[0]
 
-        # 脉冲通道：生成键相脉冲 + 瞬时转速
-        t_pulse = np.linspace(t_start, t_end, pulse_pts)
-        omega_t_pulse = 2 * np.pi * f0 * (1.0 + mod_depth * np.sin(2 * np.pi * f_mod * t_pulse))
-        instant_rpm = (omega_t_pulse / (2 * np.pi)) * 60.0
+        # 瞬时转频（低频 + 高频随机）
+        deterministic_mod = mod_depth * np.sin(2 * np.pi * f_mod * t)
+        random_mod = noise_amp * np.random.randn(len(t))
+        total_mod = deterministic_mod + random_mod
+        instantaneous_freq = f0 * (1.0 + total_mod)
+        instantaneous_rpm = instantaneous_freq * 60.0
 
-        dt_pulse = np.diff(t_pulse, prepend=t_pulse[0])
-        theta_pulse = np.cumsum(omega_t_pulse * dt_pulse)
+        # 累计角度（高精度）
+        omega_t = 2 * np.pi * instantaneous_freq
+        cumulative_angle = np.cumsum(omega_t) * dt
+        cumulative_angle -= cumulative_angle[0]
 
-        angle_per_pulse = 2 * np.pi / ppr
-        pulse_signal = (np.floor(theta_pulse / angle_per_pulse) % 2).astype(float) * 5.0
+        # === 优化脉冲生成：确保每转精确 PPR 个上升沿（占空比50%方波）===
+        period_angle = 2 * np.pi / ppr  # 每个脉冲周期对应角度
+        fraction = np.mod(cumulative_angle, period_angle) / period_angle  # 0~1
+        pulse_signal = (fraction < 0.5).astype(float) * 5.0  # 前半高，后半低
 
-        # 振动通道：基于角度合成典型阶次（1x, 2x, 7x）
-        t_vib = np.linspace(t_start, t_end, vib_pts)
-        theta_interp = interp1d(t_pulse, theta_pulse, kind='cubic', fill_value='extrapolate')
-        theta_t_vib = theta_interp(t_vib)
+        # === 振动信号（同累计角度）===
+        vibration = np.zeros_like(t)
+        vibration += 1.0 * np.sin(1.0 * cumulative_angle)
+        vibration += 0.3 * np.sin(2.0 * cumulative_angle + 0.5)
+        if blade_count > 0:
+            vibration += 0.15 * np.sin(blade_count * cumulative_angle + 1.0)
+        vibration += 0.03 * np.random.randn(len(t))
+        vibration *= scale
 
-        vibration = (
-            1.0 * np.sin(1.0 * theta_t_vib) +
-            0.4 * np.sin(2.0 * theta_t_vib + 0.8) +
-            0.1 * np.sin(7.0 * theta_t_vib + 1.2)
-        )
-        noise = 0.05 * np.random.randn(len(t_vib))
-        vibration = (vibration + noise) * scale
+        # === 瞬时转速降采样输出 ===
+        downsample_factor = 10
+        t_rpm = t[::downsample_factor]
+        instant_rpm_down = instantaneous_rpm[::downsample_factor]
 
         # 输出
-        self.set_interface("O-Pulse-XY", {"type": "pulse", "data": {"x": t_pulse.tolist(), "y": pulse_signal.tolist()}})
-        self.set_interface("O-Vibration-XY", {"type": "channel", "data": {"x": t_vib.tolist(), "y": vibration.tolist()}})
-        self.set_interface("O-InstantRPM-XY", {"type": "rpm", "data": {"x": t_pulse.tolist(), "y": instant_rpm.tolist()}})
+        self.set_interface("O-Pulse-XY", {
+            "type": "pulse",
+            "data": {"x": t.tolist(), "y": pulse_signal.tolist()}
+        })
 
+        self.set_interface("O-Vibration-XY", {
+            "type": "vibration",
+            "data": {"x": t.tolist(), "y": vibration.tolist()}
+        })
+
+        self.set_interface("O-InstantRPM-XY", {
+            "type": "rpm",
+            "data": {"x": t_rpm.tolist(), "y": instant_rpm_down.tolist()}
+        })
 
 class CSVReader(Block):
     """从CSV文件读取XY数据"""
@@ -409,31 +430,76 @@ class OrderFFT(Block):
         self.set_interface("O-List-XY", {"type": "order", "data": fdata})
 
 
+
 class TachoToRPM(Block):
-    """从键相脉冲提取瞬时转速曲线"""
+    """
+    高精度转速提取模块
+    针对高PPR场景优化：引入亚采样精度(Sub-sample)计算，彻底消除采样频率限制带来的计算失真。
+    """
     def __init__(self):
         super().__init__("TachoToRPM", category="Order Analysis")
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
-        self.add_number_option("脉冲阈值", default=2.0, min_val=0.0)
+        self.add_number_option("脉冲阈值 (V)", default=2.5, min_val=0.0, max_val=24.0)
+        self.add_integer_option("每转脉冲数 (PPR)", default=1, min_val=1, max_val=1000)
 
     def on_compute(self):
         i_data = self.get_interface("I-List-XY")
-        if not i_data:
+        if not i_data or "data" not in i_data: return
+
+        x = np.array(i_data["data"]["x"])
+        y = np.array(i_data["data"]["y"])
+        if len(y) < 2: return
+
+        threshold = self.get_option("脉冲阈值 (V)")
+        ppr = self.get_option("每转脉冲数 (PPR)")
+
+        # 1. 粗定位：寻找穿过阈值的索引位置
+        # 找到 y[i] < threshold 且 y[i+1] >= threshold 的点
+        idx_before = np.where((y[:-1] < threshold) & (y[1:] >= threshold))[0]
+        
+        if len(idx_before) < 2:
             return
-        data = i_data["data"]
-        x = np.array(data["x"])
-        y = np.array(data["y"])
-        threshold = self.get_option("脉冲阈值")
-        pulse_times = x[y > threshold]
-        if len(pulse_times) < 2:
-            return
-        intervals = np.diff(pulse_times)
-        rpm_per_interval = 60.0 / intervals
-        interp_func = interp1d(pulse_times[1:], rpm_per_interval, kind='linear',
-                               bounds_error=False, fill_value="extrapolate")
-        rpm_out = interp_func(x)
-        self.set_interface("O-List-XY", {"type": "rpm", "data": {"x": x.tolist(), "y": rpm_out.tolist()}})
+
+        # 2. 亚采样精度计算：线性插值确定精确时刻
+        # 原理：t_precise = t0 + (threshold - y0) * (t1 - t0) / (y1 - y0)
+        t_precise = []
+        for i in idx_before:
+            x0, x1 = x[i], x[i+1]
+            y0, y1 = y[i], y[i+1]
+            
+            # 线性内插，求出穿越 threshold 的确切浮点时间
+            dt_sub = (threshold - y0) / (y1 - y0)
+            t_sub = x0 + dt_sub * (x1 - x0)
+            t_precise.append(t_sub)
+        
+        t_precise = np.array(t_precise)
+
+        # 3. 计算转速 (RPM = 60 / (dt * PPR))
+        intervals = np.diff(t_precise)
+        # 过滤极小间隔（防止除零或高频噪声导致的虚假极高转速）
+        intervals = np.where(intervals < 1e-7, 1e-7, intervals)
+        
+        rpm_values = (60.0 / intervals) / ppr
+        
+        # 计算时间轴上的中心点
+        t_mid = (t_precise[:-1] + t_precise[1:]) / 2.0
+
+        # 4. 平滑插值
+        # 当PPR较高时，使用三次样条插值(cubic)可以更好地还原转速波动的连续性
+        try:
+            kind = 'cubic' if len(t_mid) > 3 else 'linear'
+            interp_func = interp1d(t_mid, rpm_values, kind=kind, 
+                                   bounds_error=False, 
+                                   fill_value=(rpm_values[0], rpm_values[-1]))
+            rpm_full = interp_func(x)
+        except:
+            rpm_full = np.interp(x, t_mid, rpm_values)
+
+        self.set_interface("O-List-XY", {
+            "type": "rpm",
+            "data": {"x": x.tolist(), "y": rpm_full.tolist()}
+        })
 
 
 class AngularResampler(Block):
