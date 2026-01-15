@@ -152,83 +152,99 @@ class ChannelBlock(Block):
         self.set_interface("O-List-XY", {"type": "channel", "data": data})
 
 
-
-class NonUniformSpeedSimulatorBlock(Block):
+class TurbineSimBlock(Block):
     def __init__(self):
-        super().__init__("NonUniformSpeedSimulator", category="Source")
+        super().__init__("TurbineSim", category="Source")
         
-        # 只保留最核心、常用的参数
-        self.add_number_option("基本转频 (Hz)", default=2.0, min_val=0.1, max_val=50.0)
-        self.add_number_option("转速波动幅度 (%)", default=30.0, min_val=0.0, max_val=100.0)
-        self.add_number_option("波动频率 (Hz)", default=0.2, min_val=0.0, max_val=5.0)
-        self.add_integer_option("每转脉冲数 PPR", default=1, min_val=1, max_val=60)
-        self.add_number_option("整体信号幅度", default=1.0, min_val=0.1, max_val=10.0)
-        self.add_number_option("噪声幅度", default=0.02, min_val=0.0, max_val=1.0)
+        # --- 精简后的核心参数 (针对核电汽轮机优化) ---
+        # 3000 RPM 是 50Hz 机组的标准额定转速
+        self.add_number_option("额定转速 (RPM)", default=3000.0, min_val=0.0, max_val=4500.0)
         
+        # 稳定性越高，转速波动越小。99.5% 模拟极其稳定的运行工况
+        self.add_number_option("转速稳定性 (%)", default=99.5, min_val=80.0, max_val=100.0)
+        
+        # 键相脉冲 (Tacho)，核电通常为 1 PPR
+        self.add_integer_option("键相脉冲 PPR", default=1, min_val=1, max_val=120)
+        
+        # 振动烈度单位 μm (峰峰值)
+        self.add_number_option("振动烈度 (μm)", default=50.0, min_val=0.0, max_val=500.0)
+
         # 输出端口
-        self.add_output("O-Pulse-XY")          # 转速脉冲信号（方波）
-        self.add_output("O-Vibration-XY")      # 扭振信号（固定10/20/30阶）
-        self.add_output("O-InstantRPM-XY")    # 瞬时转速曲线
+        self.add_output("O-Pulse-XY")        # 键相脉冲信号
+        self.add_output("O-Vibration-XY")    # 轴向/径向振动信号
+        self.add_output("O-InstantRPM-XY")   # 实时转速曲线
 
     def on_compute(self):
-        # 参数读取
-        f0 = self.get_option("基本转频 (Hz)")
-        mod_percent = self.get_option("转速波动幅度 (%)") / 100.0  # 转为小数
-        f_mod = self.get_option("波动频率 (Hz)")
-        ppr = self.get_option("每转脉冲数 PPR")
-        scale = self.get_option("整体信号幅度")
-        noise_amp = self.get_option("噪声幅度")
+        # 1. 参数提取与转换
+        rpm_target = self.get_option("额定转速 (RPM)")
+        f0 = rpm_target / 60.0  # 转为频率 Hz
         
-        # 固定参数
+        stability = self.get_option("转速稳定性 (%)")
+        mod_depth = (100.0 - stability) / 100.0  # 波动深度 (0-1)
+        
+        ppr = self.get_option("键相脉冲 PPR")
+        scale = self.get_option("振动烈度 (μm)")
+        
+        # 2. 仿真时域配置
+        # 采集 10 秒数据，模拟高频振动(20kHz)和低频脉冲采样(5kHz)
         t_start, t_end = 0.0, 10.0
-        pulse_points = 5000      # 脉冲通道采样率
-        vib_points = 20000       # 振动通道更高采样率
+        pulse_pts = 5000
+        vib_pts = 20000
+        f_mod = 0.1  # 模拟汽轮机慢速调节波动 (0.1Hz)
+
+        # 3. 构建脉冲通道 (Pulse Channel)
+        t_pulse = np.linspace(t_start, t_end, pulse_pts)
         
-        # 固定阶次成分（经典10/20/30阶，相对幅值固定，整体缩放）
-        orders = [10.0, 20.0, 30.0]
-        rel_amps = [0.5, 0.3, 0.2]   # 相对幅值
-        phases = [0.0, 0.5, 1.0]
+        # 瞬时角速度 omega(t) = 2π * f(t)
+        # 模拟转速的小幅正弦波动
+        omega_t_pulse = 2 * np.pi * f0 * (1.0 + mod_depth * np.sin(2 * np.pi * f_mod * t_pulse))
         
-        # === 生成脉冲通道 ===
-        pulse_time = np.linspace(t_start, t_end, pulse_points)
-        omega_t = 2 * np.pi * f0 * (1.0 + mod_percent * np.sin(2 * np.pi * f_mod * pulse_time))
-        instant_rpm = omega_t / (2 * np.pi) * 60.0
-        
-        dtheta = (omega_t[:-1] + omega_t[1:]) / 2.0 * np.diff(pulse_time)
-        theta = np.cumsum(dtheta)
-        theta = np.insert(theta, 0, 0.0)
-        
+        # 计算瞬时转速 (RPM) 用于输出
+        instant_rpm = (omega_t_pulse / (2 * np.pi)) * 60.0
+
+        # 对角速度积分获得累计角度 theta(t)
+        dt_pulse = np.diff(t_pulse, prepend=t_pulse[0])
+        theta_pulse = np.cumsum(omega_t_pulse * dt_pulse)
+
+        # 生成方波脉冲 (键相信号)
         angle_per_pulse = 2 * np.pi / ppr
-        pulse_state = (np.floor(theta / angle_per_pulse) % 2).astype(float)
-        pulse_state *= 5.0  # 方波电平
+        pulse_signal = (np.floor(theta_pulse / angle_per_pulse) % 2).astype(float) * 5.0 # 5V 脉冲
+
+        # 4. 构建振动通道 (Vibration Channel)
+        # 振动采样率通常更高以捕获高阶分量
+        t_vib = np.linspace(t_start, t_end, vib_pts)
         
-        # === 生成振动通道 ===
-        torsional_time = np.linspace(t_start, t_end, vib_points)
-        theta_interp = interp1d(pulse_time, theta, kind='cubic', fill_value='extrapolate')
-        theta_t = theta_interp(torsional_time)
+        # 将角度信息插值到高采样率时间轴上
+        theta_interp = interp1d(t_pulse, theta_pulse, kind='cubic', fill_value='extrapolate')
+        theta_t_vib = theta_interp(t_vib)
+
+        # 模拟汽轮机典型阶次：
+        # 1.0x (不平衡), 2.0x (不对中), 7.0x (特定结构振动)
+        vibration = (
+            1.0 * np.sin(1.0 * theta_t_vib) +        # 1倍频
+            0.4 * np.sin(2.0 * theta_t_vib + 0.8) +  # 2倍频
+            0.1 * np.sin(7.0 * theta_t_vib + 1.2)    # 高频分量
+        )
         
-        torsional_value = np.zeros(len(torsional_time))
-        for order, rel_amp, phase in zip(orders, rel_amps, phases):
-            torsional_value += rel_amp * np.sin(order * theta_t + phase)
-        torsional_value *= scale  # 整体幅度缩放
-        torsional_value += noise_amp * np.random.randn(len(torsional_time))
-        
-        # === 输出 ===
+        # 叠加背景白噪声
+        noise = 0.05 * np.random.randn(len(t_vib))
+        vibration = (vibration + noise) * scale
+
+        # 5. 数据包封装输出
         self.set_interface("O-Pulse-XY", {
             "type": "pulse",
-            "data": {"x": pulse_time.tolist(), "y": pulse_state.tolist()}
-        })
-        
-        self.set_interface("O-Vibration-XY", {
-            "type": "vibration_nonuniform",
-            "data": {"x": torsional_time.tolist(), "y": torsional_value.tolist()}
-        })
-        
-        self.set_interface("O-InstantRPM-XY", {
-            "type": "rpm_nonuniform",
-            "data": {"x": pulse_time.tolist(), "y": instant_rpm.tolist()}
+            "data": {"x": t_pulse.tolist(), "y": pulse_signal.tolist()}
         })
 
+        self.set_interface("O-Vibration-XY", {
+            "type": "channel", # 标记为标准通道，便于下游 FFT 识别
+            "data": {"x": t_vib.tolist(), "y": vibration.tolist()}
+        })
+
+        self.set_interface("O-InstantRPM-XY", {
+            "type": "rpm",
+            "data": {"x": t_pulse.tolist(), "y": instant_rpm.tolist()}
+        })
 
 class ReadCSVBlock(Block):
     def __init__(self):
@@ -303,9 +319,9 @@ class SignalSplitterBlock(Block):
         self.set_interface("O-List-Y", {"type": "list1d", "data": y_data})
 
 
-class ToList2DBlock(Block):
+class SignalMergerBlock(Block):
     def __init__(self):
-        super().__init__("ToList2D", category="Conversion")
+        super().__init__("SignalMerger", category="Conversion")
         self.add_input("I-List-X")
         self.add_input("I-List-Y")
         self.add_output("O-List-XY")
@@ -747,11 +763,11 @@ class LoggerBlock(Block):
 # ==================== 示例实例列表（用于注册或测试） ====================
 daq_blocks = [
     ChannelBlock(),
-    NonUniformSpeedSimulatorBlock(),
+    TurbineSimBlock(),
     ReadCSVBlock(),
     ConstantBlock(),
     SignalSplitterBlock(),
-    ToList2DBlock(),
+    SignalMergerBlock(),
     FilterBlock(),
     EnvelopeBlock(),
     FourierTransformBlock(),
