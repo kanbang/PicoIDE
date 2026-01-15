@@ -803,6 +803,11 @@ Select支持Option
 
 
 
+根据想要观测的转速波动频率来决定 PPR。
+
+$$PPR_{min} > \frac{2 \times \text{最高波动频率 (Hz)}}{\text{基础转速 (Hz)}}$$
+
+
 
 
 
