@@ -764,48 +764,76 @@ class TurbineSimulator(BaseBlock):
             )
             
             # ==========================================
-            # 数据封装输出
+            # 数据封装输出 - 使用SignalData格式
             # ==========================================
             # 基础元数据
-            meta_template = {
-                "fs": fs,
-                "domain": "time",
-                "duration": T,
-                "description": "Nuclear Turbine High-Precision Data"
-            }
+            base_meta = SignalMetadata(
+                fs=fs,
+                domain=DomainType.TIME.value,
+                duration=T,
+                description="Nuclear Turbine High-Precision Data"
+            )
             
             # O-Pulse-XY
-            self.set_interface("O-Pulse-XY", {
-                "x": t.tolist(), "y": pulse.tolist(), "type": "pulse",
-                "meta": {**meta_template, "unit": "V", "ppr": ppr}
-            })
+            pulse_meta = SignalMetadata(**base_meta.to_dict())
+            pulse_meta.data_type = DataType.PULSE.value
+            pulse_meta.unit = "V"
+            pulse_meta.ppr = ppr
+            self.set_interface("O-Pulse-XY", SignalData(
+                x=t.tolist(),
+                y=pulse.tolist(),
+                meta=pulse_meta,
+                type="pulse"
+            ).to_dict())
             
             # O-InstantRPM-XY (物理真值，建议降采样显示以免卡顿)
             ds = 10 if fs > 5000 else 1
-            self.set_interface("O-InstantRPM-XY", {
-                "x": t[::ds].tolist(), "y": rpm_instant[::ds].tolist(), "type": "rpm",
-                "meta": {**meta_template, "unit": "RPM", "fs": fs/ds}
-            })
+            rpm_meta = SignalMetadata(**base_meta.to_dict())
+            rpm_meta.data_type = DataType.RPM.value
+            rpm_meta.unit = "RPM"
+            rpm_meta.fs = fs / ds  # 更新采样率
+            self.set_interface("O-InstantRPM-XY", SignalData(
+                x=t[::ds].tolist(),
+                y=rpm_instant[::ds].tolist(),
+                meta=rpm_meta,
+                type="rpm"
+            ).to_dict())
             
             # O-AvgRPM-XY (算法观测值)
             if len(t_rpm_avg) > 0:
-                self.set_interface("O-AvgRPM-XY", {
-                    "x": t_rpm_avg.tolist(), "y": rpm_avg_val.tolist(), "type": "rpm",
-                    "meta": {**meta_template, "unit": "RPM", "description": "Computed per tooth"}
-                })
+                avg_rpm_meta = SignalMetadata(**base_meta.to_dict())
+                avg_rpm_meta.data_type = DataType.RPM.value
+                avg_rpm_meta.unit = "RPM"
+                avg_rpm_meta.description = "Computed per tooth"
+                self.set_interface("O-AvgRPM-XY", SignalData(
+                    x=t_rpm_avg.tolist(),
+                    y=rpm_avg_val.tolist(),
+                    meta=avg_rpm_meta,
+                    type="rpm"
+                ).to_dict())
             
             # O-Vibration-XY
-            self.set_interface("O-Vibration-XY", {
-                "x": t.tolist(), "y": vibration.tolist(), "type": "vibration",
-                "meta": {**meta_template, "unit": "um"}
-            })
+            vib_meta = SignalMetadata(**base_meta.to_dict())
+            vib_meta.data_type = DataType.VIBRATION.value
+            vib_meta.unit = "um"
+            self.set_interface("O-Vibration-XY", SignalData(
+                x=t.tolist(),
+                y=vibration.tolist(),
+                meta=vib_meta,
+                type="vibration"
+            ).to_dict())
             
             # O-Torsional-XY (交流扭振分量)
             torsional_ac = w_torsion_mode1 + w_torsion_elec
-            self.set_interface("O-Torsional-XY", {
-                "x": t.tolist(), "y": torsional_ac.tolist(), "type": "torsional",
-                "meta": {**meta_template, "unit": "rad/s"}
-            })
+            tors_meta = SignalMetadata(**base_meta.to_dict())
+            tors_meta.data_type = DataType.TORSIONAL.value
+            tors_meta.unit = "rad/s"
+            self.set_interface("O-Torsional-XY", SignalData(
+                x=t.tolist(),
+                y=torsional_ac.tolist(),
+                meta=tors_meta,
+                type="torsional"
+            ).to_dict())
             
             self._logger.debug(f"Turbine simulation done. PPR={ppr}, AvgPoints={len(t_rpm_avg)}")
             
@@ -947,9 +975,8 @@ class XYSplitter(BaseBlock):
             if not self._validate_input_data(data_packet):
                 return
             
-            inner_data = data_packet["data"]
-            x_data = inner_data.get("x", [])
-            y_data = inner_data.get("y", [])
+            # 使用辅助方法提取数据
+            x_data, y_data = self._get_xy_data(data_packet)
             
             self.set_interface("O-List-X", {"type": "list1d", "data": x_data})
             self.set_interface("O-List-Y", {"type": "list1d", "data": y_data})
@@ -1136,19 +1163,22 @@ class TimeWindow(BaseBlock):
                     type="time_segment"
                 ).to_dict())
             else:
-                # 输出多段
+                # 输出多段 - 使用SignalData列表格式
+                segments_meta = SignalMetadata(**meta) if isinstance(meta, dict) else meta
+                segments_meta.window_sec = win_sec
+                segments_meta.window_type = win_type
+                
                 self.set_interface("O-List-XY", {
                     "type": "time_segments",
                     "data": {
                         "segments": [
-                            {"x": sx.tolist(), "y": sy.tolist()}
+                            {
+                                "x": sx.tolist(),
+                                "y": sy.tolist(),
+                                "meta": segments_meta.to_dict()
+                            }
                             for sx, sy in segments
-                        ],
-                        "meta": {
-                            **meta,
-                            "window_sec": win_sec,
-                            "window_type": win_type
-                        }
+                        ]
                     }
                 })
             
@@ -1947,7 +1977,10 @@ class ResultSink(BaseBlock):
             
             t = self.get_option("类型")
             name = self.get_option("名称")
-            payload = {"name": name, "value": i_data["data"]}
+            
+            # 提取数据（支持SignalData格式）
+            data_value = self._extract_data(i_data)
+            payload = {"name": name, "value": data_value}
             
             if t == "时域":
                 adlink_bridge_instance.add_data_t(payload)
@@ -1994,7 +2027,8 @@ class CSVSink(BaseBlock):
             mode = 'a' if self.get_option("追加模式") else 'w'
             header = self.get_option("包含表头") and mode == 'w'
             
-            data = i_data["data"]
+            # 使用辅助方法提取数据
+            data = self._extract_data(i_data)
             x = data.get("x", [])
             y = data.get("y", [])
             
@@ -2053,7 +2087,8 @@ class BaseChartViewer(BaseBlock):
             if not self._validate_input_data(i_data):
                 return
             
-            raw_data = i_data["data"]
+            # 使用辅助方法提取数据
+            raw_data = self._extract_data(i_data)
             x_raw = raw_data.get("x", [])
             y_raw = raw_data.get("y", [])
             
