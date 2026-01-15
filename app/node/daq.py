@@ -158,74 +158,116 @@ class ChannelSource(Block):
         data = adlink_bridge_instance.get_channel_data(channel_idx)
         self.set_interface("O-List-XY", {"type": "channel", "data": data})
 
+
 class TurbineSimulator(Block):
-    """核电汽轮机振动模拟器（高稳定性基线 + 可控转速不稳工况，脉冲生成优化确保与转速严格一致）"""
+    """
+    核电汽轮机高精度模拟器
+
+    物理层级：
+    - phase(t)        ：真实角位移（核心）
+    - omega(t)        ：瞬时角速度（真值）
+    - Tacho Pulse     ：可测转速输入
+    - Radial Vib      ：径向振动（1X / 2X / BPF）
+    - Torsional Vib   ：扭振（角速度调制）
+    """
+
     def __init__(self):
         super().__init__("TurbineSimulator", category="Source")
-        
-        self.add_number_option("额定转速 (RPM)", default=3000.0, min_val=1000.0, max_val=4500.0)
-        self.add_number_option("转速稳定性 (%)", default=99.9, min_val=90.0, max_val=100.0)
-        self.add_number_option("低频波动频率 (Hz)", default=0.01, min_val=0.0, max_val=1.0)
-        self.add_number_option("随机噪声幅度 (%)", default=0.001, min_val=0.0, max_val=0.5)
-        self.add_integer_option("键相脉冲 PPR", default=1, min_val=1, max_val=120)
-        self.add_number_option("振动烈度 (μm pp)", default=50.0, min_val=0.0, max_val=500.0)
-        self.add_integer_option("叶片数 (BPF模拟)", default=0, min_val=0, max_val=200)
 
+        # ===== 转速 / 扭振参数 =====
+        self.add_number_option("额定转速 (RPM)", default=3000.0)
+        self.add_number_option("转速稳定性 (%)", default=99.95)
+        self.add_number_option("低频晃动频率 (Hz)", default=0.05)
+        self.add_number_option("角速度噪声 (rad/s)", default=0.05)
+
+        # ===== 采样与键相 =====
+        self.add_integer_option("键相脉冲 PPR", default=1)
+        self.add_number_option("采样率 (Hz)", default=51200.0)
+        self.add_number_option("模拟时长 (s)", default=2.0)
+
+        # ===== 振动参数 =====
+        self.add_number_option("1X 振幅 (μm)", default=30.0)
+        self.add_number_option("2X 振幅 (μm)", default=8.0)
+        self.add_integer_option("叶片数 (BPF)", default=42)
+
+        self.add_number_option("扭振系数", default=0.02)  # 相对角速度扰动
+
+        # ===== 输出 =====
         self.add_output("O-Pulse-XY")
-        self.add_output("O-Vibration-XY")
         self.add_output("O-InstantRPM-XY")
+        self.add_output("O-AvgRPM-XY")
+        self.add_output("O-Vibration-XY")
+        self.add_output("O-Torsional-XY")
 
     def on_compute(self):
-        rpm_target = self.get_option("额定转速 (RPM)")
-        f0 = rpm_target / 60.0
+        import numpy as np
+
+        # ===== 参数 =====
+        rpm_nom = self.get_option("额定转速 (RPM)")
         stability = self.get_option("转速稳定性 (%)")
-        mod_depth = max(0.0, (100.0 - stability) / 100.0)
-        f_mod = self.get_option("低频波动频率 (Hz)")
-        noise_amp = self.get_option("随机噪声幅度 (%)")
+        f_mod = self.get_option("低频晃动频率 (Hz)")
+        noise_w = self.get_option("角速度噪声 (rad/s)")
         ppr = self.get_option("键相脉冲 PPR")
-        scale = self.get_option("振动烈度 (μm pp)") / 2.0
-        blade_count = self.get_option("叶片数 (BPF模拟)")
+        fs = self.get_option("采样率 (Hz)")
+        T = self.get_option("模拟时长 (s)")
+        torsion_k = self.get_option("扭振系数")
 
-        t_start, t_end = 0.0, 10.0
-        high_res_pts = 50000
-        t = np.linspace(t_start, t_end, high_res_pts)
-        dt = t[1] - t[0]
+        t = np.arange(0, T, 1/fs)
+        dt = 1/fs
 
-        # 瞬时转频（低频 + 高频随机）
-        deterministic_mod = mod_depth * np.sin(2 * np.pi * f_mod * t)
-        random_mod = noise_amp * np.random.randn(len(t))
-        total_mod = deterministic_mod + random_mod
-        instantaneous_freq = f0 * (1.0 + total_mod)
-        instantaneous_rpm = instantaneous_freq * 60.0
+        # ===== 1. 角速度 ω(t) =====
+        w0 = 2 * np.pi * rpm_nom / 60.0
+        mod_depth = (100.0 - stability) / 100.0
 
-        # 累计角度（高精度）
-        omega_t = 2 * np.pi * instantaneous_freq
-        cumulative_angle = np.cumsum(omega_t) * dt
-        cumulative_angle -= cumulative_angle[0]
+        w_drift = w0 * mod_depth * np.sin(2 * np.pi * f_mod * t)
+        w_noise = noise_w * np.random.randn(len(t))
 
-        # === 优化脉冲生成：确保每转精确 PPR 个上升沿（占空比50%方波）===
-        period_angle = 2 * np.pi / ppr  # 每个脉冲周期对应角度
-        fraction = np.mod(cumulative_angle, period_angle) / period_angle  # 0~1
-        pulse_signal = (fraction < 0.5).astype(float) * 5.0  # 前半高，后半低
+        omega = w0 + w_drift + w_noise
 
-        # === 振动信号（同累计角度）===
-        vibration = np.zeros_like(t)
-        vibration += 1.0 * np.sin(1.0 * cumulative_angle)
-        vibration += 0.3 * np.sin(2.0 * cumulative_angle + 0.5)
-        if blade_count > 0:
-            vibration += 0.15 * np.sin(blade_count * cumulative_angle + 1.0)
-        vibration += 0.03 * np.random.randn(len(t))
-        vibration *= scale
+        # ===== 2. 相位积分（绝对核心）=====
+        phase = np.cumsum(omega) * dt
 
-        # === 瞬时转速降采样输出 ===
-        downsample_factor = 10
-        t_rpm = t[::downsample_factor]
-        instant_rpm_down = instantaneous_rpm[::downsample_factor]
+        # ===== 3. 瞬时 RPM（真值）=====
+        instant_rpm = omega * 60.0 / (2 * np.pi)
 
-        # 输出
+        # ===== 4. 键相脉冲 =====
+        pulse_phase = phase * ppr / (2 * np.pi)
+        pulse = np.where((pulse_phase % 1.0) < 0.5, 5.0, 0.0)
+
+        # ===== 5. 每转平均 RPM（理想测量）=====
+        rev_idx = np.where(np.diff(np.floor(phase / (2*np.pi))))[0]
+        if len(rev_idx) > 1:
+            t_rev = t[rev_idx]
+            dt_rev = np.diff(t_rev)
+            rpm_avg = 60.0 / dt_rev
+            t_mid = (t_rev[:-1] + t_rev[1:]) / 2.0
+        else:
+            t_mid, rpm_avg = [], []
+
+        # ===== 6. 径向振动（严格锁相）=====
+        vib_1x = self.get_option("1X 振幅 (μm)") * np.sin(phase)
+        vib_2x = self.get_option("2X 振幅 (μm)") * np.sin(2 * phase + np.pi/4)
+        vib_bpf = 2.0 * np.sin(self.get_option("叶片数 (BPF)") * phase)
+
+        vibration = vib_1x + vib_2x + vib_bpf + 0.5 * np.random.randn(len(t))
+
+        # ===== 7. 扭振信号（角速度调制）=====
+        torsional = torsion_k * (omega - w0)
+
+        # ===== 8. 输出 =====
         self.set_interface("O-Pulse-XY", {
             "type": "pulse",
-            "data": {"x": t.tolist(), "y": pulse_signal.tolist()}
+            "data": {"x": t.tolist(), "y": pulse.tolist()}
+        })
+
+        self.set_interface("O-InstantRPM-XY", {
+            "type": "rpm",
+            "data": {"x": t[::10].tolist(), "y": instant_rpm[::10].tolist()}
+        })
+
+        self.set_interface("O-AvgRPM-XY", {
+            "type": "rpm",
+            "data": {"x": t_mid.tolist(), "y": rpm_avg.tolist()}
         })
 
         self.set_interface("O-Vibration-XY", {
@@ -233,10 +275,12 @@ class TurbineSimulator(Block):
             "data": {"x": t.tolist(), "y": vibration.tolist()}
         })
 
-        self.set_interface("O-InstantRPM-XY", {
-            "type": "rpm",
-            "data": {"x": t_rpm.tolist(), "y": instant_rpm_down.tolist()}
+        self.set_interface("O-Torsional-XY", {
+            "type": "torsional",
+            "data": {"x": t.tolist(), "y": torsional.tolist()}
         })
+
+
 
 class CSVReader(Block):
     """从CSV文件读取XY数据"""
@@ -287,6 +331,112 @@ class ConstantSource(Block):
         except:
             value = self.get_option("常量值")
         self.set_interface("O-Value", {"type": "constant", "data": value})
+
+
+class TimeWindow(Block):
+    """
+    工业级时间窗口模块
+    - 负责：窗口长度、重叠、窗口函数
+    - 不负责：FFT
+    """
+    def __init__(self):
+        super().__init__("TimeWindow", category="Processing")
+
+        self.add_input("I-List-XY")
+        self.add_output("O-List-XY")
+
+        self.add_number_option("窗口长度 (s)", default=1.0)
+        self.add_number_option("重叠率 (%)", default=0.0)
+        self.add_select_option(
+            "窗口函数",
+            items=["rect", "hann", "hamming"],
+            default="hann"
+        )
+        self.add_select_option(
+            "输出模式",
+            items=["首个窗口", "全部窗口"],
+            default="首个窗口"
+        )
+
+    def _get_window(self, n, win_type):
+        if win_type == "hann":
+            return np.hanning(n)
+        elif win_type == "hamming":
+            return np.hamming(n)
+        else:
+            return np.ones(n)
+
+    def on_compute(self):
+        i_data = self.get_interface("I-List-XY")
+        if not i_data:
+            return
+
+        data = i_data["data"]
+        x = np.array(data["x"])
+        y = np.array(data["y"])
+        meta = data.get("meta", {})
+
+        fs = meta.get("fs")
+        if fs is None:
+            fs = 1.0 / np.mean(np.diff(x))
+
+        win_sec = self.get_option("窗口长度 (s)")
+        overlap = self.get_option("重叠率 (%)") / 100.0
+        win_type = self.get_option("窗口函数")
+        mode = self.get_option("输出模式")
+
+        win_len = int(win_sec * fs)
+        if win_len <= 1 or win_len > len(y):
+            return
+
+        hop = int(win_len * (1.0 - overlap))
+        if hop <= 0:
+            hop = win_len
+
+        window = self._get_window(win_len, win_type)
+
+        segments = []
+        for start in range(0, len(y) - win_len + 1, hop):
+            seg_y = y[start:start + win_len] * window
+            seg_x = x[start:start + win_len]
+            segments.append((seg_x, seg_y))
+
+        if not segments:
+            return
+
+        if mode == "首个窗口":
+            seg_x, seg_y = segments[0]
+            self.set_interface("O-List-XY", {
+                "type": "time_segment",
+                "data": {
+                    "x": seg_x.tolist(),
+                    "y": seg_y.tolist(),
+                    "meta": {
+                        **meta,
+                        "window_sec": win_sec,
+                        "window": win_type
+                    }
+                }
+            })
+
+        else:
+            # 输出多段（为后续平均谱准备）
+            self.set_interface("O-List-XY", {
+                "type": "time_segments",
+                "data": {
+                    "segments": [
+                        {
+                            "x": sx.tolist(),
+                            "y": sy.tolist()
+                        } for sx, sy in segments
+                    ],
+                    "meta": {
+                        **meta,
+                        "window_sec": win_sec,
+                        "window": win_type
+                    }
+                }
+            })
 
 
 class XYSplitter(Block):
@@ -379,171 +529,396 @@ class EnvelopeDetector(Block):
 
 
 class FFT(Block):
-    """快速傅里叶变换（单边幅度谱）"""
+    """
+    工业级 FFT
+    - 输入：已分段的时域信号
+    - 输出：单边幅值谱
+    """
     def __init__(self):
         super().__init__("FFT", category="Transform")
-        self.add_input("I-List-V")
-        self.add_output("O-List-XY")
 
-    def _do_fft(self, signal, seconds=1.0):
-        N = len(signal)
-        if N == 0:
-            return {"x": [], "y": []}
-        fs = N / seconds
-        fft_result = np.fft.fft(signal)
-        magnitude = np.abs(fft_result) / N * 2
-        magnitude = magnitude[: N // 2]
-        freqs = np.fft.fftfreq(N, 1 / fs)[: N // 2]
-        return {"x": freqs.tolist(), "y": magnitude.tolist()}
-
-    def on_compute(self):
-        i_data = self.get_interface("I-List-V")
-        if not i_data:
-            return
-        fdata = self._do_fft(i_data["data"])
-        self.set_interface("O-List-XY", {"type": "fourier", "data": fdata})
-
-
-class OrderFFT(Block):
-    """阶次谱计算（角域信号的FFT）"""
-    def __init__(self):
-        super().__init__("OrderFFT", category="Transform")
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
 
-    def _do_order_fft(self, signal):
-        N = len(signal)
-        if N == 0:
-            return {"x": [], "y": []}
-        fft_result = np.fft.fft(signal)
-        magnitude = np.abs(fft_result) / N * 2
-        magnitude = magnitude[:N//2]
-        orders = np.linspace(0, N/2, N//2)
-        return {"x": orders.tolist(), "y": magnitude.tolist()}
+        self.add_checkbox_option("幅值修正", default=True)
 
     def on_compute(self):
         i_data = self.get_interface("I-List-XY")
         if not i_data:
             return
-        signal_y = np.array(i_data["data"]["y"])
-        fdata = self._do_order_fft(signal_y)
-        self.set_interface("O-List-XY", {"type": "order", "data": fdata})
+
+        data = i_data["data"]
+        meta = data.get("meta", {})
+
+        x = np.array(data["x"])
+        y = np.array(data["y"])
+
+        fs = meta.get("fs")
+        if fs is None:
+            fs = 1.0 / np.mean(np.diff(x))
+
+        N = len(y)
+        if N < 2:
+            return
+
+        fft_vals = np.fft.rfft(y)
+        mag = np.abs(fft_vals) / N * 2.0
+        freqs = np.fft.rfftfreq(N, 1.0 / fs)
+
+        self.set_interface("O-List-XY", {
+            "type": "spectrum",
+            "data": {
+                "x": freqs.tolist(),
+                "y": mag.tolist(),
+                "meta": {
+                    "fs": fs,
+                    "df": fs / N,
+                    "window_sec": meta.get("window_sec"),
+                    "domain": "frequency"
+                }
+            }
+        })
+
+
+class SpectralAverager(Block):
+    """
+    工业级频谱统计模块
+    """
+    def __init__(self):
+        super().__init__("SpectralAverager", category="Analysis")
+
+        self.add_input("I-Spectrum-List")
+        self.add_output("O-Spectrum")
+
+        self.add_select_option(
+            "平均方式",
+            items=["线性", "RMS", "峰值保持"],
+            default="线性"
+        )
+
+    def on_compute(self):
+        i_data = self.get_interface("I-Spectrum-List")
+        if not i_data:
+            return
+
+        specs = i_data["data"]["spectra"]
+        meta = i_data["data"].get("meta", {})
+
+        Y = np.array([s["y"] for s in specs])
+        X = np.array(specs[0]["x"])
+
+        mode = self.get_option("平均方式")
+
+        if mode == "线性":
+            y_avg = np.mean(Y, axis=0)
+        elif mode == "RMS":
+            y_avg = np.sqrt(np.mean(Y ** 2, axis=0))
+        else:
+            y_avg = np.max(Y, axis=0)
+
+        self.set_interface("O-Spectrum", {
+            "type": "spectrum",
+            "data": {
+                "x": X.tolist(),
+                "y": y_avg.tolist(),
+                "meta": {
+                    **meta,
+                    "average": mode
+                }
+            }
+        })
+
+class RPMTrackedFFT(Block):
+    """
+    转速跟踪 FFT（工业级）
+    """
+    def __init__(self):
+        super().__init__("RPMTrackedFFT", category="Advanced")
+
+        self.add_input("I-Signal-XY")
+        self.add_input("I-Speed-XY")
+        self.add_output("O-Order-Spectrum")
+
+        self.add_number_option("转速中心 (RPM)", default=3000)
+        self.add_number_option("转速带宽 (RPM)", default=50)
+        self.add_number_option("窗口转数", default=10)
+
+    def on_compute(self):
+        sig = self.get_interface("I-Signal-XY")
+        spd = self.get_interface("I-Speed-XY")
+        if not sig or not spd:
+            return
+
+        sx = np.array(sig["data"]["x"])
+        sy = np.array(sig["data"]["y"])
+
+        rx = np.array(spd["data"]["x"])
+        ry = np.array(spd["data"]["y"])
+
+        rpm_center = self.get_option("转速中心 (RPM)")
+        rpm_bw = self.get_option("转速带宽 (RPM)")
+        revs = self.get_option("窗口转数")
+
+        mask = (ry > rpm_center - rpm_bw) & (ry < rpm_center + rpm_bw)
+        if not np.any(mask):
+            return
+
+        t_start = rx[mask][0]
+        t_end = rx[mask][-1]
+
+        sig_mask = (sx >= t_start) & (sx <= t_end)
+        sig_y = sy[sig_mask]
+
+        # 每转采样点
+        fs = 1 / np.mean(np.diff(sx))
+        rps = rpm_center / 60.0
+        samples_per_rev = int(fs / rps)
+        N = samples_per_rev * revs
+
+        if len(sig_y) < N:
+            return
+
+        sig_y = sig_y[:N]
+
+        fft = np.fft.rfft(sig_y)
+        mag = np.abs(fft) / N * 2
+        orders = np.fft.rfftfreq(N, 1 / samples_per_rev)
+
+        self.set_interface("O-Order-Spectrum", {
+            "type": "order_spectrum",
+            "data": {
+                "x": orders.tolist(),
+                "y": mag.tolist(),
+                "meta": {
+                    "rpm": rpm_center,
+                    "revs": revs
+                }
+            }
+        })
+
+
+class OrderMap(Block):
+    """
+    阶次瀑布图（Order Map）
+    """
+    def __init__(self):
+        super().__init__("OrderMap", category="Advanced")
+
+        self.add_input("I-Signal-XY")
+        self.add_input("I-Speed-XY")
+        self.add_output("O-OrderMap")
+
+        self.add_number_option("阶次上限", default=10)
+        self.add_number_option("每转采样点", default=1024)
+
+    def on_compute(self):
+        sig = self.get_interface("I-Signal-XY")
+        spd = self.get_interface("I-Speed-XY")
+        if not sig or not spd:
+            return
+
+        sx = np.array(sig["data"]["x"])
+        sy = np.array(sig["data"]["y"])
+
+        rx = np.array(spd["data"]["x"])
+        ry = np.array(spd["data"]["y"])
+
+        orders = self.get_option("阶次上限")
+        pts = self.get_option("每转采样点")
+
+        maps = []
+
+        for i in range(len(rx) - 1):
+            rpm = ry[i]
+            if rpm <= 0:
+                continue
+
+            rps = rpm / 60.0
+            fs = 1 / np.mean(np.diff(sx))
+            samples_per_rev = int(fs / rps)
+
+            start = int((rx[i] - sx[0]) * fs)
+            N = pts
+
+            if start + N >= len(sy):
+                continue
+
+            seg = sy[start:start + N]
+            fft = np.fft.rfft(seg)
+            mag = np.abs(fft)
+
+            maps.append({
+                "rpm": rpm,
+                "order": np.linspace(0, orders, len(mag)).tolist(),
+                "mag": mag.tolist()
+            })
+
+        self.set_interface("O-OrderMap", {
+            "type": "order_map",
+            "data": maps
+        })
+
 
 
 
 class TachoToRPM(Block):
     """
-    高精度转速提取模块
-    针对高PPR场景优化：引入亚采样精度(Sub-sample)计算，彻底消除采样频率限制带来的计算失真。
+    键相转速提取模块
+
+    输出的是：
+    - 每转 / 多转平均转速
+    - 非瞬时量
     """
     def __init__(self):
         super().__init__("TachoToRPM", category="Order Analysis")
-        self.add_input("I-List-XY")
-        self.add_output("O-List-XY")
-        self.add_number_option("脉冲阈值 (V)", default=2.5, min_val=0.0, max_val=24.0)
-        self.add_integer_option("每转脉冲数 (PPR)", default=1, min_val=1, max_val=1000)
+
+        self.add_input("I-Pulse-XY")
+        self.add_output("O-RPM-XY")
+
+        self.add_integer_option("每转脉冲数 (PPR)", default=1, min_val=1)
+        self.add_number_option("脉冲阈值 (V)", default=2.5)
+        self.add_integer_option("滑动脉冲数", default=1, min_val=1)
 
     def on_compute(self):
-        i_data = self.get_interface("I-List-XY")
-        if not i_data or "data" not in i_data: return
+        import numpy as np
+
+        i_data = self.get_interface("I-Pulse-XY")
+        if not i_data: return
 
         x = np.array(i_data["data"]["x"])
         y = np.array(i_data["data"]["y"])
-        if len(y) < 2: return
 
-        threshold = self.get_option("脉冲阈值 (V)")
         ppr = self.get_option("每转脉冲数 (PPR)")
+        threshold = self.get_option("脉冲阈值 (V)")
+        win = self.get_option("滑动脉冲数")
 
-        # 1. 粗定位：寻找穿过阈值的索引位置
-        # 找到 y[i] < threshold 且 y[i+1] >= threshold 的点
-        idx_before = np.where((y[:-1] < threshold) & (y[1:] >= threshold))[0]
-        
-        if len(idx_before) < 2:
+        # === 1. 上升沿检测 + 线性内插 ===
+        idx = np.where((y[:-1] < threshold) & (y[1:] >= threshold))[0]
+        if len(idx) < win + 1:
             return
 
-        # 2. 亚采样精度计算：线性插值确定精确时刻
-        # 原理：t_precise = t0 + (threshold - y0) * (t1 - t0) / (y1 - y0)
-        t_precise = []
-        for i in idx_before:
-            x0, x1 = x[i], x[i+1]
+        t_edge = []
+        for i in idx:
+            t0, t1 = x[i], x[i+1]
             y0, y1 = y[i], y[i+1]
-            
-            # 线性内插，求出穿越 threshold 的确切浮点时间
-            dt_sub = (threshold - y0) / (y1 - y0)
-            t_sub = x0 + dt_sub * (x1 - x0)
-            t_precise.append(t_sub)
-        
-        t_precise = np.array(t_precise)
+            t_edge.append(t0 + (threshold - y0) * (t1 - t0) / (y1 - y0))
+        t_edge = np.array(t_edge)
 
-        # 3. 计算转速 (RPM = 60 / (dt * PPR))
-        intervals = np.diff(t_precise)
-        # 过滤极小间隔（防止除零或高频噪声导致的虚假极高转速）
-        intervals = np.where(intervals < 1e-7, 1e-7, intervals)
-        
-        rpm_values = (60.0 / intervals) / ppr
-        
-        # 计算时间轴上的中心点
-        t_mid = (t_precise[:-1] + t_precise[1:]) / 2.0
+        # === 2. 多脉冲平均转速 ===
+        t_start = t_edge[:-win]
+        t_end = t_edge[win:]
+        dt = t_end - t_start
 
-        # 4. 平滑插值
-        # 当PPR较高时，使用三次样条插值(cubic)可以更好地还原转速波动的连续性
-        try:
-            kind = 'cubic' if len(t_mid) > 3 else 'linear'
-            interp_func = interp1d(t_mid, rpm_values, kind=kind, 
-                                   bounds_error=False, 
-                                   fill_value=(rpm_values[0], rpm_values[-1]))
-            rpm_full = interp_func(x)
-        except:
-            rpm_full = np.interp(x, t_mid, rpm_values)
+        rpm = (60.0 * win / ppr) / dt
+        t_mid = (t_start + t_end) / 2.0
 
-        self.set_interface("O-List-XY", {
+        # === 3. 输出 ===
+        self.set_interface("O-RPM-XY", {
             "type": "rpm",
-            "data": {"x": x.tolist(), "y": rpm_full.tolist()}
+            "data": {
+                "x": t_mid.tolist(),
+                "y": rpm.tolist()
+            }
         })
 
 
+
 class AngularResampler(Block):
-    """角域重采样（消除转速波动影响）"""
+    """
+    角域重采样模块：基于键相脉冲精确时刻，将时间轴信号映射到等角度空间。
+    适用于消除非稳态过程（升降速）中的阶次模糊。
+    """
     def __init__(self):
         super().__init__("AngularResampler", category="Order Analysis")
+        # 输入：振动原始信号(Time-Domain) 和 键相脉冲信号(Pulse)
         self.add_input("I-Vibration-XY")
-        self.add_input("I-RPM-XY")
+        self.add_input("I-Pulse-XY")
         self.add_output("O-List-XY")
-        self.add_integer_option("每转采样点数", default=128, min_val=16, max_val=1024)
+        
+        # 配置参数
+        self.add_integer_option("每转脉冲数 (PPR)", default=1, min_val=1)
+        self.add_integer_option("每转采样点数", default=1024, min_val=16, max_val=4096)
+        self.add_number_option("脉冲触发阈值 (V)", default=2.5)
 
     def on_compute(self):
         vib_data = self.get_interface("I-Vibration-XY")
-        rpm_data = self.get_interface("I-RPM-XY")
-        if not (vib_data and rpm_data):
+        pulse_data = self.get_interface("I-Pulse-XY")
+        
+        if not (vib_data and pulse_data):
             return
 
-        vib_x = np.array(vib_data["data"]["x"])
-        vib_y = np.array(vib_data["data"]["y"])
-        rpm_x = np.array(rpm_data["data"]["x"])
-        rpm_y = np.array(rpm_data["data"]["y"])
+        # 1. 获取数据
+        t_vib = np.array(vib_data["data"]["x"])
+        v_vib = np.array(vib_data["data"]["y"])
+        t_pulse = np.array(pulse_data["data"]["x"])
+        v_pulse = np.array(pulse_data["data"]["y"])
+        
+        ppr = self.get_option("每转脉冲数 (PPR)")
+        res_per_rev = self.get_option("每转采样点数")
+        threshold = self.get_option("脉冲触发阈值 (V)")
 
-        # 将转速插值到振动时间轴（高采样率）
-        rpm_interp_func = interp1d(rpm_x, rpm_y, kind='linear', bounds_error=False, fill_value="extrapolate")
-        aligned_rpm_y = rpm_interp_func(vib_x)
-
-        # 累计角度计算
-        dt = np.diff(vib_x, prepend=vib_x[0])
-        angular_speed_deg_s = aligned_rpm_y * 6
-        cumulative_angle = np.cumsum(angular_speed_deg_s * dt)
-
-        # 等角度重采样
-        points_per_rev = self.get_option("每转采样点数")
-        total_revs = cumulative_angle[-1] / 360
-        if total_revs <= 0:
+        # 2. 精确提取脉冲边沿时刻（亚采样插值）
+        # 寻找上升沿
+        rising_idx = np.where((v_pulse[:-1] < threshold) & (v_pulse[1:] >= threshold))[0]
+        if len(rising_idx) < 2:
             return
 
-        target_angles = np.linspace(0, total_revs * 360, int(total_revs * points_per_rev), endpoint=False)
-        interp_func = interp1d(cumulative_angle, vib_y, kind='linear', bounds_error=False, fill_value=0)
-        resampled_y = interp_func(target_angles)
+        t_edge = []
+        for idx in rising_idx:
+            # 线性内插求出精确时刻
+            t0, t1 = t_pulse[idx], t_pulse[idx+1]
+            v0, v1 = v_pulse[idx], v_pulse[idx+1]
+            t_acc = t0 + (threshold - v0) * (t1 - t0) / (v1 - v0)
+            t_edge.append(t_acc)
+        t_edge = np.array(t_edge)
 
+        # 3. 计算每个脉冲时刻对应的累计角度 (弧度)
+        # 每个脉冲间隔的角度增量 = 2 * PI / PPR
+        angle_increment = 2 * np.pi / ppr
+        cumulative_angles = np.arange(len(t_edge)) * angle_increment
+
+        # 4. 构建 时间-角度 映射函数
+        # 这一步建立的是：给定一个时刻，它对应转子的哪个角度
+        # 使用三次样条(cubic)能更平滑地处理加减速过程
+        time_to_angle_func = interp1d(t_edge, cumulative_angles, kind='cubic', 
+                                      bounds_error=False, fill_value="extrapolate")
+
+        # 5. 计算原始振动信号每个采样点对应的角度
+        vib_angles = time_to_angle_func(t_vib)
+
+        # 6. 等角度重采样
+        # 确定角域轴的起止范围（只取有脉冲覆盖的部分，避免边界失真）
+        min_angle = cumulative_angles[0]
+        max_angle = cumulative_angles[-1]
+        
+        total_revs = (max_angle - min_angle) / (2 * np.pi)
+        num_target_points = int(total_revs * res_per_rev)
+        
+        if num_target_points < 2:
+            return
+
+        # 生成均匀的角度序列（角域时间轴）
+        target_angle_axis = np.linspace(min_angle, max_angle, num_target_points)
+
+        # 7. 将振动幅值插值到等角度轴上
+        # 角度-幅值映射
+        angle_to_vib_func = interp1d(vib_angles, v_vib, kind='linear', 
+                                     bounds_error=False, fill_value=0)
+        resampled_vibration = angle_to_vib_func(target_angle_axis)
+
+        # 8. 输出
+        # 为了方便后续FFT计算，我们将角度轴归一化或转换为转数
         self.set_interface("O-List-XY", {
-            "type": "angular",
-            "data": {"x": target_angles.tolist(), "y": resampled_y.tolist()}
+            "type": "angular_domain",
+            "data": {
+                "x": target_angle_axis.tolist(), # 单位：rad
+                "y": resampled_vibration.tolist(),
+                "info": {
+                    "ppr": ppr,
+                    "points_per_rev": res_per_rev,
+                    "total_revs": total_revs
+                }
+            }
         })
 
 
@@ -895,8 +1270,11 @@ daq_blocks = [
     XYMerger(),
     SignalFilter(),
     EnvelopeDetector(),
+    TimeWindow(),
     FFT(),
-    OrderFFT(),
+    SpectralAverager(),
+    RPMTrackedFFT(),
+    OrderMap(),
     TachoToRPM(),
     AngularResampler(),
     Stats(),
