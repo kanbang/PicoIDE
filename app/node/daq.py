@@ -775,22 +775,22 @@ class ChannelSource(BaseBlock):
 class TurbineSimulator(BaseBlock):
     """
     核电汽轮机高精度扭振模拟器 (V2.0 修正版)
-    
+
     功能：
     - 模拟核电长轴系的多阶扭振模态 (12.5Hz SSR, 100Hz 电气波动)
     - 采用脉冲差分算法，使平均转速能够追踪瞬时趋势
     - 模拟径向振动与叶片通过频率 (BPF)
     """
-    
+
     def __init__(self):
         super().__init__("TurbineSimulator", category="Source")
-        
+
         # --- 基础运行参数 ---
         self.add_number_option("额定转速 (RPM)", default=1500.0, min_val=0.0)
         self.add_number_option("电网频率 (Hz)", default=50.0, min_val=40.0)
         self.add_number_option("采样率 (Hz)", default=12800.0, min_val=1000.0)
         self.add_number_option("模拟时长 (s)", default=5.0, min_val=0.1)
-        
+
         # --- 扭振与稳定性参数 ---
         self.add_number_option(
             "转速稳定性 (%)", default=99.98, min_val=0.0, max_val=100.0
@@ -798,14 +798,14 @@ class TurbineSimulator(BaseBlock):
         self.add_number_option("扭振模态1频率 (Hz)", default=12.5, min_val=0.1)
         self.add_number_option("扭振阻尼比", default=0.01, min_val=0.001)
         self.add_number_option("电气激励占比 (%)", default=5.0, min_val=0.0)
-        
+
         # --- 机械特征参数 ---
         self.add_integer_option(
             "键相脉冲 PPR", default=64, min_val=1
         )  # 推荐设为64以看清趋势
         self.add_number_option("1X 振幅 (μm)", default=25.0, min_val=0.0)
         self.add_integer_option("叶片数 (BPF)", default=50, min_val=1)
-        
+
         # 输出
         self.add_output("O-Pulse-XY")  # 原始脉冲信号 (TTL)
         self.add_output("O-InstantRPM-XY")  # 物理真值转速
@@ -888,16 +888,11 @@ class TurbineSimulator(BaseBlock):
             # 寻找上升沿索引
             rising_edges = np.where((pulse[:-1] < 2.5) & (pulse[1:] >= 2.5))[0]
             if len(rising_edges) > 1:
-                t_edges = np.zeros(len(rising_edges))
-                for j, idx in enumerate(rising_edges):
-                    if pulse[idx-1] < 2.5 and pulse[idx] >= 2.5:
-                        fraction = (2.5 - pulse[idx-1]) / (pulse[idx] - pulse[idx-1])
-                        t_edges[j] = t[idx-1] + fraction * dt
-                dt_edges = np.diff(t_edges)
-                # 避免除零
-                dt_edges[dt_edges == 0] = dt  # 如果dt=0，用最小dt替换
+                t_edges = t[rising_edges]
+                dt_edges = np.diff(t_edges)  # 相邻齿通过的时间差
+                # 每一齿转过的角度是 (1/PPR) 转
                 rpm_avg_val = (60.0 / ppr) / dt_edges
-                t_rpm_avg = t_edges[1:]  # 对齐
+                t_rpm_avg = t_edges[1:]  # 采样时刻对齐
             else:
                 t_rpm_avg, rpm_avg_val = [], []
 
@@ -996,7 +991,8 @@ class TurbineSimulator(BaseBlock):
 
         except Exception as e:
             self._log_error(e, "TurbineSimulator")
-            
+
+
 class CSVReader(BaseBlock):
     """
     从CSV文件读取XY数据
@@ -2004,100 +2000,153 @@ class RPMTrackedFFT(BaseBlock):
             raise
 
 
+
 class OrderMap(BaseBlock):
     """
     阶次瀑布图（Order Map）
 
-    功能：
-    - 生成阶次-转速-幅值三维图
-    - 适合分析变速过程
-
-    输入：振动信号、转速信号
-    输出：阶次图数据
+    特性：
+    - 严格角度域重采样
+    - 支持变速 / 扭振
+    - 每帧固定角度长度（1转或多转）
+    - 工程上可用于汽轮机 / 长轴系
     """
 
     def __init__(self):
         super().__init__("OrderMap", category="Advanced")
 
-        self.add_input("I-Signal-XY")
-        self.add_input("I-Speed-XY")
+        self.add_input("I-Signal-XY")   # 振动信号（时间域）
+        self.add_input("I-Speed-XY")    # 转速信号（RPM）
+
         self.add_output("O-OrderMap")
 
         self.add_number_option("阶次上限", default=10)
         self.add_integer_option("每转采样点", default=1024)
+        self.add_integer_option("每帧转数", default=1)   # 工业上非常重要
+        self.add_integer_option("转速插值点", default=4096)
 
     def on_compute(self):
-        """执行计算"""
         try:
             sig = self.get_interface("I-Signal-XY")
             spd = self.get_interface("I-Speed-XY")
 
             if not (sig and spd):
-                self._logger.warning("输入数据不完整")
+                self._logger.warning("OrderMap: 输入不完整")
                 return
 
-            sx = np.array(sig["data"]["x"])
-            sy = np.array(sig["data"]["y"])
+            # ========= 1. 取振动信号 =========
+            t_sig = np.asarray(sig["data"]["x"])
+            x_sig = np.asarray(sig["data"]["y"])
 
-            rx = np.array(spd["data"]["x"])
-            ry = np.array(spd["data"]["y"])
+            fs = 1.0 / np.mean(np.diff(t_sig))
 
-            orders = self.get_option("阶次上限")
-            pts = self.get_option("每转采样点")
+            # ========= 2. 取转速信号 =========
+            t_rpm = np.asarray(spd["data"]["x"])
+            rpm = np.asarray(spd["data"]["y"])
 
+            # 转速插值为连续函数（工程必须）
+            rpm_interp = interp1d(
+                t_rpm,
+                rpm,
+                kind="linear",
+                bounds_error=False,
+                fill_value="extrapolate",
+            )
+
+            # ========= 3. 构造角速度 & 相位 =========
+            omega = rpm_interp(t_sig) * 2 * np.pi / 60.0
+            theta = np.cumsum(omega) / fs   # θ(t)
+
+            # ========= 4. 角度域帧划分 =========
+            pts_per_rev = self.get_option("每转采样点")
+            revs_per_frame = self.get_option("每帧转数")
+            pts_frame = pts_per_rev * revs_per_frame
+
+            dtheta = 2 * np.pi * revs_per_frame
+            theta_start = theta[0]
+            theta_end = theta[-1]
+
+            frame_edges = np.arange(
+                theta_start,
+                theta_end - dtheta,
+                dtheta
+            )
+
+            # 振动信号 → 角度域插值函数
+            vib_theta_interp = interp1d(
+                theta,
+                x_sig,
+                kind="linear",
+                bounds_error=False,
+                fill_value=0.0,
+            )
+
+            order_limit = self.get_option("阶次上限")
             maps = []
 
-            for i in range(len(rx) - 1):
-                rpm = ry[i]
-                if rpm <= 0:
-                    continue
+            # ========= 5. 每一帧角度 FFT =========
+            for th0 in frame_edges:
+                th1 = th0 + dtheta
 
-                rps = rpm / 60.0
-                fs = 1 / np.mean(np.diff(sx))
-                samples_per_rev = int(fs / rps)
+                theta_uniform = np.linspace(th0, th1, pts_frame, endpoint=False)
+                x_theta = vib_theta_interp(theta_uniform)
 
-                start = int((rx[i] - sx[0]) * fs)
-                N = pts
+                # 去直流 + 加窗
+                x_theta -= np.mean(x_theta)
+                x_theta *= np.hanning(len(x_theta))
 
-                if start + N >= len(sy):
-                    continue
-
-                seg = sy[start : start + N]
-                fft = np.fft.rfft(seg)
+                fft = np.fft.rfft(x_theta)
                 mag = np.abs(fft)
+
+                # 阶次轴
+                order = np.fft.rfftfreq(len(x_theta), d=1 / pts_per_rev)
+
+                valid = order <= order_limit
+
+                # 帧中心转速（仅作为标签）
+                t_center = np.interp((th0 + th1) / 2, theta, t_sig)
+                rpm_center = rpm_interp(t_center)
 
                 maps.append(
                     {
-                        "rpm": rpm,
-                        "order": np.linspace(0, orders, len(mag)).tolist(),
-                        "mag": mag.tolist(),
+                        "rpm": float(rpm_center),
+                        "order": order[valid].tolist(),
+                        "mag": mag[valid].tolist(),
                     }
                 )
 
-            if len(maps) == 0:
-                raise ProcessingError("无法生成阶次图")
+            if not maps:
+                raise ProcessingError("OrderMap: 无有效帧生成")
 
-            # 创建元数据
+            # ========= 6. 输出 =========
             meta = SignalMetadata(
                 fs=1.0,
-                unit="V",
                 domain=DomainType.ORDER.value,
                 data_type=DataType.ORDER_MAP.value,
-                description=f"Order Map: 阶次上限={orders}, 每转采样点={pts}",
+                description=(
+                    f"Industrial OrderMap | "
+                    f"Orders≤{order_limit}, "
+                    f"{pts_per_rev} pts/rev, "
+                    f"{revs_per_frame} rev/frame"
+                ),
             )
 
-            # 输出 - 使用SignalData格式
             self.set_interface(
                 "O-OrderMap",
-                SignalData(type="order_map", special_data=maps, meta=meta).to_dict(),
+                SignalData(
+                    type="order_map",
+                    special_data=maps,
+                    meta=meta
+                ).to_dict(),
             )
 
-            self._logger.debug(f"阶次图完成: {len(maps)} 帧")
+            self._logger.debug(
+                f"OrderMap done: {len(maps)} frames"
+            )
 
         except Exception as e:
-            self._log_error(e, "阶次图")
+            self._log_error(e, "OrderMap")
             raise
-
 
 # ==================== Sink Blocks ====================
 
