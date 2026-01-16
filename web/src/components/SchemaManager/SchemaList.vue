@@ -11,7 +11,6 @@ export interface SchemaItem {
 interface Props {
   schemas: SchemaItem[];
   selectedId: string | null;
-  width: number;
 }
 
 const props = defineProps<Props>();
@@ -28,16 +27,16 @@ const hasSchemas = computed(() => props.schemas.length > 0);
 </script>
 
 <template>
-  <div class="schema-list" :style="{ width: width + 'px' }">
+  <div class="schema-list">
     <div class="schema-list-header">
       <h3>Schemas</h3>
       <button @click="emit('create')" class="btn btn-primary">+ 新建</button>
     </div>
     <div class="schema-list-body">
-      <div 
-        v-for="schema in schemas" 
+      <div
+        v-for="schema in schemas"
         :key="schema.id"
-        :class="['schema-item', { active: schema.id === selectedId }]" 
+        :class="['schema-item', { active: schema.id === selectedId }]"
         @click="emit('select', schema.id)"
       >
         <div class="schema-item-content">
@@ -59,12 +58,11 @@ const hasSchemas = computed(() => props.schemas.length > 0);
 
 <style scoped>
 .schema-list {
-  min-width: 200px;
-  max-width: 600px;
   background: #2d2d2d;
   border-right: 1px solid #444;
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 .schema-list-header {

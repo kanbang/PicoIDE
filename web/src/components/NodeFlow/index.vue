@@ -1,11 +1,27 @@
 <template>
   <div class="nodeflow-container">
-    <BaklavaEditor :view-model="baklava" :blocks="blocks" />
-    <OutputPanel
-      ref="outputPanelRef"
-      @file-opened="handleFileOpened"
-      @file-downloaded="handleFileDownloaded"
-    />
+    <Splitter direction="horizontal" :min="0.3" :max="0.8" :default-split="0.7">
+      <template #1>
+        <div class="editor-pane">
+          <button @click="toggleOutputPanel" class="btn-toggle-overlay" :title="outputPanelVisible ? '隐藏输出面板' : '显示输出面板'">
+            <svg v-if="outputPanelVisible" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M6 1L2 5L6 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <svg v-else width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M4 1L8 5L4 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <BaklavaEditor :view-model="baklava" :blocks="blocks" />
+        </div>
+      </template>
+      <template #2>
+        <OutputPanel
+          ref="outputPanelRef"
+          @file-opened="handleFileOpened"
+          @file-downloaded="handleFileDownloaded"
+        />
+      </template>
+    </Splitter>
   </div>
 </template>
 
@@ -17,6 +33,7 @@ import RunIcon from '@/components/icons/Run.vue';
 import { BuildBlock } from './BlockBuilder';
 import TestNode from './TestNode';
 import OutputPanel from '@/components/OutputPanel.vue';
+import Splitter from '@/components/common/Splitter.vue';
 import "@baklavajs/themes/dist/syrup-dark.css";
 
 const SAVE_COMMAND_ID = "SAVE";
@@ -44,6 +61,23 @@ const isLoading = ref(false);
 
 // OutputPanel引用
 const outputPanelRef = ref<InstanceType<typeof OutputPanel> | null>(null);
+const outputPanelVisible = ref(false);
+
+// OutputPanel显示/隐藏
+function toggleOutputPanel() {
+  outputPanelVisible.value = !outputPanelVisible.value;
+  outputPanelRef.value?.toggle();
+}
+
+function showOutputPanel() {
+  outputPanelVisible.value = true;
+  outputPanelRef.value?.show();
+}
+
+function hideOutputPanel() {
+  outputPanelVisible.value = false;
+  outputPanelRef.value?.hide();
+}
 
 // debounce 更新
 const DEBOUNCE_TIME = 500;
@@ -402,6 +436,10 @@ defineExpose({
   hasUnsavedChanges,
   currentSchema,
   outputPanelRef,
+  outputPanelVisible,
+  toggleOutputPanel,
+  showOutputPanel,
+  hideOutputPanel,
 });
 
 interface BlockDefinition {
@@ -431,10 +469,58 @@ interface BlockDefinition {
   height: 100%;
   width: 100%;
   position: relative;
+  overflow: hidden;
+}
+
+.nodeflow-container :deep(.pane) {
+  height: 100%;
+  overflow: hidden;
 }
 
 .nodeflow-container :deep(.baklava-editor) {
-  flex: 1;
   height: 100%;
+  width: 100%;
+}
+
+.editor-pane {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.btn-toggle-overlay {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 60px;
+  background: rgba(30, 30, 30, 0.7);
+  backdrop-filter: blur(8px);
+  border: none;
+  border-radius: 6px 0 0 6px;
+  color: #aaa;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: all 0.25s ease;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.3);
+  padding: 0;
+}
+
+.btn-toggle-overlay:hover {
+  width: 20px;
+  background: rgba(50, 50, 50, 0.9);
+  color: #fff;
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.5);
+}
+
+.btn-toggle-overlay svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
 }
 </style>

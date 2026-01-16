@@ -48,15 +48,7 @@ const deletingSchemaId = ref<string | null>(null);
 const nodeFlowRef = ref<InstanceType<typeof NodeFlow> | null>(null);
 
 // 分割条拖拽
-const listWidth = ref(300);
 const isListVisible = ref(true);
-
-function handleSplitterDrag(delta: number) {
-  const newWidth = listWidth.value + delta;
-  if (newWidth >= 200 && newWidth <= 600) {
-    listWidth.value = newWidth;
-  }
-}
 
 function toggleList() {
   isListVisible.value = !isListVisible.value;
@@ -265,27 +257,43 @@ defineExpose({
 </script>
 <template>
   <div class="schema-manager">
-    <SchemaList 
-      v-if="isListVisible"
-      :schemas="schemas"
-      :selected-id="selectedSchemaId"
-      :width="listWidth"
-      @select="selectSchema"
-      @create="createSchema"
-      @duplicate="duplicateSchema"
-      @rename="renameSchema"
-      @delete="deleteSchema"
-    />
+    <Splitter v-if="isListVisible" direction="horizontal" :min="0.25" :max="0.6" :default-split="0.3">
+      <template #1>
+        <SchemaList
+          :schemas="schemas"
+          :selected-id="selectedSchemaId"
+          @select="selectSchema"
+          @create="createSchema"
+          @duplicate="duplicateSchema"
+          @rename="renameSchema"
+          @delete="deleteSchema"
+        />
+      </template>
+      <template #2>
+        <div class="schema-editor">
+          <button @click="toggleList" class="btn-toggle-overlay" :title="isListVisible ? '隐藏列表' : '显示列表'">
+            <svg v-if="isListVisible" width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M6 1L2 5L6 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <svg v-else width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M4 1L8 5L4 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
 
-    <Splitter
-      v-if="isListVisible"
-      direction="horizontal"
-      :min-size="200"
-      :max-size="600"
-      @drag="handleSplitterDrag"
-    />
+          <NodeFlow v-if="hasSelectedSchema" ref="nodeFlowRef" :blocks="props.blocks" :show-run="props.showRun"
+            @update="handleUpdate" @unsavedChanges="handleUnsavedChanges" @save="handleSave" @run="handleRun" />
 
-    <div class="schema-editor">
+          <div v-if="!hasSelectedSchema" class="empty-editor-full">
+            <div class="empty-message">
+              <div class="empty-title">暂无 Schema</div>
+              <div class="empty-subtitle">请在左侧列表中新建或选择一个 Schema 开始编辑</div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </Splitter>
+
+    <div v-else class="schema-editor">
       <button @click="toggleList" class="btn-toggle-overlay" :title="isListVisible ? '隐藏列表' : '显示列表'">
         <svg v-if="isListVisible" width="10" height="10" viewBox="0 0 10 10" fill="none">
           <path d="M6 1L2 5L6 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
@@ -372,124 +380,11 @@ defineExpose({
   overflow: hidden;
 }
 
-.schema-list {
-  min-width: 200px;
-  max-width: 600px;
-  background: #2d2d2d;
-  border-right: 1px solid #444;
-  display: flex;
-  flex-direction: column;
-}
-
-.schema-list-header {
-  padding: 16px;
-  border-bottom: 1px solid #444;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.schema-list-header h3 {
-  margin: 0;
-  color: #fff;
-  font-size: 16px;
-}
-
-.schema-list-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.schema-item {
-  padding: 8px 12px;
-  margin-bottom: 4px;
-  background: #3d3d3d;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.2s;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  min-height: 40px;
-  box-sizing: border-box;
-}
-
-.schema-item:hover {
-  background: #4d4d4d;
-}
-
-.schema-item.active {
-  background: #5a5a5a;
-  border-left: 3px solid #4caf50;
-}
-
-.schema-item-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-}
-
-.schema-name {
-  color: #fff;
-  font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.unsaved-indicator {
-  color: #ff9800;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.schema-item-actions {
-  display: flex;
-  gap: 4px;
-  justify-content: flex-end;
-  flex-shrink: 0;
-}
-
-.btn-icon {
-  background: none;
-  border: none;
-  color: #aaa;
-  cursor: pointer;
-  width: 24px;
-  height: 24px;
-  font-size: 12px;
-  border-radius: 4px;
-  transition: color 0.2s, background 0.2s;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-icon:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.btn-icon-delete:hover {
-  background: #f44336;
-  color: #fff;
-}
-
-.empty-state {
-  color: #888;
-  text-align: center;
-  padding: 32px 16px;
-  font-size: 14px;
-}
-
 .schema-editor {
-  flex: 1;
   overflow: hidden;
   position: relative;
+  height: 100%;
+  width: 100%;
 }
 
 .btn-toggle-overlay {
