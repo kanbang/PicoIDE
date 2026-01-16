@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue';
 import NodeFlow from '../NodeFlow/index.vue';
+import SchemaList from './SchemaList.vue';
 import Modal from '../common/Modal.vue';
+import Splitter from '../common/Splitter.vue';
 
 export interface SchemaItem {
   id: string;
@@ -47,27 +49,13 @@ const nodeFlowRef = ref<InstanceType<typeof NodeFlow> | null>(null);
 
 // 分割条拖拽
 const listWidth = ref(300);
-const isDragging = ref(false);
 const isListVisible = ref(true);
 
-function startDrag(e: MouseEvent) {
-  isDragging.value = true;
-  document.addEventListener('mousemove', onDrag);
-  document.addEventListener('mouseup', stopDrag);
-}
-
-function onDrag(e: MouseEvent) {
-  if (!isDragging.value) return;
-  const newWidth = e.clientX;
+function handleSplitterDrag(delta: number) {
+  const newWidth = listWidth.value + delta;
   if (newWidth >= 200 && newWidth <= 600) {
     listWidth.value = newWidth;
   }
-}
-
-function stopDrag() {
-  isDragging.value = false;
-  document.removeEventListener('mousemove', onDrag);
-  document.removeEventListener('mouseup', stopDrag);
 }
 
 function toggleList() {
@@ -277,41 +265,33 @@ defineExpose({
 </script>
 <template>
   <div class="schema-manager">
-    <div v-show="isListVisible" class="schema-list" :style="{ width: listWidth + 'px' }">
-      <div class="schema-list-header">
-        <h3>Schemas</h3>
-        <button @click="createSchema" class="btn btn-primary">+ 新建</button>
-      </div>
-      <div class="schema-list-body">
-        <div v-for="schema in schemas" :key="schema.id"
-          :class="['schema-item', { active: schema.id === selectedSchemaId }]" @click="selectSchema(schema.id)">
-          <div class="schema-item-content">
-            <span class="schema-name">{{ schema.name }}</span>
-            <span v-if="schema.hasUnsavedChanges" class="unsaved-indicator">●</span>
-          </div>
-          <div class="schema-item-actions">
-            <button @click.stop="duplicateSchema(schema.id)" class="btn-icon" title="复制">📋</button>
-            <button @click.stop="renameSchema(schema.id)" class="btn-icon" title="重命名">✎</button>
-            <button @click.stop="deleteSchema(schema.id)" class="btn-icon btn-icon-delete" title="删除">✕</button>
-          </div>
-        </div>
-        <div v-if="schemas.length === 0" class="empty-state">
-          暂无 Schema，点击"新建"创建
-        </div>
-      </div>
-    </div>
+    <SchemaList 
+      v-if="isListVisible"
+      :schemas="schemas"
+      :selected-id="selectedSchemaId"
+      :width="listWidth"
+      @select="selectSchema"
+      @create="createSchema"
+      @duplicate="duplicateSchema"
+      @rename="renameSchema"
+      @delete="deleteSchema"
+    />
 
-    <div v-show="isListVisible" class="splitter" @mousedown="startDrag"></div>
+    <Splitter
+      v-if="isListVisible"
+      direction="horizontal"
+      :min-size="200"
+      :max-size="600"
+      @drag="handleSplitterDrag"
+    />
 
     <div class="schema-editor">
       <button @click="toggleList" class="btn-toggle-overlay" :title="isListVisible ? '隐藏列表' : '显示列表'">
         <svg v-if="isListVisible" width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d="M6 1L2 5L6 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-            stroke-linejoin="round" />
+          <path d="M6 1L2 5L6 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
         <svg v-else width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d="M4 1L8 5L4 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-            stroke-linejoin="round" />
+          <path d="M4 1L8 5L4 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </button>
 
@@ -399,22 +379,6 @@ defineExpose({
   border-right: 1px solid #444;
   display: flex;
   flex-direction: column;
-}
-
-.splitter {
-  width: 4px;
-  background: #444;
-  cursor: col-resize;
-  flex-shrink: 0;
-  transition: background 0.2s;
-}
-
-.splitter:hover {
-  background: #666;
-}
-
-.splitter:active {
-  background: #4caf50;
 }
 
 .schema-list-header {
