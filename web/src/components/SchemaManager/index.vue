@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue';
 import NodeFlow from '../NodeFlow/index.vue';
+import Modal from '../common/Modal.vue';
 
 export interface SchemaItem {
   id: string;
@@ -320,40 +321,31 @@ function handleRun(data: any) {
       </div>
     </div>
 
-    <!-- 模态框保持不变 -->
-    <div v-if="showSavePrompt" class="modal-overlay">
-      <div class="modal">
-        <h3>未保存的更改</h3>
-        <p>当前 Schema 有未保存的更改，是否保存？</p>
-        <div class="modal-actions">
-          <button @click="saveCurrentSchema" class="btn btn-primary">保存</button>
-          <button @click="discardAndSwitch" class="btn">不保存</button>
-          <button @click="cancelSwitch" class="btn">取消</button>
-        </div>
-      </div>
-    </div>
+    <!-- 模态框 -->
+    <Modal v-model:visible="showSavePrompt" title="未保存的更改" size="small" @close="cancelSwitch">
+      <p>当前 Schema 有未保存的更改，是否保存？</p>
+      <template #footer>
+        <button @click="saveCurrentSchema" class="btn btn-primary">保存</button>
+        <button @click="discardAndSwitch" class="btn">不保存</button>
+        <button @click="cancelSwitch" class="btn">取消</button>
+      </template>
+    </Modal>
 
-    <div v-if="showRenameDialog" class="modal-overlay">
-      <div class="modal">
-        <h3>重命名 Schema</h3>
-        <input v-model="newName" @keyup.enter="confirmRename" class="input" autofocus />
-        <div class="modal-actions">
-          <button @click="confirmRename" class="btn btn-primary">确定</button>
-          <button @click="showRenameDialog = false" class="btn">取消</button>
-        </div>
-      </div>
-    </div>
+    <Modal v-model:visible="showRenameDialog" title="重命名 Schema" size="small" @close="showRenameDialog = false">
+      <input v-model="newName" @keyup.enter="confirmRename" class="input" autofocus />
+      <template #footer>
+        <button @click="confirmRename" class="btn btn-primary">确定</button>
+        <button @click="showRenameDialog = false" class="btn">取消</button>
+      </template>
+    </Modal>
 
-    <div v-if="showDeleteDialog" class="modal-overlay">
-      <div class="modal">
-        <h3>删除 Schema</h3>
-        <p>确定要删除这个 Schema 吗？此操作无法撤销。</p>
-        <div class="modal-actions">
-          <button @click="confirmDelete" class="btn btn-danger">删除</button>
-          <button @click="showDeleteDialog = false" class="btn">取消</button>
-        </div>
-      </div>
-    </div>
+    <Modal v-model:visible="showDeleteDialog" title="删除 Schema" size="small" @close="showDeleteDialog = false">
+      <p>确定要删除这个 Schema 吗？此操作无法撤销。</p>
+      <template #footer>
+        <button @click="confirmDelete" class="btn btn-danger">删除</button>
+        <button @click="showDeleteDialog = false" class="btn">取消</button>
+      </template>
+    </Modal>
   </div>
 </template>
 
@@ -566,50 +558,17 @@ function handleRun(data: any) {
   stroke-width: 2;
 }
 
-/* 模态框样式保持不变 */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: #2d2d2d;
-  padding: 24px;
-  border-radius: 8px;
-  min-width: 400px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.modal h3 {
-  margin: 0 0 16px 0;
-  color: #fff;
-  font-size: 18px;
-}
-
-.modal p {
-  margin: 0 0 24px 0;
-  color: #ccc;
-  font-size: 14px;
-}
-
+/* Modal 内部样式 */
 .input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: #3d3d3d;
   border: 1px solid #555;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #fff;
   font-size: 14px;
-  margin-bottom: 16px;
   box-sizing: border-box;
+  transition: border-color 0.2s;
 }
 
 .input:focus {
@@ -617,25 +576,21 @@ function handleRun(data: any) {
   border-color: #4caf50;
 }
 
-.modal-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-
 .btn {
-  padding: 8px 16px;
+  padding: 10px 20px;
   background: #3d3d3d;
   border: 1px solid #555;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #fff;
   cursor: pointer;
   font-size: 14px;
-  transition: background 0.2s;
+  font-weight: 500;
+  transition: all 0.2s;
 }
 
 .btn:hover {
   background: #4d4d4d;
+  transform: translateY(-1px);
 }
 
 .btn-primary {
@@ -645,6 +600,7 @@ function handleRun(data: any) {
 
 .btn-primary:hover {
   background: #45a049;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
 }
 
 .btn-danger {
@@ -654,5 +610,6 @@ function handleRun(data: any) {
 
 .btn-danger:hover {
   background: #d32f2f;
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.3);
 }
 </style>

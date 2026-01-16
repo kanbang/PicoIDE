@@ -170,6 +170,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { showSuccess, showError, showInfo } from '@/utils/toast';
 
 interface OutputFile {
   file_id: string;
@@ -227,10 +228,10 @@ async function refreshFiles() {
     const { getOutputFiles } = await import('@/api/flow');
     const files = await getOutputFiles();
     outputFiles.value = files;
-    showToast('文件列表已刷新', 'success');
+    showSuccess('文件列表已刷新');
   } catch (error) {
     console.error('刷新文件失败:', error);
-    showToast('刷新文件失败', 'error');
+    showError('刷新文件失败');
   }
 }
 
@@ -243,7 +244,7 @@ async function openFile(file: OutputFile) {
     emit('file-opened', file);
   } catch (error) {
     console.error('打开文件失败:', error);
-    showToast('打开文件失败', 'error');
+    showError('打开文件失败');
   }
 }
 
@@ -260,10 +261,10 @@ async function downloadFile(file: OutputFile) {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     emit('file-downloaded', file);
-    showToast('文件下载已开始', 'success');
+    showSuccess('文件下载已开始');
   } catch (error) {
     console.error('下载文件失败:', error);
-    showToast('下载文件失败', 'error');
+    showError('下载文件失败');
   }
 }
 
@@ -280,10 +281,10 @@ async function deleteFile(file: OutputFile) {
     await deleteOutputFile(file.file_id);
     
     outputFiles.value = outputFiles.value.filter(f => f.file_id !== file.file_id);
-    showToast('文件已删除', 'success');
+    showSuccess('文件已删除');
   } catch (error) {
     console.error('删除文件失败:', error);
-    showToast('删除文件失败', 'error');
+    showError('删除文件失败');
   }
 }
 
@@ -300,33 +301,11 @@ async function cleanupFiles() {
     await cleanupOutputFiles();
     
     await refreshFiles();
-    showToast('旧文件已清理', 'success');
+    showSuccess('旧文件已清理');
   } catch (error) {
     console.error('清理文件失败:', error);
-    showToast('清理文件失败', 'error');
+    showError('清理文件失败');
   }
-}
-
-// 原生 toast 提示
-function showToast(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.textContent = message;
-  
-  document.body.appendChild(toast);
-  
-  // 触发动画
-  requestAnimationFrame(() => {
-    toast.classList.add('toast-show');
-  });
-  
-  // 3秒后移除
-  setTimeout(() => {
-    toast.classList.remove('toast-show');
-    setTimeout(() => {
-      document.body.removeChild(toast);
-    }, 300);
-  }, 3000);
 }
 
 // 原生 confirm 对话框
@@ -357,42 +336,6 @@ defineExpose({
   refreshFiles,
 });
 </script>
-
-<style>
-/* Toast 提示样式 */
-.toast {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  padding: 12px 20px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  color: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  opacity: 0;
-  transform: translateY(-20px);
-  transition: all 0.3s ease;
-  z-index: 9999;
-}
-
-.toast-show {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.toast-success {
-  background: #10b981;
-}
-
-.toast-error {
-  background: #ef4444;
-}
-
-.toast-info {
-  background: #3b82f6;
-}
-</style>
 
 <style scoped>
 .output-panel {

@@ -72,14 +72,39 @@ engine_manager = EngineManager(pool_size=5)
 # 注册业务：振动分析业务
 engine_manager.register_business("daq", daq_blocks)
 
-async def run_schema(scripts: List[Any], schema: dict):
+async def run_schema(scripts: List[Any], schema: dict, execution_id: str = None):
+    """
+    执行 schema
+    
+    Args:
+        scripts: 脚本列表
+        schema: schema 配置
+        execution_id: 执行ID（用于文件追踪）
+    """
+    # 导入 output_file_manager
+    from node.output_manager import output_file_manager
+    from node.daq import BaseBlock
+    
+    # 创建执行ID（如果未提供）
+    if execution_id is None:
+        execution_id = output_file_manager.create_execution_id()
+    
+    # 设置所有 Block 的 execution_id
     async with await engine_manager.acquire("daq", schema) as engine:
+        # 为所有 Block 设置 execution_id
+        for block in engine.blocks:
+            if isinstance(block, BaseBlock):
+                block.set_execution_id(execution_id)
         await engine.async_run()
 
     with engine_manager.acquire_sync("daq", schema) as engine:
+        # 为所有 Block 设置 execution_id
+        for block in engine.blocks:
+            if isinstance(block, BaseBlock):
+                block.set_execution_id(execution_id)
         engine.run()
-
-
+    
+    return execution_id
     # engine = ComputeEngine()
     # engine.register_blocks(base_blocks)
     # engine.set_schema(schema)

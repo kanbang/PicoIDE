@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue';
 import { getBlocks, getSchemas, createSchema, updateSchema, deleteSchema, duplicateSchema, executeBlocks, SchemaItem as ApiSchemaItem } from '@/api/index';
+import { showSuccess, showError, showInfo } from '@/utils/toast';
 
 // Blocks 数据从后端获取
 const blocks = ref<any[]>([]);
@@ -117,9 +118,9 @@ async function handleRun(id: string, data: any) {
       schemaManager.nodeFlowRef.outputPanelRef.setOutputFiles(result.output_files);
       
       if (result.output_files.length > 0) {
-        showToast(`执行完成，生成了 ${result.output_files.length} 个输出文件`, 'success');
+        showSuccess(`执行完成，生成了 ${result.output_files.length} 个输出文件`);
       } else {
-        showToast('执行完成，但未生成输出文件', 'info');
+        showInfo('执行完成，但未生成输出文件');
       }
     }
     
@@ -133,30 +134,8 @@ async function handleRun(id: string, data: any) {
       schemaManager.nodeFlowRef.outputPanelRef.setErrors([error instanceof Error ? error.message : String(error)]);
     }
     
-    showToast('执行失败: ' + (error instanceof Error ? error.message : String(error)), 'error');
+    showError('执行失败: ' + (error instanceof Error ? error.message : String(error)));
   }
-}
-
-// 原生 toast 提示
-function showToast(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.textContent = message;
-  
-  document.body.appendChild(toast);
-  
-  // 触发动画
-  requestAnimationFrame(() => {
-    toast.classList.add('toast-show');
-  });
-  
-  // 3秒后移除
-  setTimeout(() => {
-    toast.classList.remove('toast-show');
-    setTimeout(() => {
-      document.body.removeChild(toast);
-    }, 300);
-  }, 3000);
 }
 
 // 组件挂载时加载数据
@@ -173,39 +152,7 @@ onMounted(() => {
 </template>
 
 <style>
-/* Toast 提示样式 */
-.toast {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  padding: 12px 20px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  color: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  opacity: 0;
-  transform: translateY(-20px);
-  transition: all 0.3s ease;
-  z-index: 9999;
-}
-
-.toast-show {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.toast-success {
-  background: #10b981;
-}
-
-.toast-error {
-  background: #ef4444;
-}
-
-.toast-info {
-  background: #3b82f6;
-}
+/* 样式已移至 Toast 组件 */
 </style>
 
 <style scoped>

@@ -31,6 +31,7 @@ import scipy.signal as signal
 from scipy.interpolate import interp1d
 
 from flow.block import Block
+from node.output_manager import output_file_manager, OutputConfig
 
 
 # ==================== 配置和日志系统 ====================
@@ -636,6 +637,7 @@ class BaseBlock(Block):
         self._compute_count = 0
         self._error_count = 0
         self._last_compute_time = 0.0
+        self._execution_id = None  # 当前执行ID
 
     def _log_compute_start(self) -> None:
         """记录计算开始"""
@@ -715,6 +717,41 @@ class BaseBlock(Block):
         except Exception as e:
             self._log_error(e, "on_compute")
             return False
+
+    def set_execution_id(self, execution_id: str) -> None:
+        """设置当前执行ID"""
+        self._execution_id = execution_id
+
+    def _register_output_file(
+        self,
+        filename: str,
+        description: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        注册输出文件到文件管理器
+        
+        Args:
+            filename: 文件名
+            description: 描述
+            metadata: 元数据
+            
+        Returns:
+            文件ID
+        """
+        if self._execution_id is None:
+            self._logger.warning("没有设置执行ID，无法注册文件")
+            return ""
+        
+        return output_file_manager.register_file(
+            execution_id=self._execution_id,
+            filename=filename,
+            block_name=self.name,
+            block_id=str(id(self)),
+            output_port="unknown",
+            description=description,
+            metadata=metadata
+        )
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
@@ -2260,12 +2297,25 @@ class CSVSink(BaseBlock):
 
             df = pd.DataFrame({"x": x, "y": y})
 
+            # 使用统一的输出目录
+            full_path = OutputConfig.OUTPUT_DIR / file_path
+            
             # 确保输出目录存在
-            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+            full_path.parent.mkdir(parents=True, exist_ok=True)
 
-            df.to_csv(file_path, mode=mode, header=header, index=False)
+            # 写入文件
+            df.to_csv(full_path, mode=mode, header=header, index=False)
+            
+            # 注册到文件管理器
+            file_id = self._register_output_file(
+                filename=file_path,
+                description="CSV数据文件"
+            )
+            
+            # 更新文件大小
+            output_file_manager.update_file_size(file_id, full_path.stat().st_size)
 
-            self._logger.debug(f"数据已保存: {file_path}")
+            self._logger.debug(f"数据已保存: {full_path}")
 
         except Exception as e:
             self._log_error(e, "CSV保存")
@@ -2289,8 +2339,12 @@ class BaseChartViewer(BaseBlock):
         super().__init__(name, category=category)
 
         self.add_input("I-List-XY")
+        
+        # 使用统一的输出目录
+        default_filename = f"{name.lower().replace('viewer', '')}_chart.html"
         self.add_text_input_option(
-            "文件路径", default=f"{name.lower().replace('viewer', '')}_chart.html"
+            "文件路径",
+            default=default_filename
         )
         self.add_text_input_option(
             "标题", default=f"{name.replace('Viewer', '')} Chart"
@@ -2399,14 +2453,35 @@ class BaseChartViewer(BaseBlock):
                 enable_drag,
             )
 
+            # 使用统一的输出目录
+            full_path = OutputConfig.OUTPUT_DIR / file_path
+            
             # 确保输出目录存在
-            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+            full_path.parent.mkdir(parents=True, exist_ok=True)
 
             # 写入文件
-            with open(file_path, "w", encoding="utf-8") as f:
+            with open(full_path, "w", encoding="utf-8") as f:
                 f.write(html_content)
+            
+            # 更新文件大小
+            file_size = full_path.stat().st_size
+            
+            # 注册到文件管理器
+            file_id = self._register_output_file(
+                filename=file_path,
+                description=f"{title}图表",
+                metadata={
+                    "chart_type": self.chart_type,
+                    "title": title,
+                    "width": width,
+                    "height": height
+                }
+            )
+            
+            # 更新文件大小
+            output_file_manager.update_file_size(file_id, file_size)
 
-            self._logger.info(f"图表已生成: {file_path}")
+            self._logger.info(f"图表已生成: {full_path} (ID: {file_id})")
 
         except Exception as e:
             self._log_error(e, "图表生成")
