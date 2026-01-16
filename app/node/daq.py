@@ -810,7 +810,8 @@ class TurbineSimulator(BaseBlock):
         self.add_output("O-Pulse-XY")  # 原始脉冲信号 (TTL)
         self.add_output("O-InstantRPM-XY")  # 物理真值转速
         self.add_output("O-AvgRPM-XY")  # 测速算法得出的平均转速 (每齿更新)
-        self.add_output("O-Vibration-XY")  # 轴承径向振动
+        self.add_output("O-VibrationX-XY")  # 径向振动X方向
+        self.add_output("O-VibrationY-XY")  # 径向振动Y方向（与X正交）
         self.add_output("O-Torsional-XY")  # 扭振交流分量
 
     def on_compute(self):
@@ -896,11 +897,20 @@ class TurbineSimulator(BaseBlock):
             else:
                 t_rpm_avg, rpm_avg_val = [], []
 
-            # 4. 生成径向振动信号
-            vibration = (
+            # 4. 生成两路正交的径向振动信号
+            # X方向振动
+            vibration_x = (
                 amp_1x * np.sin(phase_accum)
                 + (amp_1x * 0.3) * np.sin(2 * phase_accum)
                 + 2.0 * np.sin(bpf_num * phase_accum)
+                + np.random.normal(0, 0.5, N)
+            )
+            
+            # Y方向振动（与X正交，相位偏移90度）
+            vibration_y = (
+                amp_1x * np.sin(phase_accum + np.pi/2)
+                + (amp_1x * 0.3) * np.sin(2 * phase_accum + np.pi/2)
+                + 2.0 * np.sin(bpf_num * phase_accum + np.pi/2)
                 + np.random.normal(0, 0.5, N)
             )
 
@@ -959,14 +969,27 @@ class TurbineSimulator(BaseBlock):
                     ).to_dict(),
                 )
 
-            # O-Vibration-XY
-            vib_meta = SignalMetadata(**base_meta.to_dict())
-            vib_meta.data_type = DataType.VIBRATION.value
-            vib_meta.unit = "um"
+            # O-VibrationX-XY
+            vib_x_meta = SignalMetadata(**base_meta.to_dict())
+            vib_x_meta.data_type = DataType.VIBRATION.value
+            vib_x_meta.unit = "um"
+            vib_x_meta.direction = "X"
             self.set_interface(
-                "O-Vibration-XY",
+                "O-VibrationX-XY",
                 SignalData(
-                    x=t.tolist(), y=vibration.tolist(), meta=vib_meta, type="vibration"
+                    x=t.tolist(), y=vibration_x.tolist(), meta=vib_x_meta, type="vibration"
+                ).to_dict(),
+            )
+
+            # O-VibrationY-XY
+            vib_y_meta = SignalMetadata(**base_meta.to_dict())
+            vib_y_meta.data_type = DataType.VIBRATION.value
+            vib_y_meta.unit = "um"
+            vib_y_meta.direction = "Y"
+            self.set_interface(
+                "O-VibrationY-XY",
+                SignalData(
+                    x=t.tolist(), y=vibration_y.tolist(), meta=vib_y_meta, type="vibration"
                 ).to_dict(),
             )
 
@@ -2542,6 +2565,323 @@ class ScatterChartViewer(BaseChartViewer):
         self._generate_chart()
 
 
+class TrajectoryChartViewer(BaseBlock):
+    """
+    轨迹图查看器（用于显示正交振动轨迹）
+
+    功能：
+    - 显示两路正交信号的轨迹（X-Y平面）
+    - 适合显示转子轴心轨迹
+    - 支持交互式缩放和旋转
+    """
+
+    def __init__(self):
+        super().__init__("TrajectoryChartViewer", category="输出")
+
+        self.add_input("I-VibrationX-XY")
+        self.add_input("I-VibrationY-XY")
+
+        self.add_text_input_option(
+            "文件路径", default="trajectory_chart.html"
+        )
+        self.add_text_input_option("标题", default="轴心轨迹图")
+        self.add_integer_option("宽度 (px)", default=800, min_val=600, max_val=2000)
+        self.add_integer_option("高度 (px)", default=800, min_val=600, max_val=2000)
+        self.add_checkbox_option("显示网格", default=True)
+        self.add_checkbox_option("显示图例", default=True)
+        self.add_checkbox_option("显示时间轴", default=True)
+        self.add_number_option("线条宽度", default=2.0, min_val=0.5, max_val=5.0)
+        self.add_select_option(
+            "配色方案",
+            items=["彩虹", "热力", "海洋", "彩虹-反转"],
+            default="彩虹"
+        )
+
+    def on_compute(self):
+        """执行计算"""
+        try:
+            vib_x = self.get_interface("I-VibrationX-XY")
+            vib_y = self.get_interface("I-VibrationY-XY")
+
+            if not (vib_x and vib_y):
+                self._logger.warning("输入数据不完整")
+                return
+
+            # 提取数据
+            x_data = self._extract_data(vib_x).get("y", [])
+            y_data = self._extract_data(vib_y).get("y", [])
+
+            if len(x_data) == 0 or len(y_data) == 0:
+                self._logger.warning("数据为空")
+                return
+
+            if len(x_data) != len(y_data):
+                self._logger.warning(f"X和Y数据长度不匹配: {len(x_data)} != {len(y_data)}")
+                return
+
+            # 获取配置
+            file_path = self.get_option("文件路径")
+            title = self.get_option("标题")
+            width = self.get_option("宽度 (px)")
+            height = self.get_option("高度 (px)")
+            show_grid = self.get_option("显示网格")
+            show_legend = self.get_option("显示图例")
+            show_time_axis = self.get_option("显示时间轴")
+            line_width = self.get_option("线条宽度")
+            color_scheme = self.get_option("配色方案")
+
+            # 生成时间索引（用于颜色映射）
+            time_indices = list(range(len(x_data)))
+
+            # 颜色映射
+            color_schemes = {
+                "彩虹": "hsl",
+                "热力": "heat",
+                "海洋": "ocean",
+                "彩虹-反转": "hsl-reverse"
+            }
+
+            # 生成HTML
+            html_content = f"""
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }}
+        .container {{
+            max-width: {width}px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }}
+        header {{
+            background: #2563eb;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }}
+        h1 {{
+            margin: 0;
+            font-weight: 500;
+            font-size: 1.8em;
+        }}
+        .hint {{
+            text-align: center;
+            color: #64748b;
+            font-size: 0.85em;
+            margin: 8px 0 12px 0;
+            padding: 6px 0;
+            background: rgba(37, 99, 235, 0.05);
+            border-radius: 6px;
+        }}
+        .chart-wrapper {{
+            position: relative;
+            height: {height}px;
+            padding: 20px;
+            cursor: default;
+        }}
+        .chart-wrapper:hover {{
+            cursor: grab;
+        }}
+        .chart-wrapper:active {{
+            cursor: grabbing;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header><h1>{title}</h1></header>
+        <div class="hint">
+            交互提示：滚轮缩放 · 左键拖拽平移 · 双击重置 · 颜色表示时间进程
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="chart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const xData = {json.dumps(x_data)};
+        const yData = {json.dumps(y_data)};
+        const timeIndices = {json.dumps(time_indices)};
+        const totalPoints = {len(x_data)};
+
+        // 生成颜色数组
+        function generateColors(indices, scheme) {{
+            const colors = [];
+            for (let i = 0; i < indices.length; i++) {{
+                const ratio = indices[i] / totalPoints;
+                let r, g, b;
+                
+                if (scheme === 'hsl' || scheme === 'hsl-reverse') {{
+                    const hue = scheme === 'hsl' ? ratio * 360 : (1 - ratio) * 360;
+                    const color = hslToRgb(hue / 360, 0.7, 0.5);
+                    r = color[0];
+                    g = color[1];
+                    b = color[2];
+                }} else if (scheme === 'heat') {{
+                    r = Math.floor(255 * ratio);
+                    g = Math.floor(255 * (1 - ratio) * 0.5);
+                    b = Math.floor(255 * (1 - ratio));
+                }} else if (scheme === 'ocean') {{
+                    r = Math.floor(255 * ratio * 0.5);
+                    g = Math.floor(255 * ratio);
+                    b = Math.floor(255 * (0.5 + ratio * 0.5));
+                }}
+                
+                colors.push(`rgba(${{r}}, ${{g}}, ${{b}}, 0.8)`);
+            }}
+            return colors;
+        }}
+
+        // HSL转RGB
+        function hslToRgb(h, s, l) {{
+            let r, g, b;
+            if (s === 0) {{
+                r = g = b = l;
+            }} else {{
+                const hue2rgb = (p, q, t) => {{
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                }};
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }}
+            return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+        }}
+
+        const colors = generateColors(timeIndices, '{color_scheme}');
+
+        const ctx = document.getElementById('chart').getContext('2d');
+        const chart = new Chart(ctx, {{
+            type: 'line',
+            data: {{
+                datasets: [{{
+                    label: '{title}',
+                    data: xData.map((x, i) => ({{x: x, y: yData[i]}})),
+                    borderColor: colors,
+                    backgroundColor: colors,
+                    borderWidth: {line_width},
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    tension: 0.1,
+                    showLine: true
+                }}]
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: {{
+                    duration: 800
+                }},
+                interaction: {{
+                    intersect: false,
+                    mode: 'nearest'
+                }},
+                plugins: {{
+                    legend: {{ display: {str(show_legend).lower()} }},
+                    tooltip: {{
+                        backgroundColor: 'rgba(0,0,0,0.8)',
+                        cornerRadius: 8,
+                        padding: 10,
+                        callbacks: {{
+                            label: function(context) {{
+                                const index = context.dataIndex;
+                                return [
+                                    'X: ' + context.parsed.x.toFixed(2),
+                                    'Y: ' + context.parsed.y.toFixed(2),
+                                    '时间索引: ' + index
+                                ];
+                            }}
+                        }}
+                    }},
+                    zoom: {{
+                        pan: {{
+                            enabled: true,
+                            mode: 'xy',
+                            modifierKey: null,
+                            threshold: 1,
+                            speed: 20
+                        }},
+                        zoom: {{
+                            wheel: {{ enabled: true }},
+                            pinch: {{ enabled: true }},
+                            mode: 'xy'
+                        }}
+                    }}
+                }},
+                scales: {{
+                    x: {{
+                        type: 'linear',
+                        position: 'bottom',
+                        title: {{
+                            display: true,
+                            text: 'X方向振动 (μm)',
+                            font: {{ size: 14 }}
+                        }},
+                        grid: {{
+                            display: {str(show_grid).lower()},
+                            color: 'rgba(0,0,0,0.05)'
+                        }}
+                    }},
+                    y: {{
+                        type: 'linear',
+                        position: 'left',
+                        title: {{
+                            display: true,
+                            text: 'Y方向振动 (μm)',
+                            font: {{ size: 14 }}
+                        }},
+                        grid: {{
+                            display: {str(show_grid).lower()},
+                            color: 'rgba(0,0,0,0.05)'
+                        }}
+                    }}
+                }}
+            }}
+        }});
+
+        document.querySelector('canvas').addEventListener('dblclick', (e) => {{
+            e.preventDefault();
+            chart.resetZoom('none');
+        }});
+    </script>
+</body>
+</html>
+"""
+
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                self._logger.info(f"轨迹图已生成: {file_path}")
+            except Exception as e:
+                self._log_error(e, "轨迹图生成")
+                raise
+
+        except Exception as e:
+            self._log_error(e, "轨迹图")
+            raise
+
+
 class OrderMapChartViewer(BaseBlock):
     """
     阶次瀑布图查看器
@@ -2914,6 +3254,7 @@ daq_blocks = [
     LineChartViewer(),
     BarChartViewer(),
     ScatterChartViewer(),
+    TrajectoryChartViewer(),
     OrderMapChartViewer(),
     # Communication
     MQTTPublisher(),
