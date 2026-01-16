@@ -12,6 +12,9 @@ const schemas = ref<ApiSchemaItem[]>([]);
 // 当前选中的 Schema ID (string 类型，因为后端使用 UUID)
 const selectedSchemaId = ref<string | null>(null);
 
+// SchemaManager 组件引用
+const schemaManagerRef = ref<InstanceType<typeof SchemaManager> | null>(null);
+
 // 从后端加载 blocks
 async function loadBlocks() {
   try {
@@ -101,10 +104,9 @@ async function handleRun(id: string, data: any) {
   try {
     console.log('执行Schema:', id, data);
     
-    // 获取 SchemaManager 组件实例
-    const schemaManager = document.querySelector('.schema-manager') as any;
-    if (schemaManager?.nodeFlowRef?.outputPanelRef) {
-      schemaManager.nodeFlowRef.outputPanelRef.setExecutionStatus('running');
+    // 设置执行状态为运行中
+    if (schemaManagerRef.value?.nodeFlowRef?.outputPanelRef) {
+      schemaManagerRef.value.nodeFlowRef.outputPanelRef.setExecutionStatus('running');
     }
     
     // 调用执行API
@@ -113,9 +115,9 @@ async function handleRun(id: string, data: any) {
     console.log('执行结果:', result);
     
     // 更新输出面板
-    if (schemaManager?.nodeFlowRef?.outputPanelRef && result.output_files) {
-      schemaManager.nodeFlowRef.outputPanelRef.setExecutionStatus('completed', result.execution_time);
-      schemaManager.nodeFlowRef.outputPanelRef.setOutputFiles(result.output_files);
+    if (schemaManagerRef.value?.nodeFlowRef?.outputPanelRef && result.output_files) {
+      schemaManagerRef.value.nodeFlowRef.outputPanelRef.setExecutionStatus('completed', result.execution_time);
+      schemaManagerRef.value.nodeFlowRef.outputPanelRef.setOutputFiles(result.output_files);
       
       if (result.output_files.length > 0) {
         showSuccess(`执行完成，生成了 ${result.output_files.length} 个输出文件`);
@@ -127,11 +129,10 @@ async function handleRun(id: string, data: any) {
   } catch (error) {
     console.error('执行失败:', error);
     
-    // 获取 SchemaManager 组件实例
-    const schemaManager = document.querySelector('.schema-manager') as any;
-    if (schemaManager?.nodeFlowRef?.outputPanelRef) {
-      schemaManager.nodeFlowRef.outputPanelRef.setExecutionStatus('failed');
-      schemaManager.nodeFlowRef.outputPanelRef.setErrors([error instanceof Error ? error.message : String(error)]);
+    // 更新输出面板状态为失败
+    if (schemaManagerRef.value?.nodeFlowRef?.outputPanelRef) {
+      schemaManagerRef.value.nodeFlowRef.outputPanelRef.setExecutionStatus('failed');
+      schemaManagerRef.value.nodeFlowRef.outputPanelRef.setErrors([error instanceof Error ? error.message : String(error)]);
     }
     
     showError('执行失败: ' + (error instanceof Error ? error.message : String(error)));
@@ -146,7 +147,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <SchemaManager v-model:schemas="schemas" v-model:selected-schema-id="selectedSchemaId" :blocks="blocks"
+  <SchemaManager ref="schemaManagerRef" v-model:schemas="schemas" v-model:selected-schema-id="selectedSchemaId" :blocks="blocks"
     :show-run="true" @run="handleRun" @create="handleCreate" @save="handleSave" @delete="handleDelete"
     @rename="handleRename" @duplicate="handleDuplicate" />
 </template>

@@ -637,7 +637,6 @@ class BaseBlock(Block):
         self._compute_count = 0
         self._error_count = 0
         self._last_compute_time = 0.0
-        self._execution_id = None  # 当前执行ID
 
     def _log_compute_start(self) -> None:
         """记录计算开始"""
@@ -718,12 +717,9 @@ class BaseBlock(Block):
             self._log_error(e, "on_compute")
             return False
 
-    def set_execution_id(self, execution_id: str) -> None:
-        """设置当前执行ID"""
-        self._execution_id = execution_id
-
     def _register_output_file(
         self,
+        execution_id: str,
         filename: str,
         description: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
@@ -732,6 +728,7 @@ class BaseBlock(Block):
         注册输出文件到文件管理器
         
         Args:
+            execution_id: 执行ID
             filename: 文件名
             description: 描述
             metadata: 元数据
@@ -739,12 +736,12 @@ class BaseBlock(Block):
         Returns:
             文件ID
         """
-        if self._execution_id is None:
-            self._logger.warning("没有设置执行ID，无法注册文件")
+        if execution_id is None:
+            self._logger.warning("没有提供执行ID，无法注册文件")
             return ""
         
         return output_file_manager.register_file(
-            execution_id=self._execution_id,
+            execution_id=execution_id,
             filename=filename,
             block_name=self.name,
             block_id=str(id(self)),
@@ -752,6 +749,54 @@ class BaseBlock(Block):
             description=description,
             metadata=metadata
         )
+
+    def _write_file(
+        self,
+        execution_id: str,
+        filename: str,
+        write_func: callable,
+        description: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        通用文件写入方法
+        
+        Args:
+            execution_id: 执行ID
+            filename: 文件名
+            write_func: 写入函数，接受文件路径作为参数
+            description: 描述
+            metadata: 元数据
+            
+        Returns:
+            文件ID
+        """
+        try:
+            # 使用统一的输出目录
+            full_path = OutputConfig.OUTPUT_DIR / filename
+            
+            # 确保输出目录存在
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # 调用写入函数
+            write_func(full_path)
+            
+            # 注册到文件管理器
+            file_id = self._register_output_file(
+                execution_id=execution_id,
+                filename=filename,
+                description=description,
+                metadata=metadata
+            )
+            
+            # 更新文件大小
+            if file_id and full_path.exists():
+                output_file_manager.update_file_size(file_id, full_path.stat().st_size)
+            
+            return file_id
+        except Exception as e:
+            self._log_error(e, "文件写入")
+            raise
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
@@ -782,7 +827,7 @@ class ChannelSource(BaseBlock):
             "通道", items=[f"Channel {i}" for i in range(8)], default="Channel 0"
         )
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         if not self.get_option("启用"):
             self._logger.debug("通道未启用，跳过计算")
@@ -851,7 +896,7 @@ class TurbineSimulator(BaseBlock):
         self.add_output("O-VibrationY-XY")  # 径向振动Y方向（与X正交）
         self.add_output("O-Torsional-XY")  # 扭振交流分量
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         try:
             # 1. 参数获取
             rpm_nom = self.get_option("额定转速 (RPM)")
@@ -1071,7 +1116,7 @@ class CSVReader(BaseBlock):
         self.add_checkbox_option("有表头", default=True)
         self.add_output("O-List-XY")
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             file_path = self.get_option("文件路径")
@@ -1141,7 +1186,7 @@ class ConstantSource(BaseBlock):
         self.add_text_input_option("常量值", default="0.0")
         self.add_output("O-Value")
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             value_str = self.get_option("常量值")
@@ -1175,7 +1220,7 @@ class XYSplitter(BaseBlock):
         self.add_output("O-List-X")
         self.add_output("O-List-Y")
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             data_packet = self.get_interface("I-List-XY")
@@ -1210,7 +1255,7 @@ class XYMerger(BaseBlock):
         self.add_input("I-List-Y")
         self.add_output("O-List-XY")
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data_x = self.get_interface("I-List-X")
@@ -1302,7 +1347,7 @@ class TimeWindow(BaseBlock):
         else:
             return np.ones(n)
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -1421,7 +1466,7 @@ class SignalFilter(BaseBlock):
         self.add_text_input_option("截止频率 (Hz, 用逗号分隔带通)", default="1000")
         self.add_integer_option("阶数", default=4, min_val=1, max_val=12)
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -1499,7 +1544,7 @@ class EnvelopeDetector(BaseBlock):
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -1559,7 +1604,7 @@ class FFT(BaseBlock):
 
         self.add_checkbox_option("幅值修正", default=True)
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -1646,7 +1691,7 @@ class SpectralAverager(BaseBlock):
             "平均方式", items=["线性", "RMS", "峰值保持"], default="线性"
         )
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-Spectrum-List")
@@ -1710,7 +1755,7 @@ class Stats(BaseBlock):
         self.add_input("I-List-XY")
         self.add_output("O-Dict")
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -1769,7 +1814,7 @@ class TachoToRPM(BaseBlock):
         self.add_number_option("脉冲阈值 (V)", default=2.5)
         self.add_integer_option("滑动脉冲数", default=1, min_val=1)
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-Pulse-XY")
@@ -1856,7 +1901,7 @@ class AngularResampler(BaseBlock):
         self.add_integer_option("每转采样点数", default=1024, min_val=16, max_val=4096)
         self.add_number_option("脉冲触发阈值 (V)", default=2.5)
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             vib_data = self.get_interface("I-Vibration-XY")
@@ -1983,7 +2028,7 @@ class RPMTrackedFFT(BaseBlock):
         self.add_number_option("转速带宽 (RPM)", default=50)
         self.add_number_option("窗口转数", default=10)
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             sig = self.get_interface("I-Signal-XY")
@@ -2085,7 +2130,7 @@ class OrderMap(BaseBlock):
         self.add_integer_option("每帧转数", default=1)   # 工业上非常重要
         self.add_integer_option("转速插值点", default=4096)
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         try:
             sig = self.get_interface("I-Signal-XY")
             spd = self.get_interface("I-Speed-XY")
@@ -2227,7 +2272,7 @@ class ResultSink(BaseBlock):
         self.add_select_option("类型", items=["时域", "频域", "FREE"], default="时域")
         self.add_text_input_option("名称", default="New Plot")
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("List-XY")
@@ -2275,7 +2320,7 @@ class CSVSink(BaseBlock):
         self.add_checkbox_option("追加模式", default=False)
         self.add_checkbox_option("包含表头", default=True)
 
-    def on_compute(self):
+    def on_compute(self, execution_id: str = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -2297,25 +2342,17 @@ class CSVSink(BaseBlock):
 
             df = pd.DataFrame({"x": x, "y": y})
 
-            # 使用统一的输出目录
-            full_path = OutputConfig.OUTPUT_DIR / file_path
-            
-            # 确保输出目录存在
-            full_path.parent.mkdir(parents=True, exist_ok=True)
+            # 使用通用文件写入方法
+            def write_csv(full_path):
+                df.to_csv(full_path, mode=mode, header=header, index=False)
+                self._logger.debug(f"数据已保存: {full_path}")
 
-            # 写入文件
-            df.to_csv(full_path, mode=mode, header=header, index=False)
-            
-            # 注册到文件管理器
-            file_id = self._register_output_file(
+            self._write_file(
+                execution_id=execution_id,
                 filename=file_path,
+                write_func=write_csv,
                 description="CSV数据文件"
             )
-            
-            # 更新文件大小
-            output_file_manager.update_file_size(file_id, full_path.stat().st_size)
-
-            self._logger.debug(f"数据已保存: {full_path}")
 
         except Exception as e:
             self._log_error(e, "CSV保存")
@@ -2358,7 +2395,7 @@ class BaseChartViewer(BaseBlock):
 
         self.chart_type = default_type
 
-    def _generate_chart(self):
+    def _generate_chart(self, execution_id: str = None):
         """生成图表"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -2453,22 +2490,16 @@ class BaseChartViewer(BaseBlock):
                 enable_drag,
             )
 
-            # 使用统一的输出目录
-            full_path = OutputConfig.OUTPUT_DIR / file_path
-            
-            # 确保输出目录存在
-            full_path.parent.mkdir(parents=True, exist_ok=True)
+            # 使用通用文件写入方法
+            def write_html(full_path):
+                with open(full_path, "w", encoding="utf-8") as f:
+                    f.write(html_content)
+                self._logger.info(f"图表已生成: {full_path}")
 
-            # 写入文件
-            with open(full_path, "w", encoding="utf-8") as f:
-                f.write(html_content)
-            
-            # 更新文件大小
-            file_size = full_path.stat().st_size
-            
-            # 注册到文件管理器
-            file_id = self._register_output_file(
+            self._write_file(
+                execution_id=execution_id,
                 filename=file_path,
+                write_func=write_html,
                 description=f"{title}图表",
                 metadata={
                     "chart_type": self.chart_type,
@@ -2477,11 +2508,6 @@ class BaseChartViewer(BaseBlock):
                     "height": height
                 }
             )
-            
-            # 更新文件大小
-            output_file_manager.update_file_size(file_id, file_size)
-
-            self._logger.info(f"图表已生成: {full_path} (ID: {file_id})")
 
         except Exception as e:
             self._log_error(e, "图表生成")
@@ -2616,8 +2642,8 @@ class LineChartViewer(BaseChartViewer):
     def __init__(self):
         super().__init__("LineChartViewer", default_type="line")
 
-    def on_compute(self):
-        self._generate_chart()
+    def on_compute(self, execution_id: str = None):
+        self._generate_chart(execution_id)
 
 
 class BarChartViewer(BaseChartViewer):
@@ -2626,8 +2652,8 @@ class BarChartViewer(BaseChartViewer):
     def __init__(self):
         super().__init__("BarChartViewer", default_type="bar")
 
-    def on_compute(self):
-        self._generate_chart()
+    def on_compute(self, execution_id: str = None):
+        self._generate_chart(execution_id)
 
 
 class ScatterChartViewer(BaseChartViewer):
@@ -2636,8 +2662,8 @@ class ScatterChartViewer(BaseChartViewer):
     def __init__(self):
         super().__init__("ScatterChartViewer", default_type="scatter")
 
-    def on_compute(self):
-        self._generate_chart()
+    def on_compute(self, execution_id: str = None):
+        self._generate_chart(execution_id)
 
 
 class TrajectoryChartViewer(BaseBlock):
@@ -2681,7 +2707,7 @@ class TrajectoryChartViewer(BaseBlock):
             default="彩虹"
         )
 
-    def on_compute(self):
+    def on_compute(self, execution_id: str = None):
         """执行计算"""
         try:
             data_x = self.get_interface("I-List-X")
@@ -2946,17 +2972,27 @@ class TrajectoryChartViewer(BaseBlock):
 </html>
 """
 
-            try:
-                with open(file_path, 'w', encoding='utf-8') as f:
+            # 使用通用文件写入方法
+            def write_html(full_path):
+                with open(full_path, 'w', encoding='utf-8') as f:
                     f.write(html_content)
-                self._logger.info(f"轨迹图已生成: {file_path}")
-            except Exception as e:
-                self._log_error(e, "轨迹图生成")
-                raise
+                self._logger.info(f"轨迹图已生成: {full_path}")
+
+            self._write_file(
+                execution_id=execution_id,
+                filename=file_path,
+                write_func=write_html,
+                description=f"{title}轨迹图",
+                metadata={
+                    "chart_type": "trajectory",
+                    "title": title,
+                    "width": width,
+                    "height": height
+                }
+            )
 
         except Exception as e:
             self._log_error(e, "轨迹图")
-            raise
 
 
 class OrderMapChartViewer(BaseBlock):
@@ -2981,7 +3017,7 @@ class OrderMapChartViewer(BaseBlock):
         self.add_checkbox_option("显示颜色条", default=True)
         self.add_checkbox_option("反转Y轴", default=False)
 
-    def on_compute(self):
+    def on_compute(self, execution_id: str = None):
         """生成阶次图"""
         try:
             i_data = self.get_interface("I-OrderMap")
@@ -3032,14 +3068,24 @@ class OrderMapChartViewer(BaseBlock):
                 reverse_y,
             )
 
-            # 确保输出目录存在
-            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+            # 使用通用文件写入方法
+            def write_html(full_path):
+                with open(full_path, "w", encoding="utf-8") as f:
+                    f.write(html_content)
+                self._logger.info(f"阶次图已生成: {full_path}")
 
-            # 写入文件
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(html_content)
-
-            self._logger.info(f"阶次图已生成: {file_path}")
+            self._write_file(
+                execution_id=execution_id,
+                filename=file_path,
+                write_func=write_html,
+                description=f"{title}阶次图",
+                metadata={
+                    "chart_type": "order_map",
+                    "title": title,
+                    "width": width,
+                    "height": height
+                }
+            )
 
         except Exception as e:
             self._log_error(e, "阶次图生成")
@@ -3240,7 +3286,7 @@ class MQTTPublisher(BaseBlock):
         self.add_text_input_option("用户名 (可选)", default="")
         self.add_text_input_option("密码 (可选)", default="")
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-Any")
@@ -3287,7 +3333,7 @@ class Logger(BaseBlock):
         self.add_input("I-Any")
         self.add_text_input_option("前缀", default="LOG:")
 
-    def on_compute(self):
+    def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             data = self.get_interface("I-Any")

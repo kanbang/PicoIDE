@@ -237,10 +237,13 @@ async function refreshFiles() {
 
 async function openFile(file: OutputFile) {
   try {
-    const { getOutputFile } = await import('@/api/flow');
-    const blob = await getOutputFile(file.file_id);
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    // 直接使用后端文件访问 URL
+    const baseUrl = window.location.origin;
+    const fileUrl = `${baseUrl}/api/flow/output-files/${file.file_id}`;
+    
+    // 使用 window.open 直接打开文件
+    window.open(fileUrl, '_blank', 'noopener,noreferrer');
+    
     emit('file-opened', file);
   } catch (error) {
     console.error('打开文件失败:', error);

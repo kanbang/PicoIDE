@@ -148,11 +148,11 @@ class Block:
             self._outputs[key] = None
         # 如果有缓存的中间计算状态（如累计和、历史 buffer），也在这里清除
 
-    def on_compute(self):
+    def on_compute(self, execution_id: str = None):
         pass
 
-    async def async_on_compute(self):
-        await asyncio.to_thread(self.on_compute)
+    async def async_on_compute(self, execution_id: str = None):
+        await asyncio.to_thread(self.on_compute, execution_id)
 
     def export_config(self):
         return {

@@ -83,26 +83,17 @@ async def run_schema(scripts: List[Any], schema: dict, execution_id: str = None)
     """
     # 导入 output_file_manager
     from node.output_manager import output_file_manager
-    from node.daq import BaseBlock
     
     # 创建执行ID（如果未提供）
     if execution_id is None:
         execution_id = output_file_manager.create_execution_id()
     
-    # 设置所有 Block 的 execution_id
+    # 执行流程，传递 execution_id
     async with await engine_manager.acquire("daq", schema) as engine:
-        # 为所有 Block 设置 execution_id
-        for block in engine.blocks:
-            if isinstance(block, BaseBlock):
-                block.set_execution_id(execution_id)
-        await engine.async_run()
+        await engine.async_run(execution_id)
 
     with engine_manager.acquire_sync("daq", schema) as engine:
-        # 为所有 Block 设置 execution_id
-        for block in engine.blocks:
-            if isinstance(block, BaseBlock):
-                block.set_execution_id(execution_id)
-        engine.run()
+        engine.run(execution_id)
     
     return execution_id
     # engine = ComputeEngine()

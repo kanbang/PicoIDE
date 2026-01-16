@@ -89,9 +89,12 @@ class ComputeEngine:
 
         self.log(f"✅ 编译完成。执行序列中包含多重数据流转指令。")
 
-    def run(self):
+    def run(self, execution_id: str = None):
         """
         同步执行：针对工业主循环优化，达到 O(1) 调度性能
+        
+        Args:
+            execution_id: 执行ID，用于追踪输出文件
         """
         self.log("🚀 开始同步执行流程...")
         try:
@@ -102,7 +105,7 @@ class ComputeEngine:
                 
                 # 2. 执行计算
                 try:
-                    block.on_compute()
+                    block.on_compute(execution_id)
                     self.log(f"✅ 节点 {block.name} [{block.instance_id}] 执行完成")
                 except Exception as e:
                     self.log(f"💥 节点 {block.name} [{block.instance_id}] 执行出错: {e}")
@@ -111,9 +114,12 @@ class ComputeEngine:
         except Exception as e:
             self.log(f"🛑 流程运行异常终止")
 
-    async def async_run(self):
+    async def async_run(self, execution_id: str = None):
         """
         异步执行：基于 Event 驱动的最大化并行调度
+        
+        Args:
+            execution_id: 执行ID，用于追踪输出文件
         """
         self.log("🚀 开始异步并行执行...")
         
@@ -136,7 +142,7 @@ class ComputeEngine:
             # 4. 执行异步计算逻辑
             try:
                 # 调用 Block 的异步执行接口
-                await block.async_on_compute()
+                await block.async_on_compute(execution_id)
                 self.log(f"✅ 节点 {block.name} [{block.instance_id}] 执行完成")
             except Exception as e:
                 self.log(f"💥 节点 {block.name} [{block.instance_id}] 执行出错: {e}")

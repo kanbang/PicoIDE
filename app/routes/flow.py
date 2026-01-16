@@ -176,11 +176,33 @@ async def get_output_file(file_id: str):
         # 获取文件信息
         file_info = output_file_manager.get_file_info(file_id)
         filename = file_info["filename"] if file_info else file_id
+        file_type = file_info["file_type"] if file_info else "unknown"
+        
+        # 根据文件类型设置正确的 MIME 类型
+        mime_type_map = {
+            "html": "text/html",
+            "csv": "text/csv",
+            "json": "application/json",
+            "txt": "text/plain",
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "pdf": "application/pdf",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "xls": "application/vnd.ms-excel",
+        }
+        
+        media_type = mime_type_map.get(file_type, "application/octet-stream")
+        
+        # 对于 HTML 文件，使用 inline 以便浏览器直接打开
+        # 对于其他文件，使用 attachment 以便下载
+        content_disposition = "inline" if file_type == "html" else f"attachment; filename=\"{filename}\""
         
         return FileResponse(
             file_path,
             filename=filename,
-            media_type="application/octet-stream"
+            media_type=media_type,
+            headers={"Content-Disposition": content_disposition}
         )
     except HTTPException:
         raise

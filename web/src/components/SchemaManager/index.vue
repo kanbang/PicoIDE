@@ -269,6 +269,11 @@ function handleRun(data: any) {
   if (!selectedSchemaId.value) return;
   emit('run', selectedSchemaId.value, data);
 }
+
+// 暴露方法供父组件调用
+defineExpose({
+  nodeFlowRef
+});
 </script>
 <template>
   <div class="schema-manager">
