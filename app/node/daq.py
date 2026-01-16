@@ -793,7 +793,7 @@ class TurbineSimulator(BaseBlock):
 
         # --- 扭振与稳定性参数 ---
         self.add_number_option(
-            "转速稳定性 (%)", default=99.98, min_val=0.0, max_val=100.0
+            "转速稳定性 (%)", default=90.0, min_val=0.0, max_val=100.0
         )
         self.add_number_option("扭振模态1频率 (Hz)", default=12.5, min_val=0.1)
         self.add_number_option("扭振阻尼比", default=0.01, min_val=0.001)
@@ -2490,8 +2490,8 @@ class BaseChartViewer(BaseBlock):
                 maintainAspectRatio: false,
                 animation: {{ duration: 800 }},
                 interaction: {{ intersect: false, mode: 'index' }},
-                plugins: {{
-                    legend: {{ display: {str(show_legend).lower()} }},
+plugins: {{
+                    legend: {{ display: false }},
                     tooltip: {{
                         backgroundColor: 'rgba(0,0,0,0.8)',
                         cornerRadius: 8,
@@ -2567,19 +2567,30 @@ class ScatterChartViewer(BaseChartViewer):
 
 class TrajectoryChartViewer(BaseBlock):
     """
-    轨迹图查看器（用于显示正交振动轨迹）
+    轨迹图查看器（通用X-Y轨迹显示）
 
     功能：
-    - 显示两路正交信号的轨迹（X-Y平面）
-    - 适合显示转子轴心轨迹
+    - 显示两路信号的轨迹（X-Y平面）
+    - 适合显示转子轴心轨迹、相图、李萨如曲线等
     - 支持交互式缩放和旋转
+    - 颜色表示时间进程
+
+    输入：
+    - I-List-X: X方向数据（list1d格式）
+    - I-List-Y: Y方向数据（list1d格式）
+
+    使用场景：
+    - 轴心轨迹分析
+    - 相位平面分析
+    - 李萨如图形
+    - 任意X-Y轨迹显示
     """
 
     def __init__(self):
         super().__init__("TrajectoryChartViewer", category="输出")
 
-        self.add_input("I-VibrationX-XY")
-        self.add_input("I-VibrationY-XY")
+        self.add_input("I-List-X")
+        self.add_input("I-List-Y")
 
         self.add_text_input_option(
             "文件路径", default="trajectory_chart.html"
@@ -2588,28 +2599,33 @@ class TrajectoryChartViewer(BaseBlock):
         self.add_integer_option("宽度 (px)", default=800, min_val=600, max_val=2000)
         self.add_integer_option("高度 (px)", default=800, min_val=600, max_val=2000)
         self.add_checkbox_option("显示网格", default=True)
-        self.add_checkbox_option("显示图例", default=True)
-        self.add_checkbox_option("显示时间轴", default=True)
         self.add_number_option("线条宽度", default=2.0, min_val=0.5, max_val=5.0)
         self.add_select_option(
             "配色方案",
-            items=["彩虹", "热力", "海洋", "彩虹-反转"],
+            items=["彩虹", "热力"],
             default="彩虹"
         )
 
     def on_compute(self):
         """执行计算"""
         try:
-            vib_x = self.get_interface("I-VibrationX-XY")
-            vib_y = self.get_interface("I-VibrationY-XY")
+            data_x = self.get_interface("I-List-X")
+            data_y = self.get_interface("I-List-Y")
 
-            if not (vib_x and vib_y):
+            if not (data_x and data_y):
                 self._logger.warning("输入数据不完整")
                 return
 
-            # 提取数据
-            x_data = self._extract_data(vib_x).get("y", [])
-            y_data = self._extract_data(vib_y).get("y", [])
+            # 提取数据 - 支持多种格式
+            if isinstance(data_x, dict) and "data" in data_x:
+                x_data = data_x["data"] if isinstance(data_x["data"], list) else data_x["data"].get("y", [])
+            else:
+                x_data = data_x if isinstance(data_x, list) else []
+
+            if isinstance(data_y, dict) and "data" in data_y:
+                y_data = data_y["data"] if isinstance(data_y["data"], list) else data_y["data"].get("y", [])
+            else:
+                y_data = data_y if isinstance(data_y, list) else []
 
             if len(x_data) == 0 or len(y_data) == 0:
                 self._logger.warning("数据为空")
@@ -2625,21 +2641,11 @@ class TrajectoryChartViewer(BaseBlock):
             width = self.get_option("宽度 (px)")
             height = self.get_option("高度 (px)")
             show_grid = self.get_option("显示网格")
-            show_legend = self.get_option("显示图例")
-            show_time_axis = self.get_option("显示时间轴")
             line_width = self.get_option("线条宽度")
             color_scheme = self.get_option("配色方案")
 
             # 生成时间索引（用于颜色映射）
             time_indices = list(range(len(x_data)))
-
-            # 颜色映射
-            color_schemes = {
-                "彩虹": "hsl",
-                "热力": "heat",
-                "海洋": "ocean",
-                "彩虹-反转": "hsl-reverse"
-            }
 
             # 生成HTML
             html_content = f"""
@@ -2725,20 +2731,16 @@ class TrajectoryChartViewer(BaseBlock):
                 const ratio = indices[i] / totalPoints;
                 let r, g, b;
                 
-                if (scheme === 'hsl' || scheme === 'hsl-reverse') {{
-                    const hue = scheme === 'hsl' ? ratio * 360 : (1 - ratio) * 360;
+                if (scheme === '彩虹') {{
+                    const hue = ratio * 360;
                     const color = hslToRgb(hue / 360, 0.7, 0.5);
                     r = color[0];
                     g = color[1];
                     b = color[2];
-                }} else if (scheme === 'heat') {{
+                }} else if (scheme === '热力') {{
                     r = Math.floor(255 * ratio);
                     g = Math.floor(255 * (1 - ratio) * 0.5);
                     b = Math.floor(255 * (1 - ratio));
-                }} else if (scheme === 'ocean') {{
-                    r = Math.floor(255 * ratio * 0.5);
-                    g = Math.floor(255 * ratio);
-                    b = Math.floor(255 * (0.5 + ratio * 0.5));
                 }}
                 
                 colors.push(`rgba(${{r}}, ${{g}}, ${{b}}, 0.8)`);
@@ -2798,7 +2800,7 @@ class TrajectoryChartViewer(BaseBlock):
                     mode: 'nearest'
                 }},
                 plugins: {{
-                    legend: {{ display: {str(show_legend).lower()} }},
+                    legend: {{ display: false }},
                     tooltip: {{
                         backgroundColor: 'rgba(0,0,0,0.8)',
                         cornerRadius: 8,

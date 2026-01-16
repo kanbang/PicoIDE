@@ -15,6 +15,20 @@ export interface ExecuteRequest {
 export interface ExecuteResponse {
   ok: boolean;
   result?: any;
+  output_files?: OutputFile[];
+  execution_time?: number;
+  timestamp?: string;
+}
+
+export interface OutputFile {
+  file_id: string;
+  filename: string;
+  file_path: string;
+  file_type: string;
+  file_size: number;
+  created_at: string;
+  can_open: boolean;
+  can_download: boolean;
 }
 
 /**
@@ -30,4 +44,37 @@ export async function getBlocks(): Promise<any[]> {
  */
 export async function executeBlocks(request: ExecuteRequest): Promise<ExecuteResponse> {
   return await api.post('/flow/execute', request);
+}
+
+/**
+ * 获取所有输出文件
+ */
+export async function getOutputFiles(): Promise<OutputFile[]> {
+  return await api.get('/flow/output-files');
+}
+
+/**
+ * 获取输出文件内容
+ */
+export async function getOutputFile(fileId: string): Promise<Blob> {
+  const url = `/flow/output-files/${fileId}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`获取文件失败: ${response.status}`);
+  }
+  return await response.blob();
+}
+
+/**
+ * 删除输出文件
+ */
+export async function deleteOutputFile(fileId: string): Promise<any> {
+  return await api.delete(`/flow/output-files/${fileId}`);
+}
+
+/**
+ * 清理旧输出文件
+ */
+export async function cleanupOutputFiles(maxAgeHours: number = 24): Promise<any> {
+  return await api.delete(`/flow/output-files/cleanup?max_age_hours=${maxAgeHours}`);
 }

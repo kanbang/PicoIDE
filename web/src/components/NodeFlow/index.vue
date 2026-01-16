@@ -1,5 +1,12 @@
 <template>
-  <BaklavaEditor :view-model="baklava" :blocks="blocks" />
+  <div class="nodeflow-container">
+    <BaklavaEditor :view-model="baklava" :blocks="blocks" />
+    <OutputPanel
+      ref="outputPanelRef"
+      @file-opened="handleFileOpened"
+      @file-downloaded="handleFileDownloaded"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -9,6 +16,7 @@ import SaveIcon from '@/components/icons/Save.vue';
 import RunIcon from '@/components/icons/Run.vue';
 import { BuildBlock } from './BlockBuilder';
 import TestNode from './TestNode';
+import OutputPanel from '@/components/OutputPanel.vue';
 import "@baklavajs/themes/dist/syrup-dark.css";
 
 const SAVE_COMMAND_ID = "SAVE";
@@ -34,12 +42,25 @@ const lastSavedSchema = ref<any>(null);
 // 加载中
 const isLoading = ref(false);
 
+// OutputPanel引用
+const outputPanelRef = ref<InstanceType<typeof OutputPanel> | null>(null);
+
 // debounce 更新
 const DEBOUNCE_TIME = 500;
 let updateTimeout: number | null = null;
 
 function deepCopy(obj: any): any {
   return obj ? JSON.parse(JSON.stringify(obj)) : {};
+}
+
+// 处理文件打开
+function handleFileOpened(file: any) {
+  console.log('文件已打开:', file.filename);
+}
+
+// 处理文件下载
+function handleFileDownloaded(file: any) {
+  console.log('文件已下载:', file.filename);
 }
 
 function scheduleUpdate() {
@@ -171,8 +192,10 @@ function registerCustomCommands(): void {
     execute: () => {
       try {
         const data = editor.save();
+        // 只 emit run 事件，由父组件负责调用 API
         emit('run', data);
       } catch (error) {
+        console.error('运行失败:', error);
         emit('error', `运行失败: ${error}`);
       }
     },
@@ -377,7 +400,8 @@ defineExpose({
   loadSchema,
   updateBlocks,
   hasUnsavedChanges,
-  currentSchema
+  currentSchema,
+  outputPanelRef,
 });
 
 interface BlockDefinition {
@@ -400,5 +424,16 @@ interface BlockDefinition {
 <style>
 .baklava-node-palette {
   display: none !important;
+}
+
+.nodeflow-container {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+.nodeflow-container :deep(.baklava-editor) {
+  flex: 1;
+  height: 100%;
 }
 </style>
