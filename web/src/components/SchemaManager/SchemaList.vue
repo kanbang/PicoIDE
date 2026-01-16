@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { defineProps, defineEmits } from 'vue';
 
+// 定义接口 (建议最好提取到单独的 types.ts 文件中)
 export interface SchemaItem {
   id: string;
   name: string;
@@ -8,48 +9,55 @@ export interface SchemaItem {
   hasUnsavedChanges: boolean;
 }
 
-interface Props {
+// Props: 接收列表数据和当前选中的ID
+const props = defineProps<{
   schemas: SchemaItem[];
   selectedId: string | null;
-}
-
-const props = defineProps<Props>();
-
-const emit = defineEmits<{
-  select: [id: string];
-  create: [];
-  duplicate: [id: string];
-  rename: [id: string];
-  delete: [id: string];
 }>();
 
-const hasSchemas = computed(() => props.schemas.length > 0);
+// Emits: 向父组件发送事件
+const emit = defineEmits<{
+  (e: 'create'): void;
+  (e: 'select', id: string): void;
+  (e: 'duplicate', id: string): void;
+  (e: 'rename', id: string): void;
+  (e: 'delete', id: string): void;
+}>();
+
+// 处理点击事件
+function handleSelect(id: string) {
+  // 不直接修改 props，而是通知父组件
+  emit('select', id);
+}
 </script>
 
 <template>
-  <div class="schema-list">
+  <div class="schema-list-container">
     <div class="schema-list-header">
       <h3>Schemas</h3>
       <button @click="emit('create')" class="btn btn-primary">+ 新建</button>
     </div>
+
     <div class="schema-list-body">
-      <div
-        v-for="schema in schemas"
+      <div 
+        v-for="schema in schemas" 
         :key="schema.id"
-        :class="['schema-item', { active: schema.id === selectedId }]"
-        @click="emit('select', schema.id)"
+        :class="['schema-item', { active: schema.id === selectedId }]" 
+        @click="handleSelect(schema.id)"
       >
         <div class="schema-item-content">
-          <span class="schema-name">{{ schema.name }}</span>
-          <span v-if="schema.hasUnsavedChanges" class="unsaved-indicator">●</span>
+          <span class="schema-name" :title="schema.name">{{ schema.name }}</span>
+          <span v-if="schema.hasUnsavedChanges" class="unsaved-indicator" title="未保存">●</span>
         </div>
+        
         <div class="schema-item-actions">
           <button @click.stop="emit('duplicate', schema.id)" class="btn-icon" title="复制">📋</button>
           <button @click.stop="emit('rename', schema.id)" class="btn-icon" title="重命名">✎</button>
           <button @click.stop="emit('delete', schema.id)" class="btn-icon btn-icon-delete" title="删除">✕</button>
         </div>
       </div>
-      <div v-if="!hasSchemas" class="empty-state">
+
+      <div v-if="schemas.length === 0" class="empty-state">
         暂无 Schema，点击"新建"创建
       </div>
     </div>
@@ -57,12 +65,16 @@ const hasSchemas = computed(() => props.schemas.length > 0);
 </template>
 
 <style scoped>
-.schema-list {
+/* 容器占满父容器 */
+.schema-list-container {
+  width: 100%;
+  height: 100%;
   background: #2d2d2d;
-  border-right: 1px solid #444;
+  /* 边框由外部 Splitter 控制，这里也可以保留作为兜底 */
+  border-right: 1px solid #444; 
   display: flex;
   flex-direction: column;
-  height: 100%;
+  user-select: none;
 }
 
 .schema-list-header {
@@ -71,12 +83,14 @@ const hasSchemas = computed(() => props.schemas.length > 0);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .schema-list-header h3 {
   margin: 0;
   color: #fff;
   font-size: 16px;
+  font-weight: 600;
 }
 
 .schema-list-body {
@@ -85,18 +99,28 @@ const hasSchemas = computed(() => props.schemas.length > 0);
   padding: 8px;
 }
 
+/* 滚动条美化 (可选) */
+.schema-list-body::-webkit-scrollbar {
+  width: 6px;
+}
+.schema-list-body::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+
 .schema-item {
   padding: 8px 12px;
   margin-bottom: 4px;
   background: #3d3d3d;
   border-radius: 4px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s;
   display: flex;
   justify-content: space-between;
   align-items: center;
   min-height: 40px;
   box-sizing: border-box;
+  border-left: 3px solid transparent;
 }
 
 .schema-item:hover {
@@ -105,7 +129,7 @@ const hasSchemas = computed(() => props.schemas.length > 0);
 
 .schema-item.active {
   background: #5a5a5a;
-  border-left: 3px solid #4caf50;
+  border-left-color: #4caf50;
 }
 
 .schema-item-content {
@@ -135,8 +159,36 @@ const hasSchemas = computed(() => props.schemas.length > 0);
   gap: 4px;
   justify-content: flex-end;
   flex-shrink: 0;
+  opacity: 0; /* 默认隐藏操作按钮 */
+  transition: opacity 0.2s;
 }
 
+/* 鼠标悬停或选中时显示按钮 */
+.schema-item:hover .schema-item-actions,
+.schema-item.active .schema-item-actions {
+  opacity: 1;
+}
+
+/* 按钮基础样式 (复制自原代码) */
+.btn {
+  padding: 6px 12px;
+  background: #3d3d3d;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+.btn:hover { background: #4d4d4d; }
+
+.btn-primary {
+  background: #4caf50;
+  border-color: #4caf50;
+}
+.btn-primary:hover { background: #45a049; }
+
+/* 图标按钮样式 */
 .btn-icon {
   background: none;
   border: none;
@@ -147,7 +199,6 @@ const hasSchemas = computed(() => props.schemas.length > 0);
   font-size: 12px;
   border-radius: 4px;
   transition: color 0.2s, background 0.2s;
-  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -168,29 +219,5 @@ const hasSchemas = computed(() => props.schemas.length > 0);
   text-align: center;
   padding: 32px 16px;
   font-size: 14px;
-}
-
-.btn {
-  padding: 8px 16px;
-  background: #3d3d3d;
-  border: 1px solid #555;
-  border-radius: 4px;
-  color: #fff;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-}
-
-.btn:hover {
-  background: #4d4d4d;
-}
-
-.btn-primary {
-  background: #4caf50;
-  border-color: #4caf50;
-}
-
-.btn-primary:hover {
-  background: #45a049;
 }
 </style>

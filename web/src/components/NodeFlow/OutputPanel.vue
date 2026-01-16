@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="output-panel">
+  <div class="output-panel">
     <div class="panel-header">
       <h3>输出文件</h3>
       <div class="header-actions">
@@ -147,7 +147,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
 
 interface OutputFile {
@@ -164,11 +164,13 @@ interface OutputFile {
 
 const props = defineProps<{
   executionId?: string;
+  isVisible?: boolean;
 }>();
 
 const emit = defineEmits<{
   'file-opened': [file: OutputFile];
   'file-downloaded': [file: OutputFile];
+  'visibility-change': [visible: boolean];
 }>();
 
 // 状态
@@ -177,19 +179,27 @@ const executionDuration = ref<number>(0);
 const outputFiles = ref<OutputFile[]>([]);
 const errors = ref<string[]>([]);
 const warnings = ref<string[]>([]);
-const visible = ref(false);
+const visible = ref(props.isVisible || false);
+
+// 监听 props.isVisible 变化
+watch(() => props.isVisible, (newValue) => {
+  visible.value = newValue;
+});
 
 // 显示/隐藏功能
 function toggle() {
   visible.value = !visible.value;
+  emit('visibility-change', visible.value);
 }
 
 function show() {
   visible.value = true;
+  emit('visibility-change', true);
 }
 
 function hide() {
   visible.value = false;
+  emit('visibility-change', false);
 }
 
 // 计算属性
@@ -355,6 +365,7 @@ defineExpose({
   height: 100%;
   width: 100%;
   overflow: hidden;
+  background: #2d2d2d;
 }
 
 .panel-header {
