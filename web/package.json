@@ -16,6 +16,10 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@baklavajs/core": "^2.8.1",
+    "@baklavajs/engine": "^2.8.1",
+    "@baklavajs/renderer-vue": "^2.8.1",
+    "@baklavajs/themes": "^2.8.1",
     "axios": "^1.13.2",
     "baklavajs": "^2.8.1",
     "vue": "^3.5.26"

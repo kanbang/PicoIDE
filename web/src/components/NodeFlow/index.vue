@@ -1,6 +1,6 @@
 <template>
   <div class="nodeflow-container">
-    <SplitPane ref="splitPaneRef" direction="horizontal" :min="250" :max="800" :initial-size="350" button-side="right">
+    <SplitPane ref="splitPaneRef" direction="horizontal" :min="250" :max="800" :initial-size="350" button-side="right" :visible="false">
       <template #1>
         <div class="editor-wrapper">
           <BaklavaEditor :view-model="baklava" :blocks="blocks" />
@@ -9,7 +9,7 @@
 
       <template #2>
         <div class="output-panel-wrapper">
-          <OutputPanel ref="outputPanelRef" :is-visible="true" @file-opened="handleFileOpened"
+          <OutputPanel ref="outputPanelRef" @file-opened="handleFileOpened"
             @file-downloaded="handleFileDownloaded" />
         </div>
       </template>

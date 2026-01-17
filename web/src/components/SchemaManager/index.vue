@@ -319,10 +319,10 @@ defineExpose({ nodeFlowRef });
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(30, 30, 30, 0.95);
+  background: #202b3c;
   color: #888;
   text-align: center;
-  z-index: 10;
+  z-index: 0;
   pointer-events: none;
 }
 
