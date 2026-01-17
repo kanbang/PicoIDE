@@ -1,145 +1,158 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue';
-import { getBlocks, getSchemas, createSchema, updateSchema, deleteSchema, duplicateSchema, executeBlocks, SchemaItem as ApiSchemaItem } from '@/api/index';
+import {
+  getBlocks, getSchemas, createSchema, updateSchema,
+  deleteSchema, duplicateSchema, executeBlocks,
+  SchemaItem as ApiSchemaItem
+} from '@/api/index';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
 
-// Blocks 数据从后端获取
+// --- 响应式状态 ---
 const blocks = ref<any[]>([]);
-
-// Schema 列表
 const schemas = ref<ApiSchemaItem[]>([]);
-// 当前选中的 Schema ID (string 类型，因为后端使用 UUID)
 const selectedSchemaId = ref<string | null>(null);
 
-// SchemaManager 组件引用
+// 引用 SchemaManager 实例
 const schemaManagerRef = ref<InstanceType<typeof SchemaManager> | null>(null);
 
-// 从后端加载 blocks
+// --- 数据加载 ---
 async function loadBlocks() {
   try {
     blocks.value = await getBlocks();
   } catch (error) {
-    console.error('Error loading blocks:', error);
+    showError('加载节点定义失败');
   }
 }
 
-// 从后端加载 schemas
 async function loadSchemas() {
   try {
     schemas.value = await getSchemas();
+    // 默认选中第一个
     if (schemas.value.length > 0 && !selectedSchemaId.value) {
       selectedSchemaId.value = schemas.value[0].id;
     }
   } catch (error) {
-    console.error('Error loading schemas:', error);
+    showError('加载 Schema 列表失败');
   }
 }
 
-// 处理创建事件
+// --- Schema 操作逻辑 ---
 async function handleCreate(schema: SchemaItem) {
   try {
     const newSchema = await createSchema({ name: schema.name, schema: schema.schema });
     schemas.value.push(newSchema);
     selectedSchemaId.value = newSchema.id;
+    showSuccess('创建成功');
   } catch (error) {
-    console.error('Error creating schema:', error);
+    showError('创建失败');
   }
 }
 
-// 处理保存事件
 async function handleSave(id: string, data: any) {
   try {
     const updated = await updateSchema(id, { schema: data });
     const index = schemas.value.findIndex(s => s.id === id);
-    if (index !== -1) {
-      schemas.value[index] = updated;
-    }
+    if (index !== -1) schemas.value[index] = updated;
+    showSuccess('保存成功');
   } catch (error) {
-    console.error('Error saving schema:', error);
+    showError('保存失败');
   }
 }
 
-// 处理删除事件
 async function handleDelete(id: string) {
   try {
-    await deleteSchema(id);
-    const index = schemas.value.findIndex(s => s.id === id);
-    if (index !== -1) {
-      schemas.value.splice(index, 1);
-    }
+
+    let newSelectedId: string | null = null;
     if (selectedSchemaId.value === id) {
-      selectedSchemaId.value = schemas.value.length > 0 ? schemas.value[0].id : null;
+      if (schemas.value.length > 1) {
+        const currentIndex = schemas.value.findIndex(s => s.id === id);
+        if (currentIndex == schemas.value.length - 1) {
+          newSelectedId = schemas.value[currentIndex - 1].id;
+        } else {
+          newSelectedId = schemas.value[currentIndex + 1].id;
+        }
+      }
     }
+
+    await deleteSchema(id);
+    schemas.value = schemas.value.filter(s => s.id !== id);
+
+
+    if (newSelectedId !== null) {
+      selectedSchemaId.value = newSelectedId;
+    }
+
+    showSuccess('删除成功');
   } catch (error) {
-    console.error('Error deleting schema:', error);
+    showError('删除失败');
   }
 }
 
-// 处理重命名事件
 async function handleRename(id: string, newName: string) {
   try {
     const updated = await updateSchema(id, { name: newName });
     const index = schemas.value.findIndex(s => s.id === id);
-    if (index !== -1) {
-      schemas.value[index] = updated;
-    }
+    if (index !== -1) schemas.value[index] = updated;
   } catch (error) {
-    console.error('Error renaming schema:', error);
+    showError('重命名失败');
   }
 }
 
-// 处理复制事件
 async function handleDuplicate(originalId: string, newSchema: SchemaItem) {
   try {
     const duplicated = await duplicateSchema(originalId, newSchema.name);
     schemas.value.push(duplicated);
     selectedSchemaId.value = duplicated.id;
+    showSuccess('复制成功');
   } catch (error) {
-    console.error('Error duplicating schema:', error);
+    showError('复制失败');
   }
 }
 
+// --- 核心执行逻辑 (重构重点) ---
 async function handleRun(id: string, data: any) {
+  // 1. 获取 NodeFlow 实例引用
+  const nodeFlowInstance = schemaManagerRef.value?.nodeFlowRef;
+  if (!nodeFlowInstance) return;
+
+  // 2. 自动展开输出面板 (体验优化)
+  nodeFlowInstance.showOutputPanel();
+
+  const outputPanel = nodeFlowInstance.outputPanelRef;
+
   try {
-    console.log('执行Schema:', id, data);
-    
-    // 设置执行状态为运行中
-    if (schemaManagerRef.value?.nodeFlowRef?.outputPanelRef) {
-      schemaManagerRef.value.nodeFlowRef.outputPanelRef.setExecutionStatus('running');
-    }
-    
-    // 调用执行API
+    console.log('执行 Schema:', id);
+
+    // 3. 更新 UI 为运行中
+    outputPanel?.setExecutionStatus('running');
+
+    // 4. 调用 API
     const result = await executeBlocks({ scripts: [], data });
-    
-    console.log('执行结果:', result);
-    
-    // 更新输出面板
-    if (schemaManagerRef.value?.nodeFlowRef?.outputPanelRef && result.output_files) {
-      schemaManagerRef.value.nodeFlowRef.outputPanelRef.setExecutionStatus('completed', result.execution_time);
-      schemaManagerRef.value.nodeFlowRef.outputPanelRef.setOutputFiles(result.output_files);
-      
-      if (result.output_files.length > 0) {
-        showSuccess(`执行完成，生成了 ${result.output_files.length} 个输出文件`);
+
+    // 5. 更新输出面板结果
+    if (outputPanel) {
+      outputPanel.setExecutionStatus('completed', result.execution_time);
+      outputPanel.setOutputFiles(result.output_files || []);
+
+      if (result.output_files?.length > 0) {
+        showSuccess(`执行完成，生成 ${result.output_files.length} 个文件`);
       } else {
-        showInfo('执行完成，但未生成输出文件');
+        showInfo('执行完成，无输出内容');
       }
     }
-    
-  } catch (error) {
+
+  } catch (error: any) {
     console.error('执行失败:', error);
-    
-    // 更新输出面板状态为失败
-    if (schemaManagerRef.value?.nodeFlowRef?.outputPanelRef) {
-      schemaManagerRef.value.nodeFlowRef.outputPanelRef.setExecutionStatus('failed');
-      schemaManagerRef.value.nodeFlowRef.outputPanelRef.setErrors([error instanceof Error ? error.message : String(error)]);
+    if (outputPanel) {
+      outputPanel.setExecutionStatus('failed');
+      outputPanel.setErrors([error?.message || String(error)]);
     }
-    
-    showError('执行失败: ' + (error instanceof Error ? error.message : String(error)));
+    showError('执行失败: ' + (error?.message || '未知错误'));
   }
 }
 
-// 组件挂载时加载数据
+// --- 初始化 ---
 onMounted(() => {
   loadBlocks();
   loadSchemas();
@@ -147,15 +160,17 @@ onMounted(() => {
 </script>
 
 <template>
-  <SchemaManager ref="schemaManagerRef" v-model:schemas="schemas" v-model:selected-schema-id="selectedSchemaId" :blocks="blocks"
-    :show-run="true" @run="handleRun" @create="handleCreate" @save="handleSave" @delete="handleDelete"
-    @rename="handleRename" @duplicate="handleDuplicate" />
+  <div class="manager-page-wrapper">
+    <SchemaManager ref="schemaManagerRef" v-model:schemas="schemas" v-model:selected-schema-id="selectedSchemaId"
+      :blocks="blocks" :show-run="true" @run="handleRun" @create="handleCreate" @save="handleSave"
+      @delete="handleDelete" @rename="handleRename" @duplicate="handleDuplicate" />
+  </div>
 </template>
 
-<style>
-/* 样式已移至 Toast 组件 */
-</style>
-
 <style scoped>
-/* 示例页面不需要额外样式 */
+.manager-page-wrapper {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
 </style>
