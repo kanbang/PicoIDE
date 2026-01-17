@@ -25,13 +25,13 @@ function switchTab(tab: 'single' | 'manager' | 'tinycode') {
     <!-- 标签页导航 -->
     <div class="tab-nav">
       <button :class="['tab-button', { active: activeTab === 'single' }]" @click="switchTab('single')">
-        Schema 编辑
+        Schema Playground
       </button>
       <button :class="['tab-button', { active: activeTab === 'manager' }]" @click="switchTab('manager')">
-        Schema 管理
+        Schema Manager
       </button>
       <button :class="['tab-button', { active: activeTab === 'tinycode' }]" @click="switchTab('tinycode')">
-        TinyCode
+        Block Builder
       </button>
     </div>
 

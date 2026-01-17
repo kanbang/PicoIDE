@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue';
 
 interface Props {
-  direction?: 'horizontal' | 'vertical'; 
+  direction?: 'horizontal' | 'vertical';
   min?: number;
   max?: number;
   initialSize?: number | string;
@@ -18,13 +18,13 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 // 使用 defineModel 处理双向绑定
-const isSidebarVisible = defineModel<boolean>('visible', { 
+const isSidebarVisible = defineModel<boolean>('visible', {
   default: true,
-  local: true 
+  local: true
 });
 
 const containerRef = ref<HTMLElement | null>(null);
-const currentSize = ref(300); 
+const currentSize = ref(300);
 const isDragging = ref(false);
 
 const isRightSidebar = computed(() => props.buttonSide === 'right');
@@ -118,29 +118,31 @@ onMounted(() => {
 
 <template>
   <div class="split-container" ref="containerRef" :class="[direction, { 'is-resizing': isDragging }]">
-    
+
     <div class="split-pane pane-1" :style="pane1Style">
       <slot name="1"></slot>
     </div>
 
-    <div 
-      class="split-trigger" 
-      :class="{ dragging: isDragging }" 
-      v-show="isSidebarVisible" 
-      @mousedown="startDrag"
-      @dblclick="resetSize"
-      title="拖拽调整大小，双击恢复默认"
-    >
-      <button @click.stop="togglePane" class="btn-toggle-overlay" :class="buttonSide">
-        <svg v-if="arrowDirection === 'left'" viewBox="0 0 10 10"><path d="M6 1L2 5L6 9" /></svg>
-        <svg v-else viewBox="0 0 10 10"><path d="M4 1L8 5L4 9" /></svg>
+    <div class="split-trigger" :class="{ dragging: isDragging }" v-show="isSidebarVisible" @mousedown="startDrag"
+      @dblclick="resetSize" title="拖拽调整大小，双击恢复默认">
+      <button @click.stop="togglePane" class="btn-toggle-overlay" :class="buttonSide" @mousedown.stop @dblclick.stop>
+        <svg v-if="arrowDirection === 'left'" viewBox="0 0 10 10">
+          <path d="M6 1L2 5L6 9" />
+        </svg>
+        <svg v-else viewBox="0 0 10 10">
+          <path d="M4 1L8 5L4 9" />
+        </svg>
       </button>
     </div>
 
     <div v-show="!isSidebarVisible" class="split-trigger-placeholder">
-      <button @click.stop="togglePane" class="btn-toggle-overlay" :class="buttonSide">
-        <svg v-if="arrowDirection === 'left'" viewBox="0 0 10 10"><path d="M6 1L2 5L6 9" /></svg>
-        <svg v-else viewBox="0 0 10 10"><path d="M4 1L8 5L4 9" /></svg>
+      <button @click.stop="togglePane" class="btn-toggle-overlay" :class="buttonSide" @mousedown.stop @dblclick.stop>
+        <svg v-if="arrowDirection === 'left'" viewBox="0 0 10 10">
+          <path d="M6 1L2 5L6 9" />
+        </svg>
+        <svg v-else viewBox="0 0 10 10">
+          <path d="M4 1L8 5L4 9" />
+        </svg>
       </button>
     </div>
 
@@ -179,7 +181,8 @@ onMounted(() => {
   transition: background 0.2s;
 }
 
-.split-trigger:hover, .split-trigger.dragging {
+.split-trigger:hover,
+.split-trigger.dragging {
   background: #4caf50;
 }
 
@@ -187,7 +190,10 @@ onMounted(() => {
 .split-trigger::after {
   content: '';
   position: absolute;
-  top: 0; bottom: 0; left: -4px; right: -4px;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
 }
 
 .split-trigger-placeholder {
@@ -219,8 +225,15 @@ onMounted(() => {
   color: white;
 }
 
-.btn-toggle-overlay.left { left: 100%; border-radius: 0 4px 4px 0; }
-.btn-toggle-overlay.right { right: 100%; border-radius: 4px 0 0 4px; }
+.btn-toggle-overlay.left {
+  left: 100%;
+  border-radius: 0 4px 4px 0;
+}
+
+.btn-toggle-overlay.right {
+  right: 100%;
+  border-radius: 4px 0 0 4px;
+}
 
 svg {
   width: 10px;

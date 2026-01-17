@@ -17,14 +17,14 @@ dependencies = [
     "debugpy (>=1.8.19,<2.0.0)",
     "cachetools (>=6.2.4,<7.0.0)",
     "pandas (>=2.3.3,<3.0.0)",
-    "scipy (==1.15.3)"
+    "scipy (>1.15.0)"
 ]
 
 
 [[tool.poetry.source]]
-name = "tsinghua-source"
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-priority = "supplemental"
+name = "aliyun-source"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+priority = "primary"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
