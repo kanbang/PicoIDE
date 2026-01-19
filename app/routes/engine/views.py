@@ -24,6 +24,8 @@ from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
 from uuid import UUID
 from node.output_manager import output_file_manager
+from node.file_collector import file_collector
+from node.settings import settings
 
 
 logger = logging.getLogger(__name__)
@@ -127,18 +129,20 @@ async def execute(request: ExecuteRequest):
         # 3. 创建执行ID
         execution_id = output_file_manager.create_execution_id()
 
-        # 4. 创建 Execution 记录
-        from db import Execution
-        execution = await Execution.create(
-            execution_id=execution_id,
-            user_id=USER_ID,
-            source="direct",
-            scripts_path="/",
-            scripts_hash=scripts_hash,
-            status="running",
-            start_time=datetime.now(),
-            total_nodes=len(flow.nodes),
-        )
+        # 4. 根据配置决定是否创建 Execution 记录
+        execution = None
+        if settings.ENABLE_DB_WRITE:
+            from db import Execution
+            execution = await Execution.create(
+                execution_id=execution_id,
+                user_id=USER_ID,
+                source="direct",
+                scripts_path="/",
+                scripts_hash=scripts_hash,
+                status="running",
+                start_time=datetime.now(),
+                total_nodes=len(flow.nodes),
+            )
 
         # 5. 记录执行开始时间
         start_time = time.time()
@@ -148,15 +152,21 @@ async def execute(request: ExecuteRequest):
             result = await run_flow(scripts, flow.model_dump(by_alias=True), execution_id)
 
             # 收集输出文件
-            output_files = await output_file_manager.get_execution_files(execution_id)
+            # 根据配置决定从数据库还是收集器获取
+            if settings.ENABLE_DB_WRITE:
+                output_files = await output_file_manager.get_execution_files(execution_id)
+            else:
+                # 从文件收集器获取（轻量化模式）
+                output_files = file_collector.get_files(execution_id)
 
             # 更新 Execution 状态为完成
-            execution.status = "completed"
-            execution.end_time = datetime.now()
-            execution.execution_time = time.time() - start_time
-            execution.executed_nodes = execution.total_nodes
-            execution.result = str(result)[:1000] if result else None
-            await execution.save()
+            if execution:
+                execution.status = "completed"
+                execution.end_time = datetime.now()
+                execution.execution_time = time.time() - start_time
+                execution.executed_nodes = execution.total_nodes
+                execution.result = str(result)[:1000] if result else None
+                await execution.save()
 
             # 构建响应
             response = {
@@ -164,14 +174,14 @@ async def execute(request: ExecuteRequest):
                 "result": result,
                 "output_files": output_files,
                 "execution_id": execution_id,
-                "execution_time": execution.execution_time,
-                "timestamp": execution.start_time.isoformat(),
+                "execution_time": time.time() - start_time,
+                "timestamp": datetime.now().isoformat(),
                 "stats": {
-                    "total_nodes": execution.total_nodes,
-                    "executed_nodes": execution.executed_nodes,
-                    "failed_nodes": execution.failed_nodes,
+                    "total_nodes": len(flow.nodes),
+                    "executed_nodes": len(flow.nodes),
+                    "failed_nodes": 0,
                     "total_connections": len(flow.connections),
-                    "execution_time": execution.execution_time,
+                    "execution_time": time.time() - start_time,
                 }
             }
             logger.info(
@@ -182,11 +192,12 @@ async def execute(request: ExecuteRequest):
 
         except Exception as e:
             # 更新 Execution 状态为失败
-            execution.status = "failed"
-            execution.end_time = datetime.now()
-            execution.execution_time = time.time() - start_time
-            execution.result = f"Error: {str(e)}"[:1000]
-            await execution.save()
+            if execution:
+                execution.status = "failed"
+                execution.end_time = datetime.now()
+                execution.execution_time = time.time() - start_time
+                execution.result = f"Error: {str(e)}"[:1000]
+                await execution.save()
             raise
 
     except ValueError as e:
@@ -242,7 +253,8 @@ async def execute_saved(request: ExecuteSavedRequest):
         # 4. 确定 execution_id 和清理策略
         if request.tag:
             # Tag 模式：清理旧数据
-            await cleanup_tag_execution(USER_ID, request.tag)
+            if settings.ENABLE_DB_WRITE:
+                await cleanup_tag_execution(USER_ID, request.tag)
             execution_id = f"{request.tag}_{int(time.time())}"
             source = "tag"
         else:
@@ -250,20 +262,22 @@ async def execute_saved(request: ExecuteSavedRequest):
             execution_id = output_file_manager.create_execution_id()
             source = "saved"
 
-        # 5. 创建 Execution 记录
-        from db import Execution
-        execution = await Execution.create(
-            execution_id=execution_id,
-            user_id=USER_ID,
-            source=source,
-            flow_id=UUID(request.flow_id),
-            tag=request.tag,
-            scripts_path=request.scripts_path,
-            scripts_hash=scripts_hash,
-            status="running",
-            start_time=datetime.now(),
-            total_nodes=len(graph.get("nodes", [])),
-        )
+        # 5. 根据配置决定是否创建 Execution 记录
+        execution = None
+        if settings.ENABLE_DB_WRITE:
+            from db import Execution
+            execution = await Execution.create(
+                execution_id=execution_id,
+                user_id=USER_ID,
+                source=source,
+                flow_id=UUID(request.flow_id),
+                tag=request.tag,
+                scripts_path=request.scripts_path,
+                scripts_hash=scripts_hash,
+                status="running",
+                start_time=datetime.now(),
+                total_nodes=len(graph.get("nodes", [])),
+            )
 
         # 6. 记录执行开始时间
         start_time = time.time()
@@ -273,15 +287,21 @@ async def execute_saved(request: ExecuteSavedRequest):
             result = await run_flow(scripts, graph, execution_id)
 
             # 收集输出文件
-            output_files = await output_file_manager.get_execution_files(execution_id)
-
+            # 根据配置决定从数据库还是收集器获取
+            if settings.ENABLE_DB_WRITE:
+                output_files = await output_file_manager.get_execution_files(execution_id)
+            else:
+                # 从文件收集器获取（轻量化模式）
+                output_files = file_collector.get_files(execution_id)
+         
             # 更新 Execution 状态为完成
-            execution.status = "completed"
-            execution.end_time = datetime.now()
-            execution.execution_time = time.time() - start_time
-            execution.executed_nodes = execution.total_nodes
-            execution.result = str(result)[:1000] if result else None
-            await execution.save()
+            if execution:
+                execution.status = "completed"
+                execution.end_time = datetime.now()
+                execution.execution_time = time.time() - start_time
+                execution.executed_nodes = execution.total_nodes
+                execution.result = str(result)[:1000] if result else None
+                await execution.save()
 
             # 8. 构建响应
             response = {
@@ -289,14 +309,14 @@ async def execute_saved(request: ExecuteSavedRequest):
                 "result": result,
                 "output_files": output_files,
                 "execution_id": execution_id,
-                "execution_time": execution.execution_time,
-                "timestamp": execution.start_time.isoformat(),
+                "execution_time": time.time() - start_time,
+                "timestamp": execution.start_time.isoformat() if execution else datetime.now().isoformat(),
                 "stats": {
-                    "total_nodes": execution.total_nodes,
-                    "executed_nodes": execution.executed_nodes,
-                    "failed_nodes": execution.failed_nodes,
+                    "total_nodes": len(graph.get("nodes", [])),
+                    "executed_nodes": len(graph.get("nodes", [])),
+                    "failed_nodes": 0,
                     "total_connections": len(graph.get("connections", [])),
-                    "execution_time": execution.execution_time,
+                    "execution_time": time.time() - start_time,
                 }
             }
             logger.info(
@@ -307,11 +327,12 @@ async def execute_saved(request: ExecuteSavedRequest):
 
         except Exception as e:
             # 更新 Execution 状态为失败
-            execution.status = "failed"
-            execution.end_time = datetime.now()
-            execution.execution_time = time.time() - start_time
-            execution.result = f"Error: {str(e)}"[:1000]
-            await execution.save()
+            if execution:
+                execution.status = "failed"
+                execution.end_time = datetime.now()
+                execution.execution_time = time.time() - start_time
+                execution.result = f"Error: {str(e)}"[:1000]
+                await execution.save()
             raise
 
     except HTTPException:
@@ -329,6 +350,11 @@ async def cleanup_tag_execution(user_id: str, tag: str):
         user_id: 用户ID
         tag: 标签
     """
+    # 只在启用数据库时才执行清理
+    if not settings.ENABLE_DB_WRITE:
+        logger.info(f"数据库写入已禁用，跳过 tag '{tag}' 的清理")
+        return
+    
     from db import Execution, Output
 
     # 1. 查找同一 tag 的旧执行记录
@@ -368,13 +394,32 @@ async def get_output_files(
     - offset: 偏移量
     """
     try:
-        files = await output_file_manager.get_all_files(
-            execution_id=execution_id,
-            file_type=file_type,
-            is_deleted=is_deleted,
-            limit=limit,
-            offset=offset
-        )
+        files = []
+        
+        if settings.ENABLE_DB_WRITE:
+            # 从数据库获取
+            files = await output_file_manager.get_all_files(
+                execution_id=execution_id,
+                file_type=file_type,
+                is_deleted=is_deleted,
+                limit=limit,
+                offset=offset
+            )
+        else:
+            # 从收集器获取（轻量化模式）
+            if execution_id:
+                files = file_collector.get_files(execution_id)
+            else:
+                # 如果没有指定 execution_id，获取所有执行的文件
+                # 注意：收集器不支持跨执行查询，这里只返回空列表
+                files = []
+            
+            # 应用过滤
+            if file_type:
+                files = [f for f in files if f.get("file_type") == file_type]
+            
+            # 应用分页
+            files = files[offset:offset + limit]
 
         return {
             "files": files,
@@ -393,8 +438,21 @@ async def get_output_file(file_id: str):
     获取输出文件内容
     """
     try:
-        # 使用 OutputFileManager 获取文件信息（一次查询获取所有信息）
+        # 先尝试从数据库获取文件信息
         file_info = await output_file_manager.get_file_info(file_id)
+        
+        # 如果数据库中没有，尝试从收集器获取（轻量化模式）
+        if not file_info and not settings.ENABLE_DB_WRITE:
+            # 从 file_id 提取 execution_id
+            # file_id 格式: {execution_id}_{random}
+            parts = file_id.rsplit('_', 1)
+            if len(parts) == 2:
+                execution_id = parts[0]
+                files = file_collector.get_files(execution_id)
+                for f in files:
+                    if f["file_id"] == file_id:
+                        file_info = f
+                        break
 
         if not file_info:
             raise HTTPException(404, f"文件不存在: {file_id}")
@@ -448,7 +506,19 @@ async def delete_output_file(file_id: str) -> Dict[str, Any]:
     删除输出文件（软删除）
     """
     try:
+        # 先尝试从数据库删除
         success = await output_file_manager.delete_file(file_id, soft_delete=True)
+        
+        # 如果数据库中没有且处于轻量化模式，从收集器中删除
+        if not success and not settings.ENABLE_DB_WRITE:
+            # 从 file_id 提取 execution_id
+            parts = file_id.rsplit('_', 1)
+            if len(parts) == 2:
+                execution_id = parts[0]
+                files = file_collector.get_files(execution_id)
+                # 从收集器中移除该文件
+                file_collector._files[execution_id] = [f for f in files if f["file_id"] != file_id]
+                success = True
 
         if not success:
             raise HTTPException(404, f"文件不存在: {file_id}")

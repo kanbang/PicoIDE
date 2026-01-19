@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-12 18:26:54
 LastEditors: zhai
-LastEditTime: 2026-01-19 20:50:13
+LastEditTime: 2026-01-19 21:24:21
 '''
 from flow.engine import Block, ComputeEngine
 from flow.manager import EngineManager
@@ -111,6 +111,10 @@ async def _batch_save_outputs(execution_id: str):
     Args:
         execution_id: 执行ID
     """
+    
+    # 只在启用数据库时才执行批量入库
+    if not settings.ENABLE_DB_WRITE:
+        return
 
     # 获取该执行的所有文件信息
     files = file_collector.get_files(execution_id)

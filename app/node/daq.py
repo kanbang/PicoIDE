@@ -772,13 +772,11 @@ class BaseBlock(Block):
                 "block_id": str(id(self)),
                 "description": description,
                 "metadata": metadata or {},
-                "enable_db": enable_db  # 标记是否需要写入数据库
             }
     
-            # 如果启用数据库，将文件信息添加到收集器
-            if enable_db:
-                from node.file_collector import file_collector
-                file_collector.add_file(execution_id, file_info)
+            # 始终将文件信息添加到收集器（无论是否启用数据库）
+            from node.file_collector import file_collector
+            file_collector.add_file(execution_id, file_info)
     
             return file_id
     def _write_file(
@@ -829,14 +827,13 @@ class BaseBlock(Block):
             # 更新文件大小
             if file_id and full_path.exists():
                 file_size = full_path.stat().st_size
-                # 如果启用数据库，更新文件大小到收集器中的文件信息
-                if enable_db:
-                    from node.file_collector import file_collector
-                    files = file_collector.get_files(execution_id)
-                    for f in files:
-                        if f["file_id"] == file_id:
-                            f["file_size"] = file_size
-                            break
+                # 更新收集器中的文件信息
+                from node.file_collector import file_collector
+                files = file_collector.get_files(execution_id)
+                for f in files:
+                    if f["file_id"] == file_id:
+                        f["file_size"] = file_size
+                        break
 
             return file_id
         except Exception as e:

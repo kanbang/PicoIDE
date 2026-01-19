@@ -14,6 +14,7 @@ LastEditTime: 2026-01-19 20:54:54
 
 from typing import Dict, List, Any, Optional
 from threading import Lock
+from datetime import datetime
 
 
 class FileCollector:
@@ -51,10 +52,24 @@ class FileCollector:
             execution_id: 执行ID
 
         Returns:
-            文件信息列表
+            文件信息列表（格式与数据库查询一致）
         """
+        from node.settings import settings
+        
         with self._lock:
-            return self._files.get(execution_id, [])
+            files = self._files.get(execution_id, [])
+            
+            # 添加缺失的字段，保持与数据库查询格式一致
+            for f in files:
+                file_type = f.get("file_type", "unknown")
+                f["can_open"] = file_type in settings.BROWSER_OPENABLE
+                f["can_download"] = True
+                
+                # 如果没有 created_at 字段，使用当前时间
+                if "created_at" not in f:
+                    f["created_at"] = datetime.now().isoformat()
+            
+            return files
 
     def clear_execution(self, execution_id: str):
         """
