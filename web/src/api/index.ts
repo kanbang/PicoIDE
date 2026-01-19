@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-12 19:53:48
  * @LastEditors: zhai
- * @LastEditTime: 2026-01-12 20:27:54
+ * @LastEditTime: 2026-01-19 19:36:56
  */
 /*
  * @Descripttion: 
@@ -30,9 +30,9 @@
 export { api } from './request';
 
 // 导出 blocks 相关 API
-export { getBlocks, executeBlocks } from './flow';
-export type { ExecuteRequest, ExecuteResponse } from './flow';
+export { getBlocks, executeBlocks } from './run';
+export type { ExecuteRequest, ExecuteResponse } from './run';
 
 // 导出 schemas 相关 API
-export { getSchemas, createSchema, updateSchema, deleteSchema, duplicateSchema } from './schemas';
-export type { SchemaItem, CreateSchemaRequest, UpdateSchemaRequest } from './schemas';
+export { getFlows, createFlow, updateFlow, deleteFlow, duplicateFlow } from './flows';
+export type { FlowItem, CreateFlowRequest, UpdateFlowRequest } from './flows';

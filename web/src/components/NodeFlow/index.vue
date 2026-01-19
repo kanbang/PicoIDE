@@ -1,3 +1,11 @@
+<!--
+ * @Descripttion: 
+ * @version: 0.x
+ * @Author: zhai
+ * @Date: 2026-01-17 17:01:06
+ * @LastEditors: zhai
+ * @LastEditTime: 2026-01-19 19:26:55
+-->
 <template>
   <div class="nodeflow-container">
     <SplitPane ref="splitPaneRef" direction="horizontal" :min="250" :max="800" :initial-size="350" button-side="right"
@@ -35,7 +43,7 @@ const RUN_COMMAND_ID = "RUN";
 const emit = defineEmits<{
   save: [data: any];
   error: [message: string];
-  update: [schema: any];
+  update: [flow: any];
   unsavedChanges: [hasChanges: boolean];
   run: [data: any];
 }>();
@@ -46,8 +54,8 @@ const editor = baklava.editor;
 
 // --- 状态管理 ---
 const hasUnsavedChanges = ref(false);
-const currentSchema = ref<any>(null);
-const lastSavedSchema = ref<any>(null);
+const currentFlow = ref<any>(null);
+const lastSavedFlow = ref<any>(null);
 const isLoading = ref(false);
 
 // --- OutputPanel 与 SplitPane 引用 ---
@@ -103,10 +111,10 @@ function scheduleUpdate() {
   updateTimeout = setTimeout(() => {
     const newState = editor.save();
     const newStr = JSON.stringify(newState);
-    const savedStr = JSON.stringify(lastSavedSchema.value ?? { nodes: [], connections: [] });
+    const savedStr = JSON.stringify(lastSavedFlow.value ?? { nodes: [], connections: [] });
 
     if (newStr !== savedStr) {
-      currentSchema.value = newState;
+      currentFlow.value = newState;
       emit('update', newState);
 
       if (!hasUnsavedChanges.value) {
@@ -157,9 +165,9 @@ function registerCustomCommands(): void {
       try {
         const data = editor.save();
         emit('save', data);
-        currentSchema.value = data;
+        currentFlow.value = data;
         emit('update', data);
-        lastSavedSchema.value = deepCopy(data);
+        lastSavedFlow.value = deepCopy(data);
         hasUnsavedChanges.value = false;
         emit('unsavedChanges', false);
         if (updateTimeout !== null) {
@@ -207,7 +215,7 @@ interface BlockDefinition {
 }
 
 interface Props {
-  schema?: any;
+  flow?: any;
   blocks?: BlockDefinition[];
   showRun?: boolean;
 }
@@ -240,7 +248,7 @@ function registerBlocks(blocks: BlockDefinition[] = []) {
 
 function updateBlocks(newBlocks: BlockDefinition[]) {
   registerBlocks(newBlocks);
-  if (currentSchema.value) loadSchema(currentSchema.value);
+  if (currentFlow.value) loadFlow(currentFlow.value);
 }
 
 function registerFixedNodeTypes(): void {
@@ -270,22 +278,22 @@ function setupNodeDragObserver() {
   });
 }
 
-// --- 加载 Schema ---
-function loadSchema(newSchema: any) {
+// --- 加载 Flow ---
+function loadFlow(newFlow: any) {
   try {
     isLoading.value = true;
-    if (!newSchema || Object.keys(newSchema).length === 0) {
+    if (!newFlow || Object.keys(newFlow).length === 0) {
       const graph = editor.graph;
       [...graph.nodes].forEach(node => graph.removeNode(node));
       [...graph.connections].forEach(connection => graph.removeConnection(connection));
-      currentSchema.value = editor.save();
+      currentFlow.value = editor.save();
     } else {
-      editor.load(newSchema);
-      currentSchema.value = newSchema;
+      editor.load(newFlow);
+      currentFlow.value = newFlow;
     }
-    lastSavedSchema.value = deepCopy(currentSchema.value);
+    lastSavedFlow.value = deepCopy(currentFlow.value);
     hasUnsavedChanges.value = false;
-    emit('update', currentSchema.value);
+    emit('update', currentFlow.value);
     emit('unsavedChanges', false);
     if (updateTimeout !== null) {
       clearTimeout(updateTimeout);
@@ -310,7 +318,7 @@ onMounted(() => {
     if (newBlocks) updateBlocks(newBlocks);
   }, { deep: true });
 
-  loadSchema(props.schema ?? null);
+  loadFlow(props.flow ?? null);
   setupChangeDetection();
 });
 
@@ -321,10 +329,10 @@ onUnmounted(() => {
 
 // --- Expose ---
 defineExpose({
-  loadSchema,
+  loadFlow,
   updateBlocks,
   hasUnsavedChanges,
-  currentSchema,
+  currentFlow,
   outputPanelRef,
   toggleOutputPanel,
   showOutputPanel,

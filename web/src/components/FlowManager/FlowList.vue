@@ -2,16 +2,16 @@
 import { defineProps, defineEmits } from 'vue';
 
 // 定义接口 (建议最好提取到单独的 types.ts 文件中)
-export interface SchemaItem {
+export interface FlowItem {
   id: string;
   name: string;
-  schema: any;
+  flow: any;
   hasUnsavedChanges: boolean;
 }
 
 // Props: 接收列表数据和当前选中的ID
 const props = defineProps<{
-  schemas: SchemaItem[];
+  flows: FlowItem[];
   selectedId: string | null;
 }>();
 
@@ -32,33 +32,33 @@ function handleSelect(id: string) {
 </script>
 
 <template>
-  <div class="schema-list-container">
-    <div class="schema-list-header">
-      <h3>Schemas</h3>
+  <div class="flow-list-container">
+    <div class="flow-list-header">
+      <h3>Flows</h3>
       <button @click="emit('create')" class="btn btn-primary">+ 新建</button>
     </div>
 
-    <div class="schema-list-body">
+    <div class="flow-list-body">
       <div 
-        v-for="schema in schemas" 
-        :key="schema.id"
-        :class="['schema-item', { active: schema.id === selectedId }]" 
-        @click="handleSelect(schema.id)"
+        v-for="flow in flows" 
+        :key="flow.id"
+        :class="['flow-item', { active: flow.id === selectedId }]" 
+        @click="handleSelect(flow.id)"
       >
-        <div class="schema-item-content">
-          <span class="schema-name" :title="schema.name">{{ schema.name }}</span>
-          <span v-if="schema.hasUnsavedChanges" class="unsaved-indicator" title="未保存">●</span>
+        <div class="flow-item-content">
+          <span class="flow-name" :title="flow.name">{{ flow.name }}</span>
+          <span v-if="flow.hasUnsavedChanges" class="unsaved-indicator" title="未保存">●</span>
         </div>
         
-        <div class="schema-item-actions">
-          <button @click.stop="emit('duplicate', schema.id)" class="btn-icon" title="复制">📋</button>
-          <button @click.stop="emit('rename', schema.id)" class="btn-icon" title="重命名">✎</button>
-          <button @click.stop="emit('delete', schema.id)" class="btn-icon btn-icon-delete" title="删除">✕</button>
+        <div class="flow-item-actions">
+          <button @click.stop="emit('duplicate', flow.id)" class="btn-icon" title="复制">📋</button>
+          <button @click.stop="emit('rename', flow.id)" class="btn-icon" title="重命名">✎</button>
+          <button @click.stop="emit('delete', flow.id)" class="btn-icon btn-icon-delete" title="删除">✕</button>
         </div>
       </div>
 
-      <div v-if="schemas.length === 0" class="empty-state">
-        暂无 Schema，点击"新建"创建
+      <div v-if="flows.length === 0" class="empty-state">
+        暂无 Flow，点击"新建"创建
       </div>
     </div>
   </div>
@@ -66,7 +66,7 @@ function handleSelect(id: string) {
 
 <style scoped>
 /* 容器占满父容器 */
-.schema-list-container {
+.flow-list-container {
   width: 100%;
   height: 100%;
   background: #2d2d2d;
@@ -75,7 +75,7 @@ function handleSelect(id: string) {
   user-select: none;
 }
 
-.schema-list-header {
+.flow-list-header {
   padding: 16px;
   border-bottom: 1px solid #444;
   display: flex;
@@ -84,29 +84,29 @@ function handleSelect(id: string) {
   flex-shrink: 0;
 }
 
-.schema-list-header h3 {
+.flow-list-header h3 {
   margin: 0;
   color: #fff;
   font-size: 16px;
   font-weight: 600;
 }
 
-.schema-list-body {
+.flow-list-body {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
 }
 
 /* 滚动条美化 (可选) */
-.schema-list-body::-webkit-scrollbar {
+.flow-list-body::-webkit-scrollbar {
   width: 6px;
 }
-.schema-list-body::-webkit-scrollbar-thumb {
+.flow-list-body::-webkit-scrollbar-thumb {
   background: #555;
   border-radius: 3px;
 }
 
-.schema-item {
+.flow-item {
   padding: 8px 12px;
   margin-bottom: 4px;
   background: #3d3d3d;
@@ -121,16 +121,16 @@ function handleSelect(id: string) {
   border-left: 3px solid transparent;
 }
 
-.schema-item:hover {
+.flow-item:hover {
   background: #4d4d4d;
 }
 
-.schema-item.active {
+.flow-item.active {
   background: #5a5a5a;
   border-left-color: #4caf50;
 }
 
-.schema-item-content {
+.flow-item-content {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -138,7 +138,7 @@ function handleSelect(id: string) {
   min-width: 0;
 }
 
-.schema-name {
+.flow-name {
   color: #fff;
   font-size: 14px;
   white-space: nowrap;
@@ -152,7 +152,7 @@ function handleSelect(id: string) {
   flex-shrink: 0;
 }
 
-.schema-item-actions {
+.flow-item-actions {
   display: flex;
   gap: 4px;
   justify-content: flex-end;
@@ -162,8 +162,8 @@ function handleSelect(id: string) {
 }
 
 /* 鼠标悬停或选中时显示按钮 */
-.schema-item:hover .schema-item-actions,
-.schema-item.active .schema-item-actions {
+.flow-item:hover .flow-item-actions,
+.flow-item.active .flow-item-actions {
   opacity: 1;
 }
 

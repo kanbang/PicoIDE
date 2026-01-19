@@ -478,7 +478,7 @@ result.add_compute(result_func)
 ```
 
 
-### 使用 blocks 节点连接后的流式计算 Schema 示例
+### 使用 blocks 节点连接后的流式计算 Flow 示例
 
 ``` json
 
@@ -776,7 +776,7 @@ result.add_compute(result_func)
 ```
 
 ### 实现 ComputeEngine
-1. 根据 python定义的 的 Block class list 和 Schema json，根据connections传递节点的值，执行各节点的compute函数
+1. 根据 python定义的 的 Block class list 和 Flow json，根据connections传递节点的值，执行各节点的compute函数
 2. 执行同步执行和异步执行
 3. 异步执行时，没有路径依赖关系的，可以并行运算
 4. 可以重新设置blocks

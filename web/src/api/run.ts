@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-12 20:11:28
  * @LastEditors: zhai
- * @LastEditTime: 2026-01-19 10:46:56
+ * @LastEditTime: 2026-01-19 19:24:45
  */
 /**
  * Blocks 相关 API
@@ -17,7 +17,7 @@ export interface BlocksResponse {
 
 export interface ExecuteRequest {
   scripts?: string[];
-  schema?: Record<string, any>;
+  flow?: Record<string, any>;
 }
 
 export interface ExecuteResponse {

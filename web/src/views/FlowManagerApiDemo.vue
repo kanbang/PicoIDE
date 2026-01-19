@@ -1,20 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue';
+import FlowManager, { FlowItem } from '@/components/FlowManager/index.vue';
 import {
-  getBlocks, getSchemas, createSchema, updateSchema,
-  deleteSchema, duplicateSchema, executeBlocks,
-  SchemaItem as ApiSchemaItem
+  getBlocks, getFlows, createFlow, updateFlow,
+  deleteFlow, duplicateFlow, executeBlocks,
+  FlowItem as ApiFlowItem
 } from '@/api/index';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
 
 // --- 响应式状态 ---
 const blocks = ref<any[]>([]);
-const schemas = ref<ApiSchemaItem[]>([]);
-const selectedSchemaId = ref<string | null>(null);
+const flows = ref<ApiFlowItem[]>([]);
+const selectedFlowId = ref<string | null>(null);
 
-// 引用 SchemaManager 实例
-const schemaManagerRef = ref<InstanceType<typeof SchemaManager> | null>(null);
+// 引用 FlowManager 实例
+const flowManagerRef = ref<InstanceType<typeof FlowManager> | null>(null);
 
 // --- 数据加载 ---
 async function loadBlocks() {
@@ -25,24 +25,24 @@ async function loadBlocks() {
   }
 }
 
-async function loadSchemas() {
+async function loadFlows() {
   try {
-    schemas.value = await getSchemas();
+    flows.value = await getFlows();
     // 默认选中第一个
-    if (schemas.value.length > 0 && !selectedSchemaId.value) {
-      selectedSchemaId.value = schemas.value[0].id;
+    if (flows.value.length > 0 && !selectedFlowId.value) {
+      selectedFlowId.value = flows.value[0].id;
     }
   } catch (error) {
-    showError('加载 Schema 列表失败');
+    showError('加载 Flow 列表失败');
   }
 }
 
-// --- Schema 操作逻辑 ---
-async function handleCreate(schema: SchemaItem) {
+// --- Flow 操作逻辑 ---
+async function handleCreate(flow: FlowItem) {
   try {
-    const newSchema = await createSchema({ name: schema.name, schema: schema.schema });
-    schemas.value.push(newSchema);
-    selectedSchemaId.value = newSchema.id;
+    const newFlow = await createFlow({ name: flow.name, flow: flow.flow });
+    flows.value.push(newFlow);
+    selectedFlowId.value = newFlow.id;
     showSuccess('创建成功');
   } catch (error) {
     showError('创建失败');
@@ -51,9 +51,9 @@ async function handleCreate(schema: SchemaItem) {
 
 async function handleSave(id: string, data: any) {
   try {
-    const updated = await updateSchema(id, { schema: data });
-    const index = schemas.value.findIndex(s => s.id === id);
-    if (index !== -1) schemas.value[index] = updated;
+    const updated = await updateFlow(id, { flow: data });
+    const index = flows.value.findIndex(s => s.id === id);
+    if (index !== -1) flows.value[index] = updated;
     showSuccess('保存成功');
   } catch (error) {
     showError('保存失败');
@@ -64,23 +64,23 @@ async function handleDelete(id: string) {
   try {
 
     let newSelectedId: string | null = null;
-    if (selectedSchemaId.value === id) {
-      if (schemas.value.length > 1) {
-        const currentIndex = schemas.value.findIndex(s => s.id === id);
-        if (currentIndex == schemas.value.length - 1) {
-          newSelectedId = schemas.value[currentIndex - 1].id;
+    if (selectedFlowId.value === id) {
+      if (flows.value.length > 1) {
+        const currentIndex = flows.value.findIndex(s => s.id === id);
+        if (currentIndex == flows.value.length - 1) {
+          newSelectedId = flows.value[currentIndex - 1].id;
         } else {
-          newSelectedId = schemas.value[currentIndex + 1].id;
+          newSelectedId = flows.value[currentIndex + 1].id;
         }
       }
     }
 
-    await deleteSchema(id);
-    schemas.value = schemas.value.filter(s => s.id !== id);
+    await deleteFlow(id);
+    flows.value = flows.value.filter(s => s.id !== id);
 
 
     if (newSelectedId !== null) {
-      selectedSchemaId.value = newSelectedId;
+      selectedFlowId.value = newSelectedId;
     }
 
     showSuccess('删除成功');
@@ -91,19 +91,19 @@ async function handleDelete(id: string) {
 
 async function handleRename(id: string, newName: string) {
   try {
-    const updated = await updateSchema(id, { name: newName });
-    const index = schemas.value.findIndex(s => s.id === id);
-    if (index !== -1) schemas.value[index] = updated;
+    const updated = await updateFlow(id, { name: newName });
+    const index = flows.value.findIndex(s => s.id === id);
+    if (index !== -1) flows.value[index] = updated;
   } catch (error) {
     showError('重命名失败');
   }
 }
 
-async function handleDuplicate(originalId: string, newSchema: SchemaItem) {
+async function handleDuplicate(originalId: string, newFlow: FlowItem) {
   try {
-    const duplicated = await duplicateSchema(originalId, newSchema.name);
-    schemas.value.push(duplicated);
-    selectedSchemaId.value = duplicated.id;
+    const duplicated = await duplicateFlow(originalId, newFlow.name);
+    flows.value.push(duplicated);
+    selectedFlowId.value = duplicated.id;
     showSuccess('复制成功');
   } catch (error) {
     showError('复制失败');
@@ -111,9 +111,9 @@ async function handleDuplicate(originalId: string, newSchema: SchemaItem) {
 }
 
 // --- 核心执行逻辑 (重构重点) ---
-async function handleRun(id: string, schema: any) {
+async function handleRun(id: string, flow: any) {
   // 1. 获取 NodeFlow 实例引用
-  const nodeFlowInstance = schemaManagerRef.value?.nodeFlowRef;
+  const nodeFlowInstance = flowManagerRef.value?.nodeFlowRef;
   if (!nodeFlowInstance) return;
 
   // 2. 自动展开输出面板 (体验优化)
@@ -122,13 +122,13 @@ async function handleRun(id: string, schema: any) {
   const outputPanel = nodeFlowInstance.outputPanelRef;
 
   try {
-    console.log('执行 Schema:', id);
+    console.log('执行 Flow:', id);
 
     // 3. 更新 UI 为运行中
     outputPanel?.setExecutionStatus('running');
 
     // 4. 调用 API
-    const result = await executeBlocks({ scripts: [], schema });
+    const result = await executeBlocks({ scripts: [], flow: flow });
 
     // 5. 更新输出面板结果
     if (outputPanel) {
@@ -155,13 +155,13 @@ async function handleRun(id: string, schema: any) {
 // --- 初始化 ---
 onMounted(() => {
   loadBlocks();
-  loadSchemas();
+  loadFlows();
 });
 </script>
 
 <template>
   <div class="manager-page-wrapper">
-    <SchemaManager ref="schemaManagerRef" v-model:schemas="schemas" v-model:selected-schema-id="selectedSchemaId"
+    <FlowManager ref="flowManagerRef" v-model:flows="flows" v-model:selected-flow-id="selectedFlowId"
       :blocks="blocks" :show-run="true" @run="handleRun" @create="handleCreate" @save="handleSave"
       @delete="handleDelete" @rename="handleRename" @duplicate="handleDuplicate" />
   </div>

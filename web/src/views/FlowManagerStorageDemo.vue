@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import SchemaManager, { SchemaItem } from '@/components/SchemaManager/index.vue'; // 确保路径正确，原代码是 @/components/...
+import FlowManager, { FlowItem } from '@/components/FlowManager/index.vue'; // 确保路径正确，原代码是 @/components/...
 import { getBlocks } from '@/api/index';
 
-const STORAGE_KEY = 'schema_manager_example_data';
+const STORAGE_KEY = 'flow_manager_example_data';
 
 // Blocks 数据从后端获取
 const blocks = ref<any[]>([]);
 
-// Schema 列表
-const schemas = ref<SchemaItem[]>([]);
-// 当前选中的 Schema ID
-const selectedSchemaId = ref<string | null>(null);
+// Flow 列表
+const flows = ref<FlowItem[]>([]);
+// 当前选中的 Flow ID
+const selectedFlowId = ref<string | null>(null);
 
 // 从后端加载 blocks
 async function loadBlocks() {
@@ -28,8 +28,8 @@ function loadFromStorage(): void {
   if (savedData) {
     try {
       const data = JSON.parse(savedData);
-      schemas.value = data.schemas || [];
-      selectedSchemaId.value = data.selectedSchemaId || null;
+      flows.value = data.flows || [];
+      selectedFlowId.value = data.selectedFlowId || null;
     } catch (e) {
       console.error('Failed to parse saved data:', e);
     }
@@ -39,64 +39,64 @@ function loadFromStorage(): void {
 // 保存到 localStorage
 function saveToStorage(): void {
   const data = {
-    schemas: schemas.value,
-    selectedSchemaId: selectedSchemaId.value
+    flows: flows.value,
+    selectedFlowId: selectedFlowId.value
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
 // 处理创建事件
-function handleCreate(schema: SchemaItem): void {
-  console.log('handleCreate called with schema:', schema);
+function handleCreate(flow: FlowItem): void {
+  console.log('handleCreate called with flow:', flow);
   // 生成 ID
-  const newSchemaWithId = {
-    ...schema,
+  const newFlowWithId = {
+    ...flow,
     id: crypto.randomUUID()
   };
-  schemas.value.push(newSchemaWithId);
-  // 自动选中新创建的 schema
-  selectedSchemaId.value = newSchemaWithId.id;
-  console.log('After push, schemas:', schemas.value);
+  flows.value.push(newFlowWithId);
+  // 自动选中新创建的 flow
+  selectedFlowId.value = newFlowWithId.id;
+  console.log('After push, flows:', flows.value);
   saveToStorage();
 }
 
 // 处理保存事件
 function handleSave(id: string, data: any): void {
-  const schema = schemas.value.find(s => s.id === id);
-  if (schema) {
-    schema.schema = data;
+  const flow = flows.value.find(s => s.id === id);
+  if (flow) {
+    flow.flow = data;
     saveToStorage();
   }
 }
 
 // 处理删除事件
 function handleDelete(id: string): void {
-  const index = schemas.value.findIndex(s => s.id === id);
+  const index = flows.value.findIndex(s => s.id === id);
   if (index > -1) {
-    schemas.value.splice(index, 1);
+    flows.value.splice(index, 1);
     saveToStorage();
   }
 }
 
 // 处理重命名事件
 function handleRename(id: string, newName: string): void {
-  const schema = schemas.value.find(s => s.id === id);
-  if (schema) {
-    schema.name = newName;
+  const flow = flows.value.find(s => s.id === id);
+  if (flow) {
+    flow.name = newName;
     saveToStorage();
   }
 }
 
 // 处理复制事件
-function handleDuplicate(originalId: string, newSchema: SchemaItem): void {
+function handleDuplicate(originalId: string, newFlow: FlowItem): void {
   // 生成 ID
-  const newSchemaWithId = {
-    ...newSchema,
+  const newFlowWithId = {
+    ...newFlow,
     id: crypto.randomUUID()
   };
-  schemas.value.push(newSchemaWithId);
-  // 自动选中新复制的 schema
-  selectedSchemaId.value = newSchemaWithId.id;
+  flows.value.push(newFlowWithId);
+  // 自动选中新复制的 flow
+  selectedFlowId.value = newFlowWithId.id;
   saveToStorage();
 }
 
@@ -109,23 +109,23 @@ onMounted(() => {
   loadBlocks();
   loadFromStorage();
 
-  // 如果没有 schema，创建一个默认的
-  // if (schemas.value.length === 0) {
-  //   const defaultSchema: SchemaItem = {
+  // 如果没有 flow，创建一个默认的
+  // if (flows.value.length === 0) {
+  //   const defaultFlow: FlowItem = {
   //     id: crypto.randomUUID(),
-  //     name: 'Schema 1',
-  //     schema: null,
+  //     name: 'Flow 1',
+  //     flow: null,
   //     hasUnsavedChanges: false
   //   };
-  //   schemas.value.push(defaultSchema);
-  //   selectedSchemaId.value = defaultSchema.id;
+  //   flows.value.push(defaultFlow);
+  //   selectedFlowId.value = defaultFlow.id;
   //   saveToStorage();
   // }
 });
 </script>
 
 <template>
-  <SchemaManager v-model:schemas="schemas" v-model:selected-schema-id="selectedSchemaId" :blocks="blocks"
+  <FlowManager v-model:flows="flows" v-model:selected-flow-id="selectedFlowId" :blocks="blocks"
     :show-run="true" @run="handleRun" @create="handleCreate" @save="handleSave" @delete="handleDelete"
     @rename="handleRename" @duplicate="handleDuplicate" />
 </template>

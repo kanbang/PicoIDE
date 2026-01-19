@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-08 09:32:18
 LastEditors: zhai
-LastEditTime: 2026-01-08 09:53:01
+LastEditTime: 2026-01-19 19:08:43
 '''
 """
 数据库模块
@@ -30,16 +30,16 @@ class File(Model):
         unique_together = (("user_id", "path"),)
 
 
-class Schema(Model):
-    """Schema 模型"""
+class Flow(Model):
+    """Flow 模型"""
     id = fields.UUIDField(pk=True, default=uuid.uuid4)
     user_id = fields.CharField(max_length=255)
     name = fields.CharField(max_length=255)
-    schema_data = fields.JSONField(null=True)
+    flow = fields.JSONField(null=True)
     mtime = fields.BigIntField()
 
     class Meta:
-        table = "schemas"
+        table = "flows"
 
 
 class Execution(Model):
@@ -50,7 +50,7 @@ class Execution(Model):
 
     # 执行来源
     source = fields.CharField(max_length=20)  # 'direct', 'saved', 'tag'
-    schema_id = fields.UUIDField(null=True)
+    flow_id = fields.UUIDField(null=True)
     tag = fields.CharField(max_length=128, null=True, index=True)
 
     # 脚本信息
@@ -81,7 +81,7 @@ class Execution(Model):
             ("status", "start_time"),
             ("user_id", "tag"),
             ("scripts_hash", "start_time"),
-            ("schema_id", "scripts_hash"),
+            ("flow_id", "scripts_hash"),
         ]
 
 

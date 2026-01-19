@@ -4,7 +4,7 @@ import NodeFlow from '@/components/NodeFlow/index.vue';
 import { getBlocks, executeBlocks } from '@/api/index';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
 
-const STORAGE_KEY = 'nodeflow_schema';
+const STORAGE_KEY = 'nodeflow_flow';
 
 // --- 响应式状态 ---
 const blocks = ref<any[]>([]);
@@ -28,9 +28,9 @@ function loadFromStorage(): void {
   const savedSchema = localStorage.getItem(STORAGE_KEY);
   if (savedSchema) {
     try {
-      const schema = JSON.parse(savedSchema);
+      const flow = JSON.parse(savedSchema);
       // 调用 NodeFlow 暴露的 loadSchema 方法
-      nodeFlowRef.value?.loadSchema(schema);
+      nodeFlowRef.value?.loadSchema(flow);
     } catch (e) {
       console.error('解析本地存储失败:', e);
     }
@@ -52,7 +52,7 @@ function handleUnsavedChanges(changes: boolean): void {
 }
 
 // 处理运行逻辑
-async function handleRun(schema: any) {
+async function handleRun(flow: any) {
   if (!nodeFlowRef.value) return;
 
   // 1. 自动展开输出面板 (利用 NodeFlow 暴露的 API)
@@ -61,7 +61,7 @@ async function handleRun(schema: any) {
   const outputPanel = nodeFlowRef.value.outputPanelRef;
 
   try {
-    console.log('开始执行流程...', schema);
+    console.log('开始执行流程...', flow);
     
     // 2. 更新 UI 状态为运行中
     if (outputPanel) {
@@ -69,7 +69,7 @@ async function handleRun(schema: any) {
     }
     
     // 3. 调用后端执行 API
-    const result = await executeBlocks({ scripts: [], schema });
+    const result = await executeBlocks({ scripts: [], flow: flow });
     
     // 4. 处理执行结果
     if (outputPanel) {

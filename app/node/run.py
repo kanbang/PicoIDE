@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-12 18:26:54
 LastEditors: zhai
-LastEditTime: 2026-01-14 16:35:22
+LastEditTime: 2026-01-19 19:14:03
 '''
 from flow.engine import Block, ComputeEngine
 from flow.manager import EngineManager
@@ -72,13 +72,13 @@ engine_manager = EngineManager(pool_size=5)
 # 注册业务：振动分析业务
 engine_manager.register_business("daq", daq_blocks)
 
-async def run_schema(scripts: List[Any], schema: dict, execution_id: str = None):
+async def run_flow(scripts: List[Any], flow: dict, execution_id: str = None):
     """
-    执行 schema
+    执行 flow
 
     Args:
         scripts: 脚本列表
-        schema: schema 配置
+        flow: flow 配置
         execution_id: 执行ID（用于文件追踪）
     """
     # 导入 output_file_manager
@@ -90,7 +90,7 @@ async def run_schema(scripts: List[Any], schema: dict, execution_id: str = None)
         execution_id = output_file_manager.create_execution_id()
 
     # 执行流程，传递 execution_id（使用异步执行）
-    async with await engine_manager.acquire("daq", schema) as engine:
+    async with await engine_manager.acquire("daq", flow) as engine:
         await engine.async_run(execution_id)
 
     # 执行完成后，批量将文件信息写入数据库
@@ -145,6 +145,6 @@ async def _batch_save_outputs(execution_id: str):
     file_collector.clear_execution(execution_id)
     # engine = ComputeEngine()
     # engine.register_blocks(base_blocks)
-    # engine.set_schema(schema)
+    # engine.set_flow(flow)
     # engine.run()
     # await engine.async_run()

@@ -187,7 +187,7 @@ function formatFileSize(bytes: number): string {
 
 async function refreshFiles() {
   try {
-    const { getOutputFiles } = await import('@/api/flow');
+    const { getOutputFiles } = await import('@/api/run');
     const files = await getOutputFiles();
     outputFiles.value = files;
     showSuccess('文件列表已刷新');
@@ -215,7 +215,7 @@ async function openFile(file: OutputFile) {
 
 async function downloadFile(file: OutputFile) {
   try {
-    const { getOutputFile } = await import('@/api/flow');
+    const { getOutputFile } = await import('@/api/run');
     const blob = await getOutputFile(file.file_id);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -242,7 +242,7 @@ async function deleteFile(file: OutputFile) {
 
     if (!confirmed) return;
 
-    const { deleteOutputFile } = await import('@/api/flow');
+    const { deleteOutputFile } = await import('@/api/run');
     await deleteOutputFile(file.file_id);
 
     outputFiles.value = outputFiles.value.filter(f => f.file_id !== file.file_id);
@@ -262,7 +262,7 @@ async function cleanupFiles() {
 
     if (!confirmed) return;
 
-    const { cleanupOutputFiles } = await import('@/api/flow');
+    const { cleanupOutputFiles } = await import('@/api/run');
     await cleanupOutputFiles();
 
     await refreshFiles();

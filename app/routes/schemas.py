@@ -6,136 +6,135 @@ from pydantic import BaseModel
 from typing import List, Optional
 from uuid import UUID
 
-from schema_service import (
-    get_schemas,
-    get_schema,
-    create_schema,
-    update_schema,
-    delete_schema,
-    duplicate_schema,
+from db import Flow
+from flow_service import (
+    get_flows,
+    get_flow,
+    create_flow,
+    update_flow,
+    delete_flow,
+    duplicate_flow,
 )
 
 USER_ID = "default"
 
-router = APIRouter(prefix="/api/schemas", tags=["schemas"])
+router = APIRouter(prefix="/api/flows", tags=["flows"])
 
 
-# Schema 数据模型
-class SchemaItem(BaseModel):
+# Flow 数据模型
+class FlowItem(BaseModel):
     id: str
     name: str
-    schema: Optional[dict] = None
+    flow: Optional[dict] = None
     hasUnsavedChanges: bool = False
 
 
-class CreateSchemaRequest(BaseModel):
+class CreateFlowRequest(BaseModel):
     name: str
-    schema: Optional[dict] = None
+    flow: Optional[dict] = None
 
 
-class UpdateSchemaRequest(BaseModel):
+class UpdateFlowRequest(BaseModel):
     name: Optional[str] = None
-    schema: Optional[dict] = None
+    flow: Optional[dict] = None
 
 
-class DuplicateSchemaRequest(BaseModel):
+class DuplicateFlowRequest(BaseModel):
     name: str
 
 
-def to_schema_item(db_schema) -> SchemaItem:
-    """将数据库模型转换为 SchemaItem"""
-    return SchemaItem(
-        id=str(db_schema.id),
-        name=db_schema.name,
-        schema=db_schema.schema_data,
+def to_flow_item(db_flow:Flow) -> FlowItem:
+    """将数据库模型转换为 FlowItem"""
+    return FlowItem(
+        id=str(db_flow.id),
+        name=db_flow.name,
+        flow=db_flow.flow,
         hasUnsavedChanges=False,
     )
 
 
-@router.get("", response_model=List[SchemaItem])
-async def list_schemas():
+@router.get("", response_model=List[FlowItem])
+async def list_flows():
     """
-    获取所有 schemas
+    获取所有 flows
     """
     try:
-        schemas = await get_schemas(USER_ID)
-        return [to_schema_item(s) for s in schemas]
+        flows = await get_flows(USER_ID)
+        return [to_flow_item(f) for f in flows]
     except Exception as e:
-        raise HTTPException(500, f"Failed to list schemas: {str(e)}")
+        raise HTTPException(500, f"Failed to list flows: {str(e)}")
 
 
-@router.post("", response_model=SchemaItem)
-async def create_new_schema(request: CreateSchemaRequest):
+@router.post("", response_model=FlowItem)
+async def create_new_flow(request: CreateFlowRequest):
     """
-    创建新 schema
+    创建新 flow
     """
     try:
-        schema = await create_schema(USER_ID, request.name, request.schema)
-        return to_schema_item(schema)
+        flow = await create_flow(USER_ID, request.name, request.flow)
+        return to_flow_item(flow)
     except Exception as e:
-        raise HTTPException(500, f"Failed to create schema: {str(e)}")
+        raise HTTPException(500, f"Failed to create flow: {str(e)}")
 
 
-@router.get("/{schema_id}", response_model=SchemaItem)
-async def get_schema_by_id(schema_id: UUID):
+@router.get("/{flow_id}", response_model=FlowItem)
+async def get_flow_by_id(flow_id: UUID):
     """
-    获取单个 schema
+    获取单个 flow
     """
     try:
-        schema = await get_schema(USER_ID, schema_id)
-        if not schema:
-            raise HTTPException(404, "Schema not found")
-        return to_schema_item(schema)
+        flow = await get_flow(USER_ID, flow_id)
+        if not flow:
+            raise HTTPException(404, "Flow not found")
+        return to_flow_item(flow)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Failed to get schema: {str(e)}")
+        raise HTTPException(500, f"Failed to get flow: {str(e)}")
 
-
-@router.put("/{schema_id}", response_model=SchemaItem)
-async def update_schema_by_id(schema_id: UUID, request: UpdateSchemaRequest):
+@router.put("/{flow_id}", response_model=FlowItem)
+async def update_flow_by_id(flow_id: UUID, request: UpdateFlowRequest):
     """
-    更新 schema
+    更新 flow
     """
     try:
-        success = await update_schema(USER_ID, schema_id, request.name, request.schema)
+        success = await update_flow(USER_ID, flow_id, request.name, request.flow)
         if not success:
-            raise HTTPException(404, "Schema not found")
-        schema = await get_schema(USER_ID, schema_id)
-        return to_schema_item(schema)
+            raise HTTPException(404, "Flow not found")
+        flow = await get_flow(USER_ID, flow_id)
+        return to_flow_item(flow)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Failed to update schema: {str(e)}")
+        raise HTTPException(500, f"Failed to update flow: {str(e)}")
 
-
-@router.delete("/{schema_id}")
-async def delete_schema_by_id(schema_id: UUID):
+@router.delete("/{flow_id}")
+async def delete_flow_by_id(flow_id: UUID):
     """
-    删除 schema
+    删除 flow   
     """
     try:
-        success = await delete_schema(USER_ID, schema_id)
+        success = await delete_flow(USER_ID, flow_id)
         if not success:
-            raise HTTPException(404, "Schema not found")
+            raise HTTPException(404, "Flow not found")
         return {"ok": True}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Failed to delete schema: {str(e)}")
+        raise HTTPException(500, f"Failed to delete flow: {str(e)}")
 
 
-@router.post("/{schema_id}/duplicate", response_model=SchemaItem)
-async def duplicate_schema_by_id(schema_id: UUID, request: DuplicateSchemaRequest):
+@router.post("/{flow_id}/duplicate", response_model=FlowItem)
+async def duplicate_flow_by_id(flow_id: UUID, request: DuplicateFlowRequest):
     """
-    复制 schema
+    复制 flow
     """
     try:
-        schema = await duplicate_schema(USER_ID, schema_id, request.name)
-        if not schema:
-            raise HTTPException(404, "Schema not found")
-        return to_schema_item(schema)
+        flow = await duplicate_flow(USER_ID, flow_id, request.name)
+        if not flow:
+            raise HTTPException(404, "Flow not found")
+        return to_flow_item(flow)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Failed to duplicate schema: {str(e)}")
+        raise HTTPException(500, f"Failed to duplicate flow: {str(e)}")

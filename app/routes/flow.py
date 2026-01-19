@@ -20,9 +20,9 @@ import json
 import time
 from datetime import datetime
 
-from node.run import make_dynamic_engine, get_json_blocks, run_schema
+from node.run import make_dynamic_engine, get_json_blocks, run_flow
 from services import list_dir, read_file, normalize_path
-from schema_service import get_schema as get_schema_from_db
+from flow_service import get_flow
 from uuid import UUID
 
 
@@ -102,7 +102,7 @@ class GraphData(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
-class SchemaData(BaseModel):
+class FlowData(BaseModel):
     """图容器模型"""
 
     graph: GraphData
@@ -115,7 +115,7 @@ class ExecuteRequest(BaseModel):
     """执行请求模型"""
 
     scripts: Optional[List[str]] = None
-    graph_schema: Optional[SchemaData] = Field(None, alias="schema")
+    flow: Optional[FlowData] = None
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
@@ -124,16 +124,14 @@ class ExecuteSavedRequest(BaseModel):
     """
     执行已保存的请求
     
-    从存储中加载脚本和 schema 来执行
+    从存储中加载脚本和 flow 来执行
     
     Attributes:
         scripts_path: 脚本路径（如 "/blocks"）
-        schema_id: Schema ID
+        flow_id: Flow ID
     """
     scripts_path: str = "/"  # 默认从根目录加载脚本
-    schema_id: str  # Schema ID
-
-
+    flow_id: str  # Flow ID
 # ==================== 响应模型 ====================
 
 
@@ -266,10 +264,10 @@ async def execute(request: ExecuteRequest):
     """
 
     try:
-        if not request.graph_schema or not request.graph_schema.graph:
-            raise HTTPException(400, "schema.graph is required")
+        if not request.flow or not request.flow.graph:
+            raise HTTPException(400, "flow.graph is required")
 
-        schema = request.graph_schema.graph
+        flow = request.flow.graph
 
         # 1. 加载自定义脚本
         scripts = request.scripts or []
@@ -293,15 +291,15 @@ async def execute(request: ExecuteRequest):
             scripts_hash=scripts_hash,
             status="running",
             start_time=datetime.now(),
-            total_nodes=len(schema.nodes),
+            total_nodes=len(flow.nodes),
         )
 
         # 5. 记录执行开始时间
         start_time = time.time()
 
-        # 6. 执行 schema（传递 execution_id）
+        # 6. 执行 flow（传递 execution_id）
         try:
-            result = await run_schema(scripts, schema.model_dump(by_alias=True), execution_id)
+            result = await run_flow(scripts, flow.model_dump(by_alias=True), execution_id)
 
             # 收集输出文件
             output_files = await output_file_manager.get_execution_files(execution_id)
@@ -326,7 +324,7 @@ async def execute(request: ExecuteRequest):
                     "total_nodes": execution.total_nodes,
                     "executed_nodes": execution.executed_nodes,
                     "failed_nodes": execution.failed_nodes,
-                    "total_connections": len(schema.connections),
+                    "total_connections": len(flow.connections),
                     "execution_time": execution.execution_time,
                 }
             }
@@ -363,7 +361,7 @@ async def execute_saved(request: ExecuteSavedRequest):
     2. Tag 模式：使用 tag 覆盖旧数据（提供 tag）
 
     执行流程：
-    1. 从存储加载 schema
+    1. 从存储加载 graph
     2. 从存储加载脚本
     3. 如果是 tag 模式，清理旧数据
     4. 创建执行记录
@@ -373,19 +371,19 @@ async def execute_saved(request: ExecuteSavedRequest):
     8. 返回结果
     """
     try:
-        logger.info(f"Execute From DB Request - Schema ID: {request.schema_id}, Scripts Path: {request.scripts_path}, Tag: {request.tag}")
+        logger.info(f"Execute From DB Request - Flow ID: {request.flow_id}, Scripts Path: {request.scripts_path}, Tag: {request.tag}")
 
-        # 1. 从数据库加载 schema
-        schema_db = await get_schema_from_db(USER_ID, UUID(request.schema_id))
-        if not schema_db:
-            raise HTTPException(404, f"Schema not found: {request.schema_id}")
+        # 1. 从数据库加载 graph
+        flow_db = await get_flow(USER_ID, UUID(request.flow_id))
+        if not flow_db:
+            raise HTTPException(404, f"Flow not found: {request.flow_id}")
 
-        # 获取 schema 数据
-        schema_data = schema_db.schema_data
-        if not schema_data or "graph" not in schema_data:
-            raise HTTPException(400, "Schema data is invalid or missing graph")
+        # 获取 flow 数据
+        flow_data = flow_db.flow
+        if not flow_data or "graph" not in flow_data:
+            raise HTTPException(400, "Flow data is invalid or missing graph")
 
-        graph = schema_data["graph"]
+        graph = flow_data["graph"]
 
         # 2. 从数据库加载脚本
         scripts = await load_scripts_from_db(request.scripts_path)
@@ -412,7 +410,7 @@ async def execute_saved(request: ExecuteSavedRequest):
             execution_id=execution_id,
             user_id=USER_ID,
             source=source,
-            schema_id=UUID(request.schema_id),
+            flow_id=UUID(request.flow_id),
             tag=request.tag,
             scripts_path=request.scripts_path,
             scripts_hash=scripts_hash,
@@ -424,9 +422,9 @@ async def execute_saved(request: ExecuteSavedRequest):
         # 6. 记录执行开始时间
         start_time = time.time()
 
-        # 7. 执行 schema（传递 execution_id）
+        # 7. 执行 flow（传递 execution_id）
         try:
-            result = await run_schema(scripts, graph, execution_id)
+            result = await run_flow(scripts, graph, execution_id)
 
             # 收集输出文件
             output_files = await output_file_manager.get_execution_files(execution_id)
@@ -645,7 +643,7 @@ async def get_executions(
     status: Optional[str] = None,
     source: Optional[str] = None,
     tag: Optional[str] = None,
-    schema_id: Optional[str] = None,
+    flow_id: Optional[str] = None,
     scripts_hash: Optional[str] = None,
     limit: int = 20,
     offset: int = 0
@@ -657,7 +655,7 @@ async def get_executions(
     - status: 按状态过滤 (running, completed, failed)
     - source: 按来源过滤 (direct, saved, tag)
     - tag: 按 tag 过滤
-    - schema_id: 按 schema ID 过滤
+    - flow_id: 按 flow ID 过滤
     - scripts_hash: 按脚本哈希过滤
     - limit: 返回数量限制
     - offset: 偏移量
@@ -676,8 +674,8 @@ async def get_executions(
         if tag:
             query = query.filter(tag=tag)
 
-        if schema_id:
-            query = query.filter(schema_id=UUID(schema_id))
+        if flow_id:
+            query = query.filter(flow_id=UUID(flow_id))
 
         if scripts_hash:
             query = query.filter(scripts_hash=scripts_hash)
@@ -690,7 +688,7 @@ async def get_executions(
                     "execution_id": e.execution_id,
                     "user_id": e.user_id,
                     "source": e.source,
-                    "schema_id": str(e.schema_id) if e.schema_id else None,
+                    "flow_id": str(e.flow_id) if e.flow_id else None,
                     "tag": e.tag,
                     "scripts_path": e.scripts_path,
                     "scripts_hash": e.scripts_hash,
@@ -735,7 +733,7 @@ async def get_execution(execution_id: str) -> Dict[str, Any]:
             "execution_id": execution.execution_id,
             "user_id": execution.user_id,
             "source": execution.source,
-            "schema_id": str(execution.schema_id) if execution.schema_id else None,
+            "flow_id": str(execution.flow_id) if execution.flow_id else None,
             "tag": execution.tag,
             "scripts_path": execution.scripts_path,
             "scripts_hash": execution.scripts_hash,
@@ -900,7 +898,7 @@ async def get_tag_execution(tag: str) -> Dict[str, Any]:
             "execution_id": execution.execution_id,
             "user_id": execution.user_id,
             "source": execution.source,
-            "schema_id": str(execution.schema_id) if execution.schema_id else None,
+            "flow_id": str(execution.flow_id) if execution.flow_id else None,
             "tag": execution.tag,
             "scripts_path": execution.scripts_path,
             "scripts_hash": execution.scripts_hash,

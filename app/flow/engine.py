@@ -22,7 +22,7 @@ class ComputeEngine:
         return [b.export_config() for b in self.block_templates.values()]
 
 
-    def set_schema(self, schema: Dict[str, Any]):
+    def set_flow(self, flow: Dict[str, Any]):
         self.log("🛠️  正在修复预编译逻辑以支持多重连接...")
         
         # --- 使用 MultiDiGraph 而不是 DiGraph ---
@@ -31,7 +31,7 @@ class ComputeEngine:
         port_to_node = {} 
 
         # 1. 节点实例化
-        for node_data in schema["nodes"]:
+        for node_data in flow["nodes"]:
             t_name = node_data["type"]
             n_id = node_data["id"]
             template = self.block_templates.get(t_name)
@@ -55,7 +55,7 @@ class ComputeEngine:
                 port_to_node[info["id"]] = (n_id, key)
 
         # 2. 建立逻辑连接
-        for conn in schema["connections"]:
+        for conn in flow["connections"]:
             src = port_to_node.get(conn["from"])
             dst = port_to_node.get(conn["to"])
             if src and dst:
