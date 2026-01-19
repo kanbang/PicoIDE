@@ -14,6 +14,7 @@ import inspect
 import numpy as np
 from node.output_manager import output_file_manager
 from node.file_collector import file_collector
+from node.settings import settings
 from db import Output
 
 def _build_blocks(scripts: List[str] = None) -> List[Block]:
@@ -117,8 +118,8 @@ async def _batch_save_outputs(execution_id: str):
     if not files:
         return
 
-    # 批量插入数据库（使用切片方式，每次插入100条）
-    batch_size = 100
+    # 批量插入数据库（使用切片方式，每次插入配置的批次大小）
+    batch_size = settings.BATCH_SIZE
     for i in range(0, len(files), batch_size):
         batch = files[i:i + batch_size]
 

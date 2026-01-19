@@ -23,17 +23,13 @@ from node.run import make_dynamic_engine, get_json_blocks, run_flow
 from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
 from uuid import UUID
+from node.output_manager import output_file_manager
 
 
 logger = logging.getLogger(__name__)
 
 USER_ID = "default"
 
-# 导入输出文件管理器配置
-from node.output_manager import OutputConfig, output_file_manager
-
-# 使用统一的输出目录配置
-OUTPUT_DIR = OutputConfig.OUTPUT_DIR
 
 router = APIRouter(prefix="/api/engine", tags=["engine"])
 

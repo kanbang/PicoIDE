@@ -31,7 +31,9 @@ import scipy.signal as signal
 from scipy.interpolate import interp1d
 
 from flow.block import Block
-from node.output_manager import output_file_manager, OutputConfig
+
+# 导入统一配置
+from node.settings import settings
 
 
 # ==================== 配置和日志系统 ====================
@@ -723,62 +725,62 @@ class BaseBlock(Block):
             filename: str,
             description: Optional[str] = None,
             metadata: Optional[Dict[str, Any]] = None,
-            enable_db: bool = True
+            enable_db: Optional[bool] = None
         ) -> str:
-        """
-        注册输出文件到文件管理器
-
-        Args:
-            execution_id: 执行ID
-            filename: 文件名
-            description: 描述
-            metadata: 元数据
-            enable_db: 是否写入数据库（默认True）
-
-        Returns:
-            文件ID
-        """
-        if execution_id is None:
-            self._logger.warning("没有提供执行ID，无法注册文件")
-            return ""
-
-        # 生成文件ID
-        import uuid
-        file_id = f"{execution_id}_{uuid.uuid4().hex[:8]}"
-
-        # 构建完整文件路径
-        full_path = OutputConfig.OUTPUT_DIR / filename
-
-        # 确保目录存在
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # 获取文件类型
-        file_type = OutputConfig.FILE_TYPE_MAP.get(
-            full_path.suffix.lower(), "unknown"
-        )
-
-        # 创建文件信息字典（用于后续批量入库）
-        file_info = {
-            "file_id": file_id,
-            "execution_id": execution_id,
-            "filename": filename,
-            "file_path": str(full_path),
-            "file_type": file_type,
-            "file_size": 0,  # 文件大小在文件写入后更新
-            "block_name": self.name,
-            "block_id": str(id(self)),
-            "description": description,
-            "metadata": metadata or {},
-            "enable_db": enable_db  # 标记是否需要写入数据库
-        }
-
-        # 如果启用数据库，将文件信息添加到收集器
-        if enable_db:
-            from node.file_collector import file_collector
-            file_collector.add_file(execution_id, file_info)
-
-        return file_id
-
+            """
+            注册输出文件到文件管理器
+    
+            Args:
+                execution_id: 执行ID
+                filename: 文件名
+                description: 描述
+                metadata: 元数据
+                enable_db: 是否写入数据库（None表示使用全局配置）
+    
+            Returns:
+                文件ID
+            """
+            if execution_id is None:
+                self._logger.warning("没有提供执行ID，无法注册文件")
+                return ""
+    
+            # 生成文件ID
+            import uuid
+            file_id = f"{execution_id}_{uuid.uuid4().hex[:8]}"
+    
+            # 构建完整文件路径
+            full_path = settings.OUTPUT_DIR / filename
+    
+            # 确保目录存在
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+    
+            # 获取文件类型
+            file_type = settings.FILE_TYPE_MAP.get(  full_path.suffix.lower(), "unknown"   )
+    
+            # 确定是否启用数据库写入
+            if enable_db is None:
+                enable_db = settings.ENABLE_DB_WRITE    
+            # 创建文件信息字典（用于后续批量入库）
+            file_info = {
+                "file_id": file_id,
+                "execution_id": execution_id,
+                "filename": filename,
+                "file_path": str(full_path),
+                "file_type": file_type,
+                "file_size": 0,  # 文件大小在文件写入后更新
+                "block_name": self.name,
+                "block_id": str(id(self)),
+                "description": description,
+                "metadata": metadata or {},
+                "enable_db": enable_db  # 标记是否需要写入数据库
+            }
+    
+            # 如果启用数据库，将文件信息添加到收集器
+            if enable_db:
+                from node.file_collector import file_collector
+                file_collector.add_file(execution_id, file_info)
+    
+            return file_id
     def _write_file(
         self,
         execution_id: str,
@@ -786,7 +788,7 @@ class BaseBlock(Block):
         write_func: callable,
         description: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        enable_db: bool = True
+        enable_db: Optional[bool] = None
     ) -> str:
         """
         通用文件写入方法
@@ -797,20 +799,23 @@ class BaseBlock(Block):
             write_func: 写入函数，接受文件路径作为参数
             description: 描述
             metadata: 元数据
-            enable_db: 是否写入数据库（默认True）
+            enable_db: 是否写入数据库（None表示使用全局配置）
 
         Returns:
             文件ID
         """
         try:
             # 使用统一的输出目录
-            full_path = OutputConfig.OUTPUT_DIR / filename
-
+            full_path = settings.OUTPUT_DIR / filename
             # 确保输出目录存在
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
             # 调用写入函数
             write_func(full_path)
+
+            # 确定是否启用数据库写入
+            if enable_db is None:
+                enable_db = settings.ENABLE_DB_WRITE
 
             # 注册到文件管理器
             file_id = self._register_output_file(

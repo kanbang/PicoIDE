@@ -9,104 +9,20 @@
 - 数据库持久化
 
 Author: PicoIDE Team
-Version: 2.0.0
+Version: 2.1.0
 """
 
 import logging
 import uuid
-import json
 import asyncio
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 from datetime import datetime, timedelta
-from dataclasses import dataclass, field, asdict
 from threading import Lock
 import time
 
 
 logger = logging.getLogger(__name__)
-
-
-# ==================== 配置 ====================
-
-
-class OutputConfig:
-    """输出配置"""
-
-    # 统一的输出目录
-    OUTPUT_DIR = Path("./output")
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    # 临时目录
-    TEMP_DIR = Path("./temp")
-    TEMP_DIR.mkdir(parents=True, exist_ok=True)
-
-    # 文件类型映射
-    FILE_TYPE_MAP = {
-        ".html": "html",
-        ".csv": "csv",
-        ".json": "json",
-        ".txt": "text",
-        ".png": "image",
-        ".jpg": "image",
-        ".jpeg": "image",
-        ".pdf": "pdf",
-        ".xlsx": "excel",
-        ".xls": "excel",
-    }
-
-    # 浏览器可打开的文件类型
-    BROWSER_OPENABLE = {"html", "json", "txt"}
-
-    # 文件保留时间（小时）
-    FILE_RETENTION_HOURS = 24
-
-    # 最大文件数量
-    MAX_FILES_PER_EXECUTION = 100
-
-    # 软删除文件保留时间（天）
-    SOFT_DELETE_RETENTION_DAYS = 7
-
-    # 执行记录保留时间（天）
-    EXECUTION_RETENTION_DAYS = 30
-
-    # 清理任务执行间隔（小时）
-    CLEANUP_INTERVAL_HOURS = 1
-
-
-@dataclass
-class OutputFileInfo:
-    """输出文件信息"""
-
-    file_id: str  # 唯一ID
-    execution_id: str  # 关联的执行ID
-    filename: str  # 文件名
-    file_path: Path  # 完整路径
-    file_type: str  # 文件类型
-    file_size: int  # 文件大小（字节）
-    created_at: str  # 创建时间
-    block_name: str  # 生成此文件的Block名称
-    block_id: str  # Block ID
-    description: Optional[str] = None  # 描述
-    metadata: Dict[str, Any] = field(default_factory=dict)  # 元数据
-
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
-        return {
-            "file_id": self.file_id,
-            "execution_id": self.execution_id,
-            "filename": self.filename,
-            "file_path": str(self.file_path),
-            "file_type": self.file_type,
-            "file_size": self.file_size,
-            "created_at": self.created_at,
-            "block_name": self.block_name,
-            "block_id": self.block_id,
-            "description": self.description,
-            "metadata": self.metadata,
-            "can_open": self.file_type in OutputConfig.BROWSER_OPENABLE,
-            "can_download": True,
-        }
 
 
 # ==================== 输出文件管理器 ====================
@@ -138,9 +54,9 @@ class OutputFileManager:
         """初始化管理器"""
         self._lock = Lock()
 
-        # 确保目录存在
-        OutputConfig.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        OutputConfig.TEMP_DIR.mkdir(parents=True, exist_ok=True)
+        # 导入全局配置
+        from node.settings import settings
+        self.settings = settings
 
         logger.info("输出文件管理器已初始化（数据库版本）")
 
@@ -192,13 +108,13 @@ class OutputFileManager:
         file_id = f"{execution_id}_{uuid.uuid4().hex[:8]}"
 
         # 构建完整文件路径
-        file_path = OutputConfig.OUTPUT_DIR / filename
+        file_path = self.settings.OUTPUT_DIR / filename
 
         # 确保目录存在
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         # 获取文件类型
-        file_type = OutputConfig.FILE_TYPE_MAP.get(
+        file_type = self.settings.FILE_TYPE_MAP.get(
             file_path.suffix.lower(), "unknown"
         )
 
@@ -262,7 +178,7 @@ class OutputFileManager:
                 "block_id": o.block_id,
                 "description": o.description,
                 "metadata": o.metadata,
-                "can_open": o.file_type in OutputConfig.BROWSER_OPENABLE,
+                "can_open": o.file_type in self.settings.BROWSER_OPENABLE,
                 "can_download": True,
             }
             for o in outputs
@@ -314,7 +230,7 @@ class OutputFileManager:
                 "block_id": o.block_id,
                 "description": o.description,
                 "metadata": o.metadata,
-                "can_open": o.file_type in OutputConfig.BROWSER_OPENABLE,
+                "can_open": o.file_type in self.settings.BROWSER_OPENABLE,
                 "can_download": True,
             }
             for o in outputs
@@ -349,7 +265,7 @@ class OutputFileManager:
             "block_id": output.block_id,
             "description": output.description,
             "metadata": output.metadata,
-            "can_open": output.file_type in OutputConfig.BROWSER_OPENABLE,
+            "can_open": output.file_type in self.settings.BROWSER_OPENABLE,
             "can_download": True,
         }
 
@@ -426,7 +342,7 @@ class OutputFileManager:
         from db import Output
 
         if max_age_hours is None:
-            max_age_hours = OutputConfig.FILE_RETENTION_HOURS
+            max_age_hours = self.settings.FILE_RETENTION_HOURS
 
         cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
 
@@ -460,7 +376,7 @@ class OutputFileManager:
         from db import Output
 
         if max_age_days is None:
-            max_age_days = OutputConfig.SOFT_DELETE_RETENTION_DAYS
+            max_age_days = self.settings.SOFT_DELETE_RETENTION_DAYS
 
         cutoff_time = datetime.now() - timedelta(days=max_age_days)
 
@@ -506,7 +422,7 @@ class OutputFileManager:
         from db import Execution
 
         if max_age_days is None:
-            max_age_days = OutputConfig.EXECUTION_RETENTION_DAYS
+            max_age_days = self.settings.EXECUTION_RETENTION_DAYS
 
         cutoff_time = datetime.now() - timedelta(days=max_age_days)
 
@@ -533,7 +449,7 @@ class OutputFileManager:
 
             while True:
                 try:
-                    time.sleep(OutputConfig.CLEANUP_INTERVAL_HOURS * 3600)
+                    time.sleep(self.settings.CLEANUP_INTERVAL_HOURS * 3600)
 
                     # 运行清理任务
                     loop.run_until_complete(self._run_cleanup_tasks())
