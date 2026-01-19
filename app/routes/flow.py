@@ -549,16 +549,19 @@ async def get_output_file(file_id: str):
     获取输出文件内容
     """
     try:
-        # 使用 OutputFileManager 获取文件路径
-        file_path = output_file_manager.get_file_path(file_id)
+        # 使用 OutputFileManager 获取文件信息（一次查询获取所有信息）
+        file_info = await output_file_manager.get_file_info(file_id)
 
-        if file_path is None or not file_path.exists():
+        if not file_info:
             raise HTTPException(404, f"文件不存在: {file_id}")
 
-        # 获取文件信息
-        file_info = output_file_manager.get_file_info(file_id)
-        filename = file_info["filename"] if file_info else file_id
-        file_type = file_info["file_type"] if file_info else "unknown"
+        file_path = Path(file_info["file_path"])
+
+        if not file_path.exists():
+            raise HTTPException(404, f"文件不存在: {file_id}")
+
+        filename = file_info["filename"]
+        file_type = file_info["file_type"]
 
         # 根据文件类型设置正确的 MIME 类型
         mime_type_map = {

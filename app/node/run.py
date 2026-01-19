@@ -75,7 +75,7 @@ engine_manager.register_business("daq", daq_blocks)
 async def run_schema(scripts: List[Any], schema: dict, execution_id: str = None):
     """
     执行 schema
-    
+
     Args:
         scripts: 脚本列表
         schema: schema 配置
@@ -83,19 +83,66 @@ async def run_schema(scripts: List[Any], schema: dict, execution_id: str = None)
     """
     # 导入 output_file_manager
     from node.output_manager import output_file_manager
-    
+    from node.file_collector import file_collector
+
     # 创建执行ID（如果未提供）
     if execution_id is None:
         execution_id = output_file_manager.create_execution_id()
-    
-    # 执行流程，传递 execution_id
+
+    # 执行流程，传递 execution_id（使用异步执行）
     async with await engine_manager.acquire("daq", schema) as engine:
         await engine.async_run(execution_id)
 
-    with engine_manager.acquire_sync("daq", schema) as engine:
-        engine.run(execution_id)
-    
+    # 执行完成后，批量将文件信息写入数据库
+    await _batch_save_outputs(execution_id)
+
     return execution_id
+
+
+async def _batch_save_outputs(execution_id: str):
+    """
+    批量保存输出文件到数据库
+
+    Args:
+        execution_id: 执行ID
+    """
+    from node.file_collector import file_collector
+    from db import Output
+
+    # 获取该执行的所有文件信息
+    files = file_collector.get_files(execution_id)
+
+    if not files:
+        return
+
+    # 批量插入数据库（使用切片方式，每次插入100条）
+    batch_size = 100
+    for i in range(0, len(files), batch_size):
+        batch = files[i:i + batch_size]
+
+        # 创建 Output 对象
+        output_objects = [
+            Output(
+                file_id=f["file_id"],
+                execution_id=f["execution_id"],
+                filename=f["filename"],
+                file_path=f["file_path"],
+                file_type=f["file_type"],
+                file_size=f["file_size"],
+                block_name=f["block_name"],
+                block_id=f["block_id"],
+                description=f.get("description"),
+                metadata=f.get("metadata"),
+                is_deleted=False,
+            )
+            for f in batch
+        ]
+
+        # 批量插入
+        await Output.bulk_create(output_objects)
+
+    # 清除收集器中的数据
+    file_collector.clear_execution(execution_id)
     # engine = ComputeEngine()
     # engine.register_blocks(base_blocks)
     # engine.set_schema(schema)

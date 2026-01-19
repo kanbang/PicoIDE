@@ -152,6 +152,7 @@ class Block:
         pass
 
     async def async_on_compute(self, execution_id: str = None):
+        """异步执行接口：在线程池中执行同步的 on_compute"""
         await asyncio.to_thread(self.on_compute, execution_id)
 
     def export_config(self):

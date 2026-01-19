@@ -718,36 +718,66 @@ class BaseBlock(Block):
             return False
 
     def _register_output_file(
-        self,
-        execution_id: str,
-        filename: str,
-        description: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
+            self,
+            execution_id: str,
+            filename: str,
+            description: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None,
+            enable_db: bool = True
+        ) -> str:
         """
         注册输出文件到文件管理器
-        
+
         Args:
             execution_id: 执行ID
             filename: 文件名
             description: 描述
             metadata: 元数据
-            
+            enable_db: 是否写入数据库（默认True）
+
         Returns:
             文件ID
         """
         if execution_id is None:
             self._logger.warning("没有提供执行ID，无法注册文件")
             return ""
-        
-        return output_file_manager.register_file(
-            execution_id=execution_id,
-            filename=filename,
-            block_name=self.name,
-            block_id=str(id(self)),
-            description=description,
-            metadata=metadata
+
+        # 生成文件ID
+        import uuid
+        file_id = f"{execution_id}_{uuid.uuid4().hex[:8]}"
+
+        # 构建完整文件路径
+        full_path = OutputConfig.OUTPUT_DIR / filename
+
+        # 确保目录存在
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 获取文件类型
+        file_type = OutputConfig.FILE_TYPE_MAP.get(
+            full_path.suffix.lower(), "unknown"
         )
+
+        # 创建文件信息字典（用于后续批量入库）
+        file_info = {
+            "file_id": file_id,
+            "execution_id": execution_id,
+            "filename": filename,
+            "file_path": str(full_path),
+            "file_type": file_type,
+            "file_size": 0,  # 文件大小在文件写入后更新
+            "block_name": self.name,
+            "block_id": str(id(self)),
+            "description": description,
+            "metadata": metadata or {},
+            "enable_db": enable_db  # 标记是否需要写入数据库
+        }
+
+        # 如果启用数据库，将文件信息添加到收集器
+        if enable_db:
+            from node.file_collector import file_collector
+            file_collector.add_file(execution_id, file_info)
+
+        return file_id
 
     def _write_file(
         self,
@@ -755,43 +785,54 @@ class BaseBlock(Block):
         filename: str,
         write_func: callable,
         description: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        enable_db: bool = True
     ) -> str:
         """
         通用文件写入方法
-        
+
         Args:
             execution_id: 执行ID
             filename: 文件名
             write_func: 写入函数，接受文件路径作为参数
             description: 描述
             metadata: 元数据
-            
+            enable_db: 是否写入数据库（默认True）
+
         Returns:
             文件ID
         """
         try:
             # 使用统一的输出目录
             full_path = OutputConfig.OUTPUT_DIR / filename
-            
+
             # 确保输出目录存在
             full_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # 调用写入函数
             write_func(full_path)
-            
+
             # 注册到文件管理器
             file_id = self._register_output_file(
                 execution_id=execution_id,
                 filename=filename,
                 description=description,
-                metadata=metadata
+                metadata=metadata,
+                enable_db=enable_db
             )
-            
+
             # 更新文件大小
             if file_id and full_path.exists():
-                output_file_manager.update_file_size(file_id, full_path.stat().st_size)
-            
+                file_size = full_path.stat().st_size
+                # 如果启用数据库，更新文件大小到收集器中的文件信息
+                if enable_db:
+                    from node.file_collector import file_collector
+                    files = file_collector.get_files(execution_id)
+                    for f in files:
+                        if f["file_id"] == file_id:
+                            f["file_size"] = file_size
+                            break
+
             return file_id
         except Exception as e:
             self._log_error(e, "文件写入")
