@@ -30,8 +30,8 @@
 export { api } from './request';
 
 // 导出 blocks 相关 API
-export { getBlocks, executeBlocks } from './run';
-export type { ExecuteRequest, ExecuteResponse } from './run';
+export { getBlocks, executeBlocks } from './execute';
+export type { ExecuteRequest, ExecuteResponse } from './execute';
 
 // 导出 schemas 相关 API
 export { getFlows, createFlow, updateFlow, deleteFlow, duplicateFlow } from './flows';

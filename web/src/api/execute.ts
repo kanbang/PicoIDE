@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-12 20:11:28
  * @LastEditors: zhai
- * @LastEditTime: 2026-01-19 19:24:45
+ * @LastEditTime: 2026-01-19 20:32:09
  */
 /**
  * Blocks 相关 API
@@ -43,7 +43,7 @@ export interface OutputFile {
  * 获取所有可用的 blocks
  */
 export async function getBlocks(): Promise<any[]> {
-  const data: BlocksResponse = await api.get('/flow/blocks');
+  const data: BlocksResponse = await api.get('/engine/blocks');
   return data.blocks || [];
 }
 
@@ -51,21 +51,21 @@ export async function getBlocks(): Promise<any[]> {
  * 执行 block 计算
  */
 export async function executeBlocks(request: ExecuteRequest): Promise<ExecuteResponse> {
-  return await api.post('/flow/execute', request);
+  return await api.post('/engine/execute', request);
 }
 
 /**
  * 获取所有输出文件
  */
 export async function getOutputFiles(): Promise<OutputFile[]> {
-  return await api.get('/flow/output-files');
+  return await api.get('/engine/output-files');
 }
 
 /**
  * 获取输出文件内容
  */
 export async function getOutputFile(fileId: string): Promise<Blob> {
-  const url = `/flow/output-files/${fileId}`;
+  const url = `/engine/output-files/${fileId}`;
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`获取文件失败: ${response.status}`);
@@ -77,12 +77,12 @@ export async function getOutputFile(fileId: string): Promise<Blob> {
  * 删除输出文件
  */
 export async function deleteOutputFile(fileId: string): Promise<any> {
-  return await api.delete(`/flow/output-files/${fileId}`);
+  return await api.delete(`/engine/output-files/${fileId}`);
 }
 
 /**
  * 清理旧输出文件
  */
 export async function cleanupOutputFiles(maxAgeHours: number = 24): Promise<any> {
-  return await api.delete(`/flow/output-files/cleanup?max_age_hours=${maxAgeHours}`);
+  return await api.delete(`/engine/output-files/cleanup?max_age_hours=${maxAgeHours}`);
 }

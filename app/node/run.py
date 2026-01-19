@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-12 18:26:54
 LastEditors: zhai
-LastEditTime: 2026-01-19 19:14:03
+LastEditTime: 2026-01-19 20:50:13
 '''
 from flow.engine import Block, ComputeEngine
 from flow.manager import EngineManager
@@ -12,6 +12,9 @@ from node.daq import daq_blocks
 from typing import Any, List
 import inspect
 import numpy as np
+from node.output_manager import output_file_manager
+from node.file_collector import file_collector
+from db import Output
 
 def _build_blocks(scripts: List[str] = None) -> List[Block]:
     blocks = []
@@ -81,17 +84,18 @@ async def run_flow(scripts: List[Any], flow: dict, execution_id: str = None):
         flow: flow 配置
         execution_id: 执行ID（用于文件追踪）
     """
-    # 导入 output_file_manager
-    from node.output_manager import output_file_manager
-    from node.file_collector import file_collector
 
     # 创建执行ID（如果未提供）
     if execution_id is None:
         execution_id = output_file_manager.create_execution_id()
 
     # 执行流程，传递 execution_id（使用异步执行）
-    async with await engine_manager.acquire("daq", flow) as engine:
-        await engine.async_run(execution_id)
+    # async with await engine_manager.acquire("daq", flow) as engine:
+    #     await engine.async_run(execution_id)
+
+    # 使用同步执行版本
+    with engine_manager.acquire_sync("daq", flow) as engine:
+        engine.run(execution_id)
 
     # 执行完成后，批量将文件信息写入数据库
     await _batch_save_outputs(execution_id)
@@ -106,8 +110,6 @@ async def _batch_save_outputs(execution_id: str):
     Args:
         execution_id: 执行ID
     """
-    from node.file_collector import file_collector
-    from db import Output
 
     # 获取该执行的所有文件信息
     files = file_collector.get_files(execution_id)
@@ -143,8 +145,4 @@ async def _batch_save_outputs(execution_id: str):
 
     # 清除收集器中的数据
     file_collector.clear_execution(execution_id)
-    # engine = ComputeEngine()
-    # engine.register_blocks(base_blocks)
-    # engine.set_flow(flow)
-    # engine.run()
-    # await engine.async_run()
+   

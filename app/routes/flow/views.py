@@ -1,49 +1,39 @@
 """
-Schemas 路由
+Descripttion:
+version: 0.x
+Author: zhai
+Date: 2026-01-19 20:25:18
+LastEditors: zhai
+LastEditTime: 2026-01-19 20:25:35
 """
+
+from routes.flow.service import (
+    create_flow,
+    delete_flow,
+    duplicate_flow,
+    get_flow,
+    get_flows,
+    update_flow,
+)
+from db import Flow
+from routes.flow.schema import (
+    CreateFlowRequest,
+    DuplicateFlowRequest,
+    FlowItem,
+    UpdateFlowRequest,
+)
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from uuid import UUID
 
-from db import Flow
-from flow_service import (
-    get_flows,
-    get_flow,
-    create_flow,
-    update_flow,
-    delete_flow,
-    duplicate_flow,
-)
 
 USER_ID = "default"
 
 router = APIRouter(prefix="/api/flows", tags=["flows"])
 
 
-# Flow 数据模型
-class FlowItem(BaseModel):
-    id: str
-    name: str
-    flow: Optional[dict] = None
-    hasUnsavedChanges: bool = False
-
-
-class CreateFlowRequest(BaseModel):
-    name: str
-    flow: Optional[dict] = None
-
-
-class UpdateFlowRequest(BaseModel):
-    name: Optional[str] = None
-    flow: Optional[dict] = None
-
-
-class DuplicateFlowRequest(BaseModel):
-    name: str
-
-
-def to_flow_item(db_flow:Flow) -> FlowItem:
+def to_flow_item(db_flow: Flow) -> FlowItem:
     """将数据库模型转换为 FlowItem"""
     return FlowItem(
         id=str(db_flow.id),
@@ -92,6 +82,7 @@ async def get_flow_by_id(flow_id: UUID):
     except Exception as e:
         raise HTTPException(500, f"Failed to get flow: {str(e)}")
 
+
 @router.put("/{flow_id}", response_model=FlowItem)
 async def update_flow_by_id(flow_id: UUID, request: UpdateFlowRequest):
     """
@@ -108,10 +99,11 @@ async def update_flow_by_id(flow_id: UUID, request: UpdateFlowRequest):
     except Exception as e:
         raise HTTPException(500, f"Failed to update flow: {str(e)}")
 
+
 @router.delete("/{flow_id}")
 async def delete_flow_by_id(flow_id: UUID):
     """
-    删除 flow   
+    删除 flow
     """
     try:
         success = await delete_flow(USER_ID, flow_id)

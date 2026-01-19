@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-07 14:28:11
 LastEditors: zhai
-LastEditTime: 2026-01-13 12:35:01
+LastEditTime: 2026-01-19 20:32:53
 '''
 '''
 Descripttion: 
@@ -23,9 +23,9 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from db import init_db, close_db, ensure_root_directory
-from routes.vfs import router as vfs_router
-from routes.flow import router as blocks_router
-from routes.schemas import router as schemas_router
+from routes.vfs.views import router as vfs_router
+from routes.engine.views import router as engine_router
+from routes.flow.views import router as flow_router
 
 DB_PATH = "vfs.db"
 USER_ID = "default"
@@ -45,8 +45,8 @@ app = FastAPI(lifespan=lifespan)
 
 # 注册路由
 app.include_router(vfs_router)
-app.include_router(blocks_router)
-app.include_router(schemas_router)
+app.include_router(engine_router)
+app.include_router(flow_router)
 
 
 app.mount("/", StaticFiles(directory="../web-code", html=True), name="web")
