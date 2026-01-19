@@ -118,7 +118,6 @@ interface OutputFile {
   file_size: number;
   created_at: string;
   block_name?: string;
-  output_port?: string;
   can_open: boolean;
   can_download: boolean;
 }

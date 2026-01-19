@@ -745,7 +745,6 @@ class BaseBlock(Block):
             filename=filename,
             block_name=self.name,
             block_id=str(id(self)),
-            output_port="unknown",
             description=description,
             metadata=metadata
         )

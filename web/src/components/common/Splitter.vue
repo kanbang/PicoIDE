@@ -91,7 +91,7 @@ function resetSize() {
   currentSize.value = getInitialPixelSize();
 }
 
-defineExpose({ togglePane, resetSize });
+defineExpose({ togglePane, resetSize, isSidebarVisible });
 
 // --- 样式计算 ---
 const pane1Style = computed(() => {

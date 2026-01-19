@@ -76,7 +76,6 @@ class OutputFileInfo:
     created_at: str  # 创建时间
     block_name: str  # 生成此文件的Block名称
     block_id: str  # Block ID
-    output_port: str  # 输出端口名称
     description: Optional[str] = None  # 描述
     metadata: Dict[str, Any] = field(default_factory=dict)  # 元数据
     
@@ -92,7 +91,6 @@ class OutputFileInfo:
             "created_at": self.created_at,
             "block_name": self.block_name,
             "block_id": self.block_id,
-            "output_port": self.output_port,
             "description": self.description,
             "metadata": self.metadata,
             "can_open": self.file_type in OutputConfig.BROWSER_OPENABLE,
@@ -186,7 +184,6 @@ class OutputFileManager:
         filename: str,
         block_name: str,
         block_id: str,
-        output_port: str,
         description: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> str:
@@ -198,7 +195,6 @@ class OutputFileManager:
             filename: 文件名
             block_name: Block名称
             block_id: Block ID
-            output_port: 输出端口
             description: 描述
             metadata: 元数据
             
@@ -230,7 +226,6 @@ class OutputFileManager:
             created_at=datetime.now().isoformat(),
             block_name=block_name,
             block_id=block_id,
-            output_port=output_port,
             description=description,
             metadata=metadata or {}
         )

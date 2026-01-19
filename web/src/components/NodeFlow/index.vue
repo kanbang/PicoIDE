@@ -1,6 +1,7 @@
 <template>
   <div class="nodeflow-container">
-    <SplitPane ref="splitPaneRef" direction="horizontal" :min="250" :max="800" :initial-size="350" button-side="right" :visible="false">
+    <SplitPane ref="splitPaneRef" direction="horizontal" :min="250" :max="800" :initial-size="350" button-side="right"
+      :visible="false">
       <template #1>
         <div class="editor-wrapper">
           <BaklavaEditor :view-model="baklava" :blocks="blocks" />
@@ -9,8 +10,7 @@
 
       <template #2>
         <div class="output-panel-wrapper">
-          <OutputPanel ref="outputPanelRef" @file-opened="handleFileOpened"
-            @file-downloaded="handleFileDownloaded" />
+          <OutputPanel ref="outputPanelRef" @file-opened="handleFileOpened" @file-downloaded="handleFileDownloaded" />
         </div>
       </template>
     </SplitPane>
@@ -326,7 +326,6 @@ defineExpose({
   hasUnsavedChanges,
   currentSchema,
   outputPanelRef,
-  // 保持兼容性，虽然现在主要由 SplitPane 控制，但外部仍可能调用这些方法
   toggleOutputPanel,
   showOutputPanel,
   hideOutputPanel,
