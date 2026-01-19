@@ -12,7 +12,7 @@ Blocks 路由
 """
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 import logging
@@ -37,10 +37,126 @@ OUTPUT_DIR = OutputConfig.OUTPUT_DIR
 router = APIRouter(prefix="/api/flow", tags=["blocks"])
 
 
-class ExecuteRequest(BaseModel):
-    scripts: Optional[List[str]] = None
-    data: Optional[Dict[str, Any]] = None
 
+
+
+# ==================== 执行请求数据模型 ====================
+
+class NodePort(BaseModel):
+    """节点端口定义"""
+    id: str
+    value: Any = ""
+    
+    model_config = ConfigDict(extra="ignore")
+
+
+class NodePosition(BaseModel):
+    """节点位置信息"""
+    x: float
+    y: float
+    
+    model_config = ConfigDict(extra="ignore")
+
+
+class NodeData(BaseModel):
+    """节点数据定义"""
+    type: str  # 节点类型名称
+    id: str  # 节点唯一ID
+    title: str  # 节点显示标题
+    inputs: Dict[str, NodePort]  # 输入端口配置
+    outputs: Dict[str, NodePort]  # 输出端口
+    position: NodePosition  # 画布位置
+    width: int = 200  # 节点宽度
+    twoColumn: bool = False  # 是否双列显示
+    
+    model_config = ConfigDict(extra="ignore")
+
+
+class Connection(BaseModel):
+    """节点连接定义"""
+    id: str  # 连接唯一ID
+    from_port: str = Field(..., alias="from")  # 源端口ID
+    to: str  # 目标端口ID
+    
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+
+class GraphData(BaseModel):
+    """图数据定义"""
+    id: str  # 图唯一ID
+    nodes: List[NodeData]  # 节点列表
+    connections: List[Connection]  # 连接列表
+    inputs: List[Any] = []  # 图输入（预留）
+    outputs: List[Any] = []  # 图输出（预留）
+    panning: Optional[Dict[str, float]] = None  # 注意：你的JSON中是平级字段，不是嵌套对象
+    scaling: Optional[float] = None  # 缩放比例
+    
+    model_config = ConfigDict(extra="ignore")
+
+
+class SchemaData(BaseModel):
+    """图容器模型"""
+    graph: GraphData
+    graphTemplates: Optional[List[Dict[str, Any]]] = None
+    
+    model_config = ConfigDict(extra="ignore")
+
+
+class ExecuteRequest(BaseModel):
+    """执行请求模型"""
+    scripts: Optional[List[str]] = None
+    graph_schema: Optional[SchemaData] = Field(None, alias="schema")
+    
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+
+# ==================== 响应模型 ====================
+
+class OutputFileInfo(BaseModel):
+    """输出文件信息"""
+    file_id: str
+    filename: str
+    file_type: str
+    block_name: Optional[str] = None
+    block_id: Optional[str] = None
+    output_port: Optional[str] = None
+    description: Optional[str] = None
+    created_at: str
+    size: Optional[int] = None
+    download_url: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+    
+    model_config = ConfigDict(extra="ignore")
+
+
+class ExecutionStats(BaseModel):
+    """执行统计信息"""
+    total_nodes: int
+    executed_nodes: int
+    failed_nodes: int = 0
+    skipped_nodes: int = 0
+    total_connections: int
+    execution_time: float
+    peak_memory_mb: Optional[float] = None
+    cache_hits: int = 0
+    cache_misses: int = 0
+    
+    model_config = ConfigDict(extra="ignore")
+
+
+class ExecuteResponse(BaseModel):
+    """执行响应模型"""
+    ok: bool
+    result: str
+    output_files: List[OutputFileInfo] = []
+    execution_id: str
+    execution_time: float
+    timestamp: str
+    stats: Optional[ExecutionStats] = None
+    warnings: List[str] = []
+    errors: List[str] = []
+    
+    model_config = ConfigDict(extra="ignore")
 
 async def load_scripts_from_db(directory: str = "/blocks") -> List[str]:
     """从数据库指定目录递归加载所有 .py 文件内容"""
@@ -103,29 +219,30 @@ async def get_blocks():
         raise HTTPException(500, f"Failed to get blocks: {str(e)}")
 
 
-@router.post("/execute")
+@router.post("/execute", response_model=ExecuteResponse)
 async def execute(request: ExecuteRequest):
-    """
-    执行 block 计算
-    """
-    print("Execute Request Received:", request)
+    
     try:
+   
+        # 2. 加载自定义脚本
         scripts = request.scripts or []
-
-        # 从数据库加载自定义 blocks
+        schema = request.graph_schema or {}
         scripts_db = await load_scripts_from_db("/")
         scripts.extend(scripts_db)
-
-        # 创建执行ID
+        
+        # 3. 创建执行ID
         execution_id = output_file_manager.create_execution_id()
         
-        # 记录执行开始时间
+        # 4. 记录执行开始时间
         start_time = time.time()
         
-        # 执行 schema（传递 execution_id）
-        result = await run_schema(scripts, request.data["graph"] or {}, execution_id)
+      
         
-        # 收集输出文件（使用 execution_id）
+        # 6. 执行 schema（传递 execution_id）
+        result = await run_schema(scripts, schema, execution_id)
+        
+       
+                # 收集输出文件（使用 execution_id）
         output_files = collect_output_files(execution_id)
         
         # 构建响应
@@ -137,14 +254,62 @@ async def execute(request: ExecuteRequest):
             "execution_time": time.time() - start_time,
             "timestamp": datetime.now().isoformat()
         }
-
         logger.info(f"执行完成，耗时: {response['execution_time']:.3f}s，输出文件: {len(output_files)}")
         
+
         return response
+        
+    except ValueError as e:
+        logger.error(f"参数验证失败: {str(e)}")
+        raise HTTPException(400, detail=f"参数错误: {str(e)}")
     except Exception as e:
         logger.error(f"执行失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Execution failed: {str(e)}")
+        
 
+
+
+# @router.post("/execute", response_model=ExecuteResponse)
+# async def execute(request: Request):
+#     """
+#     执行 block 计算
+#     """
+#     try:
+#         # 首先获取原始请求体
+#         raw_body = await request.body()
+#         logger.info(f"Raw request body: {raw_body.decode('utf-8')}")
+        
+#         # 尝试解析为字典
+#         request_dict = await request.json()
+#         logger.info(f"Parsed request dict: {json.dumps(request_dict, ensure_ascii=False)[:500]}")
+        
+#         # 手动验证数据
+#         if "schema" not in request_dict:
+#             raise ValueError("请求数据中缺少 schema 字段")
+        
+#         # 尝试使用 Pydantic 模型解析
+#         try:
+#             execute_request = ExecuteRequest(**request_dict)
+#         except Exception as e:
+#             logger.error(f"Pydantic 解析失败: {str(e)}")
+#             # 尝试手动构建模型
+#             schema_dict = request_dict.get("schema", {})
+#             if schema_dict:
+#                 # 尝试直接构建 SchemaData
+#                 schema_data = SchemaData(**schema_dict)
+#                 execute_request = ExecuteRequest(
+#                     scripts=request_dict.get("scripts", []),
+#                     graph_schema=schema_data
+#                 )
+#             else:
+#                 raise
+        
+#         # 继续执行...
+#         # ... 其余代码保持不变 ...
+        
+#     except Exception as e:
+#         logger.error(f"执行失败: {str(e)}", exc_info=True)
+#         raise HTTPException(500, detail=f"执行失败: {str(e)}")
 
 @router.get("/output-files")
 async def get_output_files() -> List[Dict[str, Any]]:

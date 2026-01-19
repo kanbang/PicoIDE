@@ -111,7 +111,7 @@ async function handleDuplicate(originalId: string, newSchema: SchemaItem) {
 }
 
 // --- 核心执行逻辑 (重构重点) ---
-async function handleRun(id: string, data: any) {
+async function handleRun(id: string, schema: any) {
   // 1. 获取 NodeFlow 实例引用
   const nodeFlowInstance = schemaManagerRef.value?.nodeFlowRef;
   if (!nodeFlowInstance) return;
@@ -128,7 +128,7 @@ async function handleRun(id: string, data: any) {
     outputPanel?.setExecutionStatus('running');
 
     // 4. 调用 API
-    const result = await executeBlocks({ scripts: [], data });
+    const result = await executeBlocks({ scripts: [], schema });
 
     // 5. 更新输出面板结果
     if (outputPanel) {

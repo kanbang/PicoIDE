@@ -52,7 +52,7 @@ function handleUnsavedChanges(changes: boolean): void {
 }
 
 // 处理运行逻辑
-async function handleRun(data: any) {
+async function handleRun(schema: any) {
   if (!nodeFlowRef.value) return;
 
   // 1. 自动展开输出面板 (利用 NodeFlow 暴露的 API)
@@ -61,7 +61,7 @@ async function handleRun(data: any) {
   const outputPanel = nodeFlowRef.value.outputPanelRef;
 
   try {
-    console.log('开始执行流程...', data);
+    console.log('开始执行流程...', schema);
     
     // 2. 更新 UI 状态为运行中
     if (outputPanel) {
@@ -69,7 +69,7 @@ async function handleRun(data: any) {
     }
     
     // 3. 调用后端执行 API
-    const result = await executeBlocks({ scripts: [], data });
+    const result = await executeBlocks({ scripts: [], schema });
     
     // 4. 处理执行结果
     if (outputPanel) {
