@@ -22,6 +22,8 @@ from datetime import datetime
 
 from node.run import make_dynamic_engine, get_json_blocks, run_schema
 from services import list_dir, read_file, normalize_path
+from schema_service import get_schema as get_schema_from_db
+from uuid import UUID
 
 
 logger = logging.getLogger(__name__)
@@ -116,6 +118,20 @@ class ExecuteRequest(BaseModel):
     graph_schema: Optional[SchemaData] = Field(None, alias="schema")
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+
+class ExecuteSavedRequest(BaseModel):
+    """
+    执行已保存的请求
+    
+    从存储中加载脚本和 schema 来执行
+    
+    Attributes:
+        scripts_path: 脚本路径（如 "/blocks"）
+        schema_id: Schema ID
+    """
+    scripts_path: str = "/"  # 默认从根目录加载脚本
+    schema_id: str  # Schema ID
 
 
 # ==================== 响应模型 ====================
@@ -238,6 +254,20 @@ async def get_blocks():
 
 @router.post("/execute", response_model=ExecuteResponse)
 async def execute(request: ExecuteRequest):
+    """
+    执行图计算（直接执行）
+    
+    接收前端发送的图数据和脚本，直接执行
+    
+    执行流程：
+    1. 验证请求参数
+    2. 加载自定义脚本
+    3. 解析图结构
+    4. 创建执行上下文
+    5. 执行计算
+    6. 收集输出文件
+    7. 返回结果
+    """
 
     try:
         if not request.graph_schema or not request.graph_schema.graph:
@@ -284,6 +314,75 @@ async def execute(request: ExecuteRequest):
     except Exception as e:
         logger.error(f"执行失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Execution failed: {str(e)}")
+
+
+@router.post("/execute-saved", response_model=ExecuteResponse)
+async def execute_saved(request: ExecuteSavedRequest):
+    """
+    执行已保存的图
+    
+    从存储中加载脚本和 schema 来执行
+    
+    执行流程：
+    1. 从存储加载 schema
+    2. 从存储加载脚本
+    3. 创建执行上下文
+    4. 执行计算
+    5. 收集输出文件
+    6. 返回结果
+    """
+    try:
+        logger.info(f"Execute From DB Request - Schema ID: {request.schema_id}, Scripts Path: {request.scripts_path}")
+        
+        # 1. 从数据库加载 schema
+        schema_db = await get_schema_from_db(USER_ID, UUID(request.schema_id))
+        if not schema_db:
+            raise HTTPException(404, f"Schema not found: {request.schema_id}")
+        
+        # 获取 schema 数据
+        schema_data = schema_db.schema_data
+        if not schema_data or "graph" not in schema_data:
+            raise HTTPException(400, "Schema data is invalid or missing graph")
+        
+        graph = schema_data["graph"]
+        
+        # 2. 从数据库加载脚本
+        scripts = await load_scripts_from_db(request.scripts_path)
+        logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
+        
+        # 3. 创建执行ID
+        execution_id = output_file_manager.create_execution_id()
+        
+        # 4. 记录执行开始时间
+        start_time = time.time()
+        
+        # 5. 执行 schema（传递 execution_id）
+        result = await run_schema(scripts, graph, execution_id)
+        
+        # 6. 收集输出文件（使用 execution_id）
+        output_files = collect_output_files(execution_id)
+        
+        # 7. 构建响应
+        response = {
+            "ok": True,
+            "result": result,
+            "output_files": output_files,
+            "execution_id": execution_id,
+            "execution_time": time.time() - start_time,
+            "timestamp": datetime.now().isoformat(),
+        }
+        logger.info(
+            f"从数据库执行完成，耗时: {response['execution_time']:.3f}s，输出文件: {len(output_files)}"
+        )
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"从数据库执行失败: {str(e)}", exc_info=True)
+        raise HTTPException(500, f"Execution from DB failed: {str(e)}")
+
 
 @router.get("/output-files")
 async def get_output_files() -> List[Dict[str, Any]]:
