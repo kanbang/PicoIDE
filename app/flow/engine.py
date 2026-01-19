@@ -131,7 +131,11 @@ class ComputeEngine:
             # 我们通过 transfers 列表直接获取依赖的源 Block
             if transfers:
                 # 提取所有源 Block 的 instance_id
-                dependency_ids = [src_b.instance_id for src_b, _, _ in transfers]
+                # dependency_ids = [src_b.instance_id for src_b, _, _ in transfers]
+
+                # 去重
+                dependency_ids = list({src_b.instance_id for src_b, _, _ in transfers})
+
                 # 并行等待这些 ID 对应的 Event
                 await asyncio.gather(*(done_events[dep_id].wait() for dep_id in dependency_ids))
 
@@ -163,3 +167,14 @@ class ComputeEngine:
             self.log("✨ 异步流程全部执行完毕")
         except Exception as e:
             self.log(f"🛑 异步运行中断: {e}")
+
+
+# TODO
+# 多条线 → 同一个 input
+
+# 👉 建议明确三种输入策略（至少设计层面）：
+
+# 策略	行为
+# single	后写覆盖前写
+# list	append
+# dict	按 src_id 存

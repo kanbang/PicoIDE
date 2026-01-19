@@ -108,6 +108,7 @@ async def execute(request: ExecuteRequest):
     """
     执行 block 计算
     """
+    print("Execute Request Received:", request)
     try:
         scripts = request.scripts or []
 
