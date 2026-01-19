@@ -1,5 +1,5 @@
 '''
-Descripttion: 
+Descripttion:
 version: 0.x
 Author: zhai
 Date: 2026-01-08 09:32:18
@@ -40,6 +40,85 @@ class Schema(Model):
 
     class Meta:
         table = "schemas"
+
+
+class Execution(Model):
+    """执行记录模型"""
+    id = fields.UUIDField(pk=True, default=uuid.uuid4)
+    execution_id = fields.CharField(max_length=64, unique=True, index=True)
+    user_id = fields.CharField(max_length=255, index=True)
+
+    # 执行来源
+    source = fields.CharField(max_length=20)  # 'direct', 'saved', 'tag'
+    schema_id = fields.UUIDField(null=True)
+    tag = fields.CharField(max_length=128, null=True, index=True)
+
+    # 脚本信息
+    scripts_path = fields.CharField(max_length=512, null=True)
+    scripts_hash = fields.CharField(max_length=64, null=True, index=True)
+
+    # 执行状态
+    status = fields.CharField(max_length=20, default="running")  # running, completed, failed, cancelled
+    result = fields.TextField(null=True)
+
+    # 执行统计
+    total_nodes = fields.IntField(default=0)
+    executed_nodes = fields.IntField(default=0)
+    failed_nodes = fields.IntField(default=0)
+    execution_time = fields.FloatField(default=0.0)
+
+    # 时间戳
+    start_time = fields.DatetimeField(auto_now_add=True)
+    end_time = fields.DatetimeField(null=True)
+
+    # 元数据
+    metadata = fields.JSONField(null=True)
+
+    class Meta:
+        table = "executions"
+        indexes = [
+            ("user_id", "start_time"),
+            ("status", "start_time"),
+            ("user_id", "tag"),
+            ("scripts_hash", "start_time"),
+            ("schema_id", "scripts_hash"),
+        ]
+
+
+class Output(Model):
+    """输出文件模型"""
+    id = fields.UUIDField(pk=True, default=uuid.uuid4)
+    file_id = fields.CharField(max_length=128, unique=True, index=True)
+    execution_id = fields.CharField(max_length=64, index=True)
+
+    # 文件信息
+    filename = fields.CharField(max_length=512)
+    file_path = fields.CharField(max_length=1024)
+    file_type = fields.CharField(max_length=50)
+    file_size = fields.BigIntField(default=0)
+
+    # 生成者信息
+    block_name = fields.CharField(max_length=255)
+    block_id = fields.CharField(max_length=255)
+
+    # 描述和元数据
+    description = fields.TextField(null=True)
+    metadata = fields.JSONField(null=True)
+
+    # 状态
+    is_deleted = fields.BooleanField(default=False)
+
+    # 时间戳
+    created_at = fields.DatetimeField(auto_now_add=True)
+    deleted_at = fields.DatetimeField(null=True)
+
+    class Meta:
+        table = "outputs"
+        indexes = [
+            ("execution_id", "created_at"),
+            ("file_type", "created_at"),
+            ("is_deleted", "created_at"),
+        ]
 
 
 async def init_db(db_path: str):

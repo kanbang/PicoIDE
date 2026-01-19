@@ -6,17 +6,19 @@
 - 执行ID关联的文件追踪
 - 文件生命周期管理
 - 自动清理机制
+- 数据库持久化
 
 Author: PicoIDE Team
-Version: 1.0.0
+Version: 2.0.0
 """
 
 import logging
 import uuid
 import json
+import asyncio
 from typing import Any, Dict, List, Optional, Set
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass, field, asdict
 from threading import Lock
 import time
@@ -30,15 +32,15 @@ logger = logging.getLogger(__name__)
 
 class OutputConfig:
     """输出配置"""
-    
+
     # 统一的输出目录
     OUTPUT_DIR = Path("./output")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     # 临时目录
     TEMP_DIR = Path("./temp")
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     # 文件类型映射
     FILE_TYPE_MAP = {
         ".html": "html",
@@ -52,21 +54,30 @@ class OutputConfig:
         ".xlsx": "excel",
         ".xls": "excel",
     }
-    
+
     # 浏览器可打开的文件类型
     BROWSER_OPENABLE = {"html", "json", "txt"}
-    
+
     # 文件保留时间（小时）
     FILE_RETENTION_HOURS = 24
-    
+
     # 最大文件数量
     MAX_FILES_PER_EXECUTION = 100
+
+    # 软删除文件保留时间（天）
+    SOFT_DELETE_RETENTION_DAYS = 7
+
+    # 执行记录保留时间（天）
+    EXECUTION_RETENTION_DAYS = 30
+
+    # 清理任务执行间隔（小时）
+    CLEANUP_INTERVAL_HOURS = 1
 
 
 @dataclass
 class OutputFileInfo:
     """输出文件信息"""
-    
+
     file_id: str  # 唯一ID
     execution_id: str  # 关联的执行ID
     filename: str  # 文件名
@@ -78,7 +89,7 @@ class OutputFileInfo:
     block_id: str  # Block ID
     description: Optional[str] = None  # 描述
     metadata: Dict[str, Any] = field(default_factory=dict)  # 元数据
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         return {
@@ -98,87 +109,61 @@ class OutputFileInfo:
         }
 
 
-@dataclass
-class ExecutionInfo:
-    """执行信息"""
-    
-    execution_id: str  # 执行ID
-    start_time: str  # 开始时间
-    end_time: Optional[str] = None  # 结束时间
-    duration: Optional[float] = None  # 执行时长（秒）
-    file_ids: List[str] = field(default_factory=list)  # 生成的文件ID列表
-    status: str = "running"  # 状态
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
-        return asdict(self)
-
-
 # ==================== 输出文件管理器 ====================
 
 
 class OutputFileManager:
     """
-    输出文件管理器
-    
+    输出文件管理器（数据库版本）
+
     功能：
     - 管理执行ID和文件的关联
     - 提供文件注册接口
     - 自动清理机制
+    - 数据库持久化
     - 线程安全
     """
-    
+
     _instance = None
     _lock = Lock()
-    
+
     def __new__(cls):
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
-    
+
     def __init__(self):
         """初始化管理器"""
-        self._executions: Dict[str, ExecutionInfo] = {}
-        self._files: Dict[str, OutputFileInfo] = {}
         self._lock = Lock()
-        
+
         # 确保目录存在
         OutputConfig.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         OutputConfig.TEMP_DIR.mkdir(parents=True, exist_ok=True)
-        
-        logger.info("输出文件管理器已初始化")
-        
+
+        logger.info("输出文件管理器已初始化（数据库版本）")
+
         # 启动清理任务
         self._start_cleanup_task()
-    
+
     @classmethod
     def get_instance(cls) -> 'OutputFileManager':
         """获取单例实例"""
         return cls()
-    
+
     def create_execution_id(self) -> str:
         """
         创建新的执行ID
-        
+
         Returns:
             执行ID
         """
         execution_id = f"exec_{uuid.uuid4().hex[:8]}"
-        
-        with self._lock:
-            execution_info = ExecutionInfo(
-                execution_id=execution_id,
-                start_time=datetime.now().isoformat(),
-                status="running"
-            )
-            self._executions[execution_id] = execution_info
-        
         logger.info(f"创建执行ID: {execution_id}")
         return execution_id
-    
-    def register_file(
+
+    async def register_file(
         self,
         execution_id: str,
         filename: str,
@@ -188,8 +173,8 @@ class OutputFileManager:
         metadata: Optional[Dict[str, Any]] = None
     ) -> str:
         """
-        注册输出文件
-        
+        注册输出文件（保存到数据库）
+
         Args:
             execution_id: 执行ID
             filename: 文件名
@@ -197,219 +182,381 @@ class OutputFileManager:
             block_id: Block ID
             description: 描述
             metadata: 元数据
-            
+
         Returns:
             文件ID
         """
+        from db import Output
+
         # 生成文件ID
         file_id = f"{execution_id}_{uuid.uuid4().hex[:8]}"
-        
+
         # 构建完整文件路径
         file_path = OutputConfig.OUTPUT_DIR / filename
-        
+
         # 确保目录存在
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # 获取文件类型
         file_type = OutputConfig.FILE_TYPE_MAP.get(
             file_path.suffix.lower(), "unknown"
         )
-        
-        # 创建文件信息
-        file_info = OutputFileInfo(
+
+        # 保存到数据库
+        await Output.create(
             file_id=file_id,
             execution_id=execution_id,
             filename=filename,
-            file_path=file_path,
+            file_path=str(file_path),
             file_type=file_type,
             file_size=0,  # 文件大小在文件写入后更新
-            created_at=datetime.now().isoformat(),
             block_name=block_name,
             block_id=block_id,
             description=description,
-            metadata=metadata or {}
+            metadata=metadata or {},
+            is_deleted=False,
         )
-        
-        with self._lock:
-            # 保存文件信息
-            self._files[file_id] = file_info
-            
-            # 关联到执行
-            if execution_id in self._executions:
-                self._executions[execution_id].file_ids.append(file_id)
-        
+
         logger.info(f"注册文件: {filename} (ID: {file_id}, 执行: {execution_id})")
         return file_id
-    
-    def update_file_size(self, file_id: str, file_size: int) -> None:
+
+    async def update_file_size(self, file_id: str, file_size: int) -> None:
         """
         更新文件大小
-        
+
         Args:
             file_id: 文件ID
             file_size: 文件大小
         """
-        with self._lock:
-            if file_id in self._files:
-                self._files[file_id].file_size = file_size
-    
-    def get_execution_files(self, execution_id: str) -> List[Dict[str, Any]]:
+        from db import Output
+
+        await Output.filter(file_id=file_id).update(file_size=file_size)
+
+    async def get_execution_files(self, execution_id: str) -> List[Dict[str, Any]]:
         """
         获取执行关联的所有文件
-        
+
         Args:
             execution_id: 执行ID
-            
+
         Returns:
             文件信息列表
         """
-        with self._lock:
-            if execution_id not in self._executions:
-                return []
-            
-            file_ids = self._executions[execution_id].file_ids
-            return [
-                self._files[fid].to_dict()
-                for fid in file_ids
-                if fid in self._files
-            ]
-    
-    def get_all_files(self) -> List[Dict[str, Any]]:
+        from db import Output
+
+        outputs = await Output.filter(
+            execution_id=execution_id,
+            is_deleted=False
+        ).all()
+
+        return [
+            {
+                "file_id": o.file_id,
+                "execution_id": o.execution_id,
+                "filename": o.filename,
+                "file_path": o.file_path,
+                "file_type": o.file_type,
+                "file_size": o.file_size,
+                "created_at": o.created_at.isoformat(),
+                "block_name": o.block_name,
+                "block_id": o.block_id,
+                "description": o.description,
+                "metadata": o.metadata,
+                "can_open": o.file_type in OutputConfig.BROWSER_OPENABLE,
+                "can_download": True,
+            }
+            for o in outputs
+        ]
+
+    async def get_all_files(
+        self,
+        execution_id: Optional[str] = None,
+        file_type: Optional[str] = None,
+        is_deleted: bool = False,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
         """
-        获取所有文件
-        
+        获取所有文件（支持过滤和分页）
+
+        Args:
+            execution_id: 执行ID过滤
+            file_type: 文件类型过滤
+            is_deleted: 是否包含已删除文件
+            limit: 返回数量限制
+            offset: 偏移量
+
         Returns:
             文件信息列表
         """
-        with self._lock:
-            return [
-                f.to_dict()
-                for f in self._files.values()
-            ]
-    
-    def get_file_info(self, file_id: str) -> Optional[Dict[str, Any]]:
+        from db import Output
+
+        query = Output.filter(is_deleted=is_deleted)
+
+        if execution_id:
+            query = query.filter(execution_id=execution_id)
+
+        if file_type:
+            query = query.filter(file_type=file_type)
+
+        outputs = await query.order_by("-created_at").limit(limit).offset(offset).all()
+
+        return [
+            {
+                "file_id": o.file_id,
+                "execution_id": o.execution_id,
+                "filename": o.filename,
+                "file_path": o.file_path,
+                "file_type": o.file_type,
+                "file_size": o.file_size,
+                "created_at": o.created_at.isoformat(),
+                "block_name": o.block_name,
+                "block_id": o.block_id,
+                "description": o.description,
+                "metadata": o.metadata,
+                "can_open": o.file_type in OutputConfig.BROWSER_OPENABLE,
+                "can_download": True,
+            }
+            for o in outputs
+        ]
+
+    async def get_file_info(self, file_id: str) -> Optional[Dict[str, Any]]:
         """
         获取文件信息
-        
+
         Args:
             file_id: 文件ID
-            
+
         Returns:
             文件信息，如果不存在则返回None
         """
-        with self._lock:
-            if file_id in self._files:
-                return self._files[file_id].to_dict()
+        from db import Output
+
+        output = await Output.filter(file_id=file_id).first()
+
+        if not output:
             return None
-    
-    def get_file_path(self, file_id: str) -> Optional[Path]:
+
+        return {
+            "file_id": output.file_id,
+            "execution_id": output.execution_id,
+            "filename": output.filename,
+            "file_path": output.file_path,
+            "file_type": output.file_type,
+            "file_size": output.file_size,
+            "created_at": output.created_at.isoformat(),
+            "block_name": output.block_name,
+            "block_id": output.block_id,
+            "description": output.description,
+            "metadata": output.metadata,
+            "can_open": output.file_type in OutputConfig.BROWSER_OPENABLE,
+            "can_download": True,
+        }
+
+    async def get_file_path(self, file_id: str) -> Optional[Path]:
         """
         获取文件路径
-        
+
         Args:
             file_id: 文件ID
-            
+
         Returns:
             文件路径，如果不存在则返回None
         """
-        with self._lock:
-            if file_id in self._files:
-                return self._files[file_id].file_path
+        from db import Output
+
+        output = await Output.filter(file_id=file_id).first()
+
+        if not output:
             return None
-    
-    def delete_file(self, file_id: str) -> bool:
+
+        return Path(output.file_path)
+
+    async def delete_file(self, file_id: str, soft_delete: bool = True) -> bool:
         """
         删除文件
-        
+
         Args:
             file_id: 文件ID
-            
+            soft_delete: 是否软删除（默认True）
+
         Returns:
             是否删除成功
         """
-        with self._lock:
-            if file_id not in self._files:
-                return False
-            
-            file_info = self._files[file_id]
-            
-            # 删除物理文件
+        from db import Output
+
+        output = await Output.filter(file_id=file_id).first()
+
+        if not output:
+            return False
+
+        if soft_delete:
+            # 软删除：只标记
+            await Output.filter(file_id=file_id).update(
+                is_deleted=True,
+                deleted_at=datetime.now()
+            )
+            logger.info(f"软删除文件: {output.filename}")
+        else:
+            # 物理删除
+            file_path = Path(output.file_path)
             try:
-                if file_info.file_path.exists():
-                    file_info.file_path.unlink()
-                    logger.info(f"已删除文件: {file_info.filename}")
+                if file_path.exists():
+                    file_path.unlink()
+                    logger.info(f"物理删除文件: {output.filename}")
             except Exception as e:
-                logger.error(f"删除文件失败: {file_info.filename}, {e}")
+                logger.error(f"删除文件失败: {output.filename}, {e}")
                 return False
-            
-            # 从执行关联中移除
-            execution_id = file_info.execution_id
-            if execution_id in self._executions:
-                if file_id in self._executions[execution_id].file_ids:
-                    self._executions[execution_id].file_ids.remove(file_id)
-            
-            # 删除文件信息
-            del self._files[file_id]
-            
-            return True
-    
-    def cleanup_old_files(self, max_age_hours: int = None) -> Dict[str, Any]:
+
+            # 删除数据库记录
+            await output.delete()
+
+        return True
+
+    async def cleanup_old_files(self, max_age_hours: int = None) -> Dict[str, Any]:
         """
-        清理旧文件
-        
+        清理旧文件（软删除）
+
         Args:
             max_age_hours: 最大文件年龄（小时），None表示使用默认值
-            
+
         Returns:
             清理结果
         """
+        from db import Output
+
         if max_age_hours is None:
             max_age_hours = OutputConfig.FILE_RETENTION_HOURS
-        
-        current_time = time.time()
-        max_age_seconds = max_age_hours * 3600
-        deleted_count = 0
-        
-        with self._lock:
-            # 收集要删除的文件ID
-            file_ids_to_delete = []
-            
-            for file_id, file_info in self._files.items():
-                file_age = current_time - datetime.fromisoformat(
-                    file_info.created_at
-                ).timestamp()
-                
-                if file_age > max_age_seconds:
-                    file_ids_to_delete.append(file_id)
-            
-            # 删除文件
-            for file_id in file_ids_to_delete:
-                if self.delete_file(file_id):
-                    deleted_count += 1
-        
-        logger.info(f"清理完成，删除了 {deleted_count} 个文件")
-        
+
+        cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
+
+        # 软删除超过保留时间的文件
+        deleted_count = await Output.filter(
+            created_at__lt=cutoff_time,
+            is_deleted=False
+        ).update(
+            is_deleted=True,
+            deleted_at=datetime.now()
+        )
+
+        logger.info(f"清理完成，软删除了 {deleted_count} 个文件")
+
         return {
             "status": "success",
             "deleted_count": deleted_count,
             "max_age_hours": max_age_hours,
         }
-    
+
+    async def cleanup_soft_deleted_files(self, max_age_days: int = None) -> Dict[str, Any]:
+        """
+        物理清理已软删除的文件
+
+        Args:
+            max_age_days: 软删除文件保留天数，None表示使用默认值
+
+        Returns:
+            清理结果
+        """
+        from db import Output
+
+        if max_age_days is None:
+            max_age_days = OutputConfig.SOFT_DELETE_RETENTION_DAYS
+
+        cutoff_time = datetime.now() - timedelta(days=max_age_days)
+
+        # 获取需要物理删除的文件
+        outputs_to_delete = await Output.filter(
+            is_deleted=True,
+            deleted_at__lt=cutoff_time
+        ).all()
+
+        deleted_count = 0
+        for output in outputs_to_delete:
+            file_path = Path(output.file_path)
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+                    logger.info(f"物理删除文件: {output.filename}")
+            except Exception as e:
+                logger.error(f"物理删除文件失败: {output.filename}, {e}")
+                continue
+
+            # 删除数据库记录
+            await output.delete()
+            deleted_count += 1
+
+        logger.info(f"物理清理完成，删除了 {deleted_count} 个软删除文件")
+
+        return {
+            "status": "success",
+            "deleted_count": deleted_count,
+            "max_age_days": max_age_days,
+        }
+
+    async def cleanup_old_executions(self, max_age_days: int = None) -> Dict[str, Any]:
+        """
+        清理旧执行记录
+
+        Args:
+            max_age_days: 执行记录保留天数，None表示使用默认值
+
+        Returns:
+            清理结果
+        """
+        from db import Execution
+
+        if max_age_days is None:
+            max_age_days = OutputConfig.EXECUTION_RETENTION_DAYS
+
+        cutoff_time = datetime.now() - timedelta(days=max_age_days)
+
+        # 删除超过保留时间的执行记录
+        deleted_count = await Execution.filter(
+            start_time__lt=cutoff_time
+        ).delete()
+
+        logger.info(f"清理完成，删除了 {deleted_count} 个旧执行记录")
+
+        return {
+            "status": "success",
+            "deleted_count": deleted_count,
+            "max_age_days": max_age_days,
+        }
+
     def _start_cleanup_task(self):
         """启动清理任务"""
         import threading
-        
+
         def cleanup_task():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
             while True:
                 try:
-                    time.sleep(3600)  # 每小时清理一次
-                    self.cleanup_old_files()
+                    time.sleep(OutputConfig.CLEANUP_INTERVAL_HOURS * 3600)
+
+                    # 运行清理任务
+                    loop.run_until_complete(self._run_cleanup_tasks())
                 except Exception as e:
                     logger.error(f"清理任务失败: {e}")
-        
+
         thread = threading.Thread(target=cleanup_task, daemon=True)
         thread.start()
         logger.info("清理任务已启动")
+
+    async def _run_cleanup_tasks(self):
+        """运行所有清理任务"""
+        try:
+            # 1. 软删除旧文件
+            await self.cleanup_old_files()
+
+            # 2. 物理删除软删除文件
+            await self.cleanup_soft_deleted_files()
+
+            # 3. 清理旧执行记录
+            await self.cleanup_old_executions()
+        except Exception as e:
+            logger.error(f"清理任务执行失败: {e}")
 
 
 # 全局实例
