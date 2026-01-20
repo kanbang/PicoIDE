@@ -227,6 +227,9 @@ defineExpose({
       executionDuration.value = duration;
     }
     if (status === 'running') {
+      // 清空之前的错误和警告
+      errors.value = [];
+      warnings.value = [];
       show();
     }
   },

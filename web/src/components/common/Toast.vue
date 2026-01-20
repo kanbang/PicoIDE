@@ -22,7 +22,7 @@ export interface ToastProps {
 const props = withDefaults(defineProps<ToastProps>(), {
   type: 'info',
   duration: 3000,
-  position: 'top-right'
+  position: 'top'
 });
 
 const visible = ref(false);
@@ -31,7 +31,7 @@ const icon = computed(() => {
   const icons = {
     success: '✓',
     error: '✕',
-    info: 'ℹ',
+    info: 'i',
     warning: '⚠'
   };
   return icons[props.type];
@@ -39,7 +39,7 @@ const icon = computed(() => {
 
 const style = computed(() => {
   const positions = {
-    'top': 'top: 20px; left: 50%; transform: translateX(-50%);',
+    'top': 'top: 60px; left: 50%; transform: translateX(-50%);',
     'bottom': 'bottom: 20px; left: 50%; transform: translateX(-50%);',
     'top-right': 'top: 20px; right: 20px;',
     'bottom-right': 'bottom: 20px; right: 20px;'
@@ -73,7 +73,7 @@ const emit = defineEmits<{
 <style scoped>
 .toast {
   position: fixed;
-  padding: 12px 20px;
+  padding: 12px 24px;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
@@ -81,7 +81,7 @@ const emit = defineEmits<{
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 9999;
   min-width: 300px;
-  max-width: 500px;
+  max-width: 600px;
 }
 
 .toast-content {
@@ -94,6 +94,7 @@ const emit = defineEmits<{
   font-size: 18px;
   font-weight: bold;
   flex-shrink: 0;
+  font-style: italic;
 }
 
 .toast-message {
