@@ -18,8 +18,10 @@ import logging
 import time
 from datetime import datetime
 
+from flow.demo_blocks import DEMO_BLOCKS
+
 from .schema import ExecuteRequest, ExecuteResponse, ExecuteSavedRequest
-from node.run import make_dynamic_engine, get_json_blocks, run_flow
+from flow.run import make_dynamic_engine, get_json_blocks, run_flow
 from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
 from uuid import UUID
@@ -89,7 +91,7 @@ async def get_blocks():
     try:
         # 从数据库加载自定义 blocks
         scripts = await load_scripts_from_db("/")
-        blocks = get_json_blocks(scripts)
+        blocks = get_json_blocks(DEMO_BLOCKS, scripts)
         return {"blocks": blocks}
     except Exception as e:
         raise HTTPException(500, f"Failed to get blocks: {str(e)}")

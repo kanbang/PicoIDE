@@ -11,6 +11,5 @@ LastEditTime: 2026-01-20 16:23:08
 import logging
 from flow.setting import settings
 
-
 logging.basicConfig(level=settings.LOG_LEVEL, format=settings.LOG_FORMAT)
 logger = logging.getLogger(__name__)

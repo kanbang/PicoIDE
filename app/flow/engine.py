@@ -1,12 +1,12 @@
 import asyncio
-import copy
 import networkx as nx
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Type, Optional
 from flow.block import Block
 
 class ComputeEngine:
     def __init__(self):
-        self.block_templates: Dict[str, Block] = {}
+        # 存储类对象 Type[Block]
+        self.block_registry: Dict[str, Type[Block]] = {}
         self.instances: Dict[str, Block] = {}
         self.on_log = print
         self._compiled_sequence: List[Tuple[Block, List[Tuple[Block, str, str]]]] = []
@@ -14,18 +14,32 @@ class ComputeEngine:
     def log(self, msg: str):
         if self.on_log: self.on_log(f"[Engine] {msg}")
 
-    def register_blocks(self, blocks: List[Block]):
-        for b in blocks: self.block_templates[b.name] = b
+    def register_blocks(self, block_classes: List[Type[Block]]):
+        """
+        核心优化：直接读取类属性 NAME 进行注册，无需实例化
+        """
+        for cls in block_classes:
+            if not hasattr(cls, 'NAME') or cls.NAME is None:
+                self.log(f"⚠️ 跳过无效注册：类 {cls.__name__} 未定义 NAME 属性")
+                continue
+            
+            self.block_registry[cls.NAME] = cls
+            self.log(f"已注册组件类: {cls.NAME} (Category: {getattr(cls, 'CATEGORY', 'Unknown')})")
 
     def export_all_blocks(self) -> List[Dict]:
-        """导出所有注册节点的配置描述"""
-        return [b.export_config() for b in self.block_templates.values()]
-
+        """
+        导出所有注册节点的配置描述
+        注意：options 等动态属性仍需一次临时实例化来解析 add_option 逻辑
+        """
+        configs = []
+        for cls in self.block_registry.values():
+            # 这里的实例化仅用于获取 export_config 产生的 UI 描述
+            configs.append(cls().export_config())
+        return configs
 
     def set_flow(self, flow: Dict[str, Any]):
-        self.log("🛠️  正在修复预编译逻辑以支持多重连接...")
+        self.log("🛠️  正在构建计算图...")
         
-        # --- 使用 MultiDiGraph 而不是 DiGraph ---
         temp_graph = nx.MultiDiGraph() 
         self.instances = {}
         port_to_node = {} 
@@ -34,16 +48,19 @@ class ComputeEngine:
         for node_data in flow["nodes"]:
             t_name = node_data["type"]
             n_id = node_data["id"]
-            template = self.block_templates.get(t_name)
             
-            if not template:
+            block_cls = self.block_registry.get(t_name)
+            if not block_cls:
+                self.log(f"⚠️ 找不到类型为 {t_name} 的注册组件")
                 continue
 
-            instance = copy.deepcopy(template)
+            # 直接实例化
+            instance = block_cls()
             instance.instance_id = n_id
             self.instances[n_id] = instance
             temp_graph.add_node(n_id)
 
+            # 配置选项处理
             for key, info in node_data.get("inputs", {}).items():
                 p_id = info["id"]
                 if key in instance._options:
@@ -59,27 +76,23 @@ class ComputeEngine:
             src = port_to_node.get(conn["from"])
             dst = port_to_node.get(conn["to"])
             if src and dst:
-                # --- 核心修改 2: MultiDiGraph 的 add_edge 不会覆盖旧边 ---
                 temp_graph.add_edge(src[0], dst[0], out_p=src[1], in_p=dst[1])
 
-        # 3. 环路检测 (MultiDiGraph 同样支持)
+        # 3. 环路检测
         try:
             nx.find_cycle(temp_graph, orientation="original")
             raise ValueError("Flowchart contains cycles")
         except nx.NetworkXNoCycle:
             pass
 
-        # 4. 生成指令序列
+        # 4. 生成指令序列 (拓扑排序)
         self._compiled_sequence = []
-        # 注意：topological_sort 在 MultiDiGraph 上工作正常
         execution_order = list(nx.topological_sort(temp_graph))
         
         for n_id in execution_order:
             current_instance = self.instances[n_id]
             transfers = []
             
-            # --- 核心修改 3: 遍历所有入边 (in_edges)，处理多重连接 ---
-            # data=True 会返回我们存储在 edge 中的属性字典
             for pred_id, _, edge_data in temp_graph.in_edges(n_id, data=True):
                 out_p = edge_data["out_p"]
                 in_p = edge_data["in_p"]
@@ -87,7 +100,7 @@ class ComputeEngine:
             
             self._compiled_sequence.append((current_instance, transfers))
 
-        self.log(f"✅ 编译完成。执行序列中包含多重数据流转指令。")
+        self.log(f"✅ 编译完成。")
 
     def run(self, execution_id: str = None):
         """
@@ -130,10 +143,7 @@ class ComputeEngine:
             # 2. 等待当前节点的所有前驱节点完成
             # 我们通过 transfers 列表直接获取依赖的源 Block
             if transfers:
-                # 提取所有源 Block 的 instance_id
-                # dependency_ids = [src_b.instance_id for src_b, _, _ in transfers]
-
-                # 去重
+                # 提取所有源 Block 的 instance_id，去重
                 dependency_ids = list({src_b.instance_id for src_b, _, _ in transfers})
 
                 # 并行等待这些 ID 对应的 Event

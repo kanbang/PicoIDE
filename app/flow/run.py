@@ -7,6 +7,7 @@ LastEditors: zhai
 LastEditTime: 2026-01-20 17:54:25
 """
 
+from flow.demo_blocks import DEMO_BLOCKS
 from db import Output
 from flow.engine import ComputeEngine
 from flow.block import Block, BaseBlock
@@ -67,7 +68,7 @@ def get_json_blocks(blocks: List[Block], scripts: List[str] = None):
 engine_manager = EngineManager(pool_size=5)
 
 # 注册业务：Demo（包含所有内置节点）
-engine_manager.register_business("demo", daq_blocks)
+engine_manager.register_business("DEMO", DEMO_BLOCKS)
 
 
 async def run_flow(business_id: str, flow: dict, execution_id: str = None):

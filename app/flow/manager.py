@@ -4,8 +4,9 @@ import asyncio
 import copy
 import threading
 from collections import deque
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Type
 from cachetools import LRUCache
+from flow.block import Block
 from flow.engine import ComputeEngine
 from utils.singleton import singleton
 
@@ -13,7 +14,7 @@ from utils.singleton import singleton
 class EngineManager:
     def __init__(self, pool_size: int = 10, blueprint_size: int = 100):
         # 1. 静态资源：业务对应的 Block 模板类
-        self._block_libraries: Dict[str, List[Any]] = {}
+        self._block_libraries: Dict[str, list[Type[Block]]] = {}
         
         # 2. 核心缓存：预编译蓝图 (LRU)
         self._blueprints = LRUCache(maxsize=blueprint_size)
@@ -28,7 +29,7 @@ class EngineManager:
         # 异步锁保护蓝图初始化逻辑（协程安全，防止惊群效应）
         self._async_lock = asyncio.Lock()
 
-    def register_business(self, business_id: str, blocks: List[Any]):
+    def register_business(self, business_id: str, blocks: list[Type[Block]]):
         with self._lock:
             self._block_libraries[business_id] = blocks
 
