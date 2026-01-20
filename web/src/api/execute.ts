@@ -93,3 +93,51 @@ export async function deleteOutputFile(fileId: string): Promise<any> {
 export async function cleanupOutputFiles(maxAgeHours: number = 24): Promise<any> {
   return await api.delete(`/engine/output-files/cleanup?max_age_hours=${maxAgeHours}`);
 }
+
+/**
+ * 获取指定 Flow 的所有执行记录
+ */
+export async function getFlowExecutions(
+  flowId: string,
+  status?: string,
+  limit: number = 20,
+  offset: number = 0
+): Promise<{
+  executions: ExecutionRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  let url = `/engine/flows/${flowId}/executions?limit=${limit}&offset=${offset}`;
+  if (status) {
+    url += `&status=${status}`;
+  }
+  return await api.get(url);
+}
+
+/**
+ * 获取指定执行的所有输出文件
+ */
+export async function getExecutionOutputs(executionId: string): Promise<{
+  execution_id: string;
+  output_files: OutputFile[];
+}> {
+  return await api.get(`/engine/executions/${executionId}/outputs`);
+}
+
+// ==================== 类型定义 ====================
+
+export interface ExecutionRecord {
+  execution_id: string;
+  flow_id: string;
+  status: string;
+  start_time: string;
+  end_time: string | null;
+  execution_time: number;
+  total_nodes: number;
+  executed_nodes: number;
+  failed_nodes: number;
+  tag: string | null;
+  scripts_path: string;
+  scripts_hash: string;
+}

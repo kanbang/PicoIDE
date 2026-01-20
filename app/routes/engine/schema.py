@@ -90,12 +90,18 @@ class ExecuteSavedRequest(BaseModel):
     
     从存储中加载脚本和 flow 来执行
     
+    支持两种模式：
+    1. 默认模式：每次生成新的 execution_id（不提供 tag）
+    2. Tag 模式：使用 tag 覆盖旧数据（提供 tag）
+    
     Attributes:
         scripts_path: 脚本路径（如 "/blocks"）
         flow_id: Flow ID
+        tag: 可选的标签（用于覆盖模式）
     """
     scripts_path: str = "/"  # 默认从根目录加载脚本
     flow_id: str  # Flow ID
+    tag: Optional[str] = None  # 可选的标签
 
 
 # ==================== 响应模型 ====================

@@ -43,7 +43,7 @@ class NodeSettings:
     # 是否启用数据库写入
     # True: 所有生成的文件都会写入数据库
     # False: 只生成物理文件，不写入数据库（轻量化模式）
-    ENABLE_DB_WRITE: bool = False
+    ENABLE_DB_WRITE: bool = True
     
     # 批量入库的批次大小
     BATCH_SIZE: int = 100
