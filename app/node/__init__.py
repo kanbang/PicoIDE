@@ -16,12 +16,10 @@ Node 模块 - 统一的节点管理
 - config: 配置接口（兼容旧代码）
 """
 
-from node.settings import settings
-from node.output_manager import output_file_manager
-from node.file_collector import file_collector
+from flow.output import output_file_manager
+from flow.collector import file_collector
 
 __all__ = [
-    "settings",
     "output_file_manager",
     "file_collector",
 ]

@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from pathlib import Path
 from datetime import datetime, timedelta
 from threading import Lock
+from flow.setting import settings
 import time
 
 
@@ -55,7 +56,6 @@ class OutputFileManager:
         self._lock = Lock()
 
         # 导入全局配置
-        from node.settings import settings
         self.settings = settings
 
         logger.info("输出文件管理器已初始化（数据库版本）")

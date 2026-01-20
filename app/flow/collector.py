@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-19 16:15:36
 LastEditors: zhai
-LastEditTime: 2026-01-19 20:54:54
+LastEditTime: 2026-01-20 16:25:02
 '''
 """
 文件信息收集器 - 用于批量入库
@@ -15,6 +15,7 @@ LastEditTime: 2026-01-19 20:54:54
 from typing import Dict, List, Any, Optional
 from threading import Lock
 from datetime import datetime
+from flow.setting import settings
 
 
 class FileCollector:
@@ -54,7 +55,6 @@ class FileCollector:
         Returns:
             文件信息列表（格式与数据库查询一致）
         """
-        from node.settings import settings
         
         with self._lock:
             files = self._files.get(execution_id, [])

@@ -23,9 +23,9 @@ from node.run import make_dynamic_engine, get_json_blocks, run_flow
 from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
 from uuid import UUID
-from node.output_manager import output_file_manager
-from node.file_collector import file_collector
-from node.settings import settings
+from flow.output import output_file_manager
+from flow.collector import file_collector
+from flow.setting import settings
 
 
 logger = logging.getLogger(__name__)

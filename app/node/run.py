@@ -12,9 +12,9 @@ from node.daq import daq_blocks
 from typing import Any, List
 import inspect
 import numpy as np
-from node.output_manager import output_file_manager
-from node.file_collector import file_collector
-from node.settings import settings
+from flow.output import output_file_manager
+from flow.collector import file_collector
+from flow.setting import settings
 from db import Output
 
 def _build_blocks(scripts: List[str] = None) -> List[Block]:
