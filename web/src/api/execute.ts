@@ -120,9 +120,20 @@ export async function getFlowExecutions(
  */
 export async function getExecutionOutputs(executionId: string): Promise<{
   execution_id: string;
-  output_files: OutputFile[];
+  outputs: OutputFile[];
 }> {
-  return await api.get(`/engine/executions/${executionId}/outputs`);
+  const result = await api.get(`/engine/executions/${executionId}/outputs`);
+  return {
+    execution_id: result.execution_id,
+    output_files: result.outputs || []
+  };
+}
+
+/**
+ * 删除执行记录
+ */
+export async function deleteExecution(executionId: string): Promise<any> {
+  return await api.delete(`/engine/executions/${executionId}`);
 }
 
 // ==================== 类型定义 ====================

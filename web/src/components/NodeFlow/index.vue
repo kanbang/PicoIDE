@@ -18,7 +18,7 @@
 
       <template #2>
         <div class="output-panel-wrapper">
-          <OutputPanel ref="outputPanelRef" @file-opened="handleFileOpened" @file-downloaded="handleFileDownloaded" />
+          <OutputPanel ref="outputPanelRef" :flowId="props.flowId" @file-opened="handleFileOpened" @file-downloaded="handleFileDownloaded" />
         </div>
       </template>
     </SplitPane>
@@ -216,6 +216,7 @@ interface BlockDefinition {
 
 interface Props {
   flow?: any;
+  flowId?: string;
   blocks?: BlockDefinition[];
   showRun?: boolean;
 }

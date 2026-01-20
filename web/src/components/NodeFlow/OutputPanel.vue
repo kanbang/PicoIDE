@@ -1,115 +1,9 @@
-<template>
-  <div class="output-panel">
-    <header class="panel-header">
-      <div class="title-group">
-        <svg class="header-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-        </svg>
-        <h3>输出中心</h3>
-        <span class="file-count" v-if="outputFiles.length">{{ outputFiles.length }}</span>
-      </div>
-      <div class="header-actions">
-        <button v-if="outputFiles.length > 0" @click="refreshFiles" class="action-btn" title="同步文件">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-          </svg>
-        </button>
-        <button v-if="outputFiles.length > 0" @click="cleanupFiles" class="action-btn danger" title="全部清空">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          </svg>
-        </button>
-      </div>
-    </header>
-
-    <div class="panel-body">
-      <section v-if="executionStatus" class="status-banner" :class="executionStatus">
-        <div class="banner-main">
-          <div class="status-indicator">
-            <svg v-if="executionStatus === 'running'" class="spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-            </svg>
-            <svg v-else-if="executionStatus === 'completed'" width="18" height="18" viewBox="0 0 24 24" stroke="currentColor">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            <svg v-else width="18" height="18" viewBox="0 0 24 24" stroke="currentColor">
-              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-          </div>
-          <div class="status-info">
-            <span class="status-msg">{{ statusText }}</span>
-            <span v-if="executionDuration" class="status-time">耗时 {{ executionDuration.toFixed(2) }}s</span>
-          </div>
-        </div>
-      </section>
-
-      <div class="notif-area" v-if="errors.length || warnings.length">
-        <div v-for="(err, i) in errors" :key="'e'+i" class="notif-item error">
-          <span class="dot"></span> {{ err }}
-        </div>
-        <div v-for="(wrn, i) in warnings" :key="'w'+i" class="notif-item warning">
-          <span class="dot"></span> {{ wrn }}
-        </div>
-      </div>
-
-      <div v-if="outputFiles.length > 0" class="file-grid">
-        <div v-for="file in outputFiles" :key="file.file_id" class="file-card" :class="file.file_type">
-          <div class="card-icon" :data-type="file.file_type">
-            <template v-if="file.file_type === 'html'">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
-            </template>
-            <template v-else-if="file.file_type === 'csv'">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="16" y2="17" /></svg>
-            </template>
-            <template v-else>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><polyline points="13 2 13 9 20 9" /></svg>
-            </template>
-          </div>
-
-          <div class="card-content">
-            <div class="name-row">
-              <span class="name" :title="file.filename">{{ file.filename }}</span>
-              <span class="tag">{{ file.file_type.toUpperCase() }}</span>
-            </div>
-            <div class="meta-row">
-              <span>{{ formatFileSize(file.file_size) }}</span>
-              <span class="divider">·</span>
-              <span class="source">{{ file.block_name || '系统输出' }}</span>
-            </div>
-          </div>
-
-          <div class="card-actions">
-            <button v-if="file.can_open" @click="openFile(file)" class="icon-btn highlight" title="预览">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
-            <button @click="downloadFile(file)" class="icon-btn" title="下载">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            </button>
-            <button @click="deleteFile(file)" class="icon-btn danger" title="移除">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div v-else class="empty-state">
-        <div class="empty-illustration">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>
-          </svg>
-        </div>
-        <h4>暂无数据产生</h4>
-        <p>执行流程后，生成的文件、报告及错误日志将汇总在此处。</p>
-      </div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
+import ExecutionList from './ExecutionList.vue';
+import ExecutionDetail from './ExecutionDetail.vue';
+import type { ExecutionRecord } from './ExecutionList.vue';
 
 interface OutputFile {
   file_id: string;
@@ -124,6 +18,7 @@ interface OutputFile {
 
 const props = defineProps<{
   executionId?: string;
+  flowId?: string;
   isVisible?: boolean;
 }>();
 
@@ -134,12 +29,17 @@ const emit = defineEmits<{
 }>();
 
 // 状态
+const activeTab = ref<'output' | 'history'>('output');
 const executionStatus = ref<'running' | 'completed' | 'failed' | null>(null);
 const executionDuration = ref<number>(0);
 const outputFiles = ref<OutputFile[]>([]);
 const errors = ref<string[]>([]);
 const warnings = ref<string[]>([]);
 const visible = ref(props.isVisible || false);
+
+// 历史记录状态
+const selectedExecution = ref<ExecutionRecord | null>(null);
+const executionListRef = ref<InstanceType<typeof ExecutionList> | null>(null);
 
 // 监听 props.isVisible 变化
 watch(() => props.isVisible, (newValue) => {
@@ -199,13 +99,9 @@ async function refreshFiles() {
 
 async function openFile(file: OutputFile) {
   try {
-    // 直接使用后端文件访问 URL
     const baseUrl = window.location.origin;
     const fileUrl = `${baseUrl}/api/engine/output-files/${file.file_id}`;
-
-    // 使用 window.open 直接打开文件
     window.open(fileUrl, '_blank', 'noopener,noreferrer');
-
     emit('file-opened', file);
   } catch (error) {
     console.error('打开文件失败:', error);
@@ -273,6 +169,47 @@ async function cleanupFiles() {
   }
 }
 
+// 历史记录相关方法
+function selectExecution(execution: ExecutionRecord) {
+  selectedExecution.value = execution;
+}
+
+function backToExecutionList() {
+  selectedExecution.value = null;
+}
+
+async function refreshHistory() {
+  if (executionListRef.value) {
+    await executionListRef.value.refresh();
+  }
+  showSuccess('历史记录已刷新');
+}
+
+async function handleDeleteExecution(executionId: string) {
+  try {
+    const confirmed = await showConfirm(
+      '确定要删除这条执行记录吗？此操作不可恢复。',
+      '确认删除'
+    );
+
+    if (!confirmed) return;
+
+    // 调用删除 API
+    const { deleteExecution } = await import('@/api/execute');
+    await deleteExecution(executionId);
+
+    showSuccess('执行记录已删除');
+    
+    // 刷新列表
+    if (executionListRef.value) {
+      await executionListRef.value.refresh();
+    }
+  } catch (error) {
+    console.error('删除执行记录失败:', error);
+    showError('删除执行记录失败');
+  }
+}
+
 // 原生 confirm 对话框
 function showConfirm(message: string, title: string = '确认'): Promise<boolean> {
   return new Promise((resolve) => {
@@ -288,21 +225,18 @@ defineExpose({
     if (duration !== undefined) {
       executionDuration.value = duration;
     }
-    // 运行时自动显示面板
     if (status === 'running') {
       show();
     }
   },
   setOutputFiles: (files: OutputFile[]) => {
     outputFiles.value = files;
-    // 有输出文件时自动显示面板
     if (files.length > 0) {
       show();
     }
   },
   setErrors: (errorList: string[]) => {
     errors.value = errorList;
-    // 有错误时自动显示面板
     if (errorList.length > 0) {
       show();
     }
@@ -315,8 +249,151 @@ defineExpose({
   show,
   hide,
   visible,
+  activeTab,
 });
 </script>
+
+<template>
+  <div class="output-panel">
+    <header class="panel-header">
+      <div class="title-group">
+        <svg class="header-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+        <h3>输出中心</h3>
+        <span class="file-count" v-if="activeTab === 'output' && outputFiles.length">{{ outputFiles.length }}</span>
+      </div>
+      
+      <!-- 标签页切换 -->
+      <div class="tabs">
+        <button 
+          :class="['tab-btn', { active: activeTab === 'output' }]"
+          @click="activeTab = 'output'"
+        >
+          输出中心
+        </button>
+        <button 
+          v-if="flowId"
+          :class="['tab-btn', { active: activeTab === 'history' }]"
+          @click="activeTab = 'history'"
+        >
+          历史记录
+        </button>
+      </div>
+      
+      <div class="header-actions">
+        <button v-if="activeTab === 'history'" @click="refreshHistory" class="action-btn" title="刷新历史">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="panel-body">
+      <!-- 输出中心标签页 -->
+      <div v-show="activeTab === 'output'">
+        <section v-if="executionStatus" class="status-banner" :class="executionStatus">
+          <div class="banner-main">
+            <div class="status-indicator">
+              <svg v-if="executionStatus === 'running'" class="spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+              </svg>
+              <svg v-else-if="executionStatus === 'completed'" width="18" height="18" viewBox="0 0 24 24" stroke="currentColor">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <svg v-else width="18" height="18" viewBox="0 0 24 24" stroke="currentColor">
+                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <div class="status-info">
+              <span class="status-msg">{{ statusText }}</span>
+              <span v-if="executionDuration" class="status-time">耗时 {{ executionDuration.toFixed(2) }}s</span>
+            </div>
+          </div>
+        </section>
+
+        <div class="notif-area" v-if="errors.length || warnings.length">
+          <div v-for="(err, i) in errors" :key="'e'+i" class="notif-item error">
+            <span class="dot"></span> {{ err }}
+          </div>
+          <div v-for="(wrn, i) in warnings" :key="'w'+i" class="notif-item warning">
+            <span class="dot"></span> {{ wrn }}
+          </div>
+        </div>
+
+        <div v-if="outputFiles.length > 0" class="file-grid">
+          <div v-for="file in outputFiles" :key="file.file_id" class="file-card" :class="file.file_type">
+            <div class="card-icon" :data-type="file.file_type">
+              <template v-if="file.file_type === 'html'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+              </template>
+              <template v-else-if="file.file_type === 'csv'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="16" y2="17" /></svg>
+              </template>
+              <template v-else>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><polyline points="13 2 13 9 20 9" /></svg>
+              </template>
+            </div>
+
+            <div class="card-content">
+              <div class="name-row">
+                <span class="name" :title="file.filename">{{ file.filename }}</span>
+                <span class="tag">{{ file.file_type.toUpperCase() }}</span>
+              </div>
+              <div class="meta-row">
+                <span>{{ formatFileSize(file.file_size) }}</span>
+                <span class="divider">·</span>
+                <span class="source">{{ file.block_name || '系统输出' }}</span>
+              </div>
+            </div>
+
+            <div class="card-actions">
+              <button v-if="file.can_open" @click="openFile(file)" class="icon-btn highlight" title="预览">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8-4 8-11 8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+              <button @click="downloadFile(file)" class="icon-btn" title="下载">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </button>
+              <button @click="deleteFile(file)" class="icon-btn danger" title="移除">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="empty-state">
+          <div class="empty-illustration">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>
+            </svg>
+          </div>
+          <h4>暂无数据产生</h4>
+          <p>执行流程后，生成的文件、报告及错误日志将汇总在此处。</p>
+        </div>
+      </div>
+
+      <!-- 历史记录标签页 -->
+      <div v-show="activeTab === 'history'">
+        <ExecutionList
+          ref="executionListRef"
+          v-if="!selectedExecution"
+          :flowId="flowId"
+          @select="selectExecution"
+          @delete="handleDeleteExecution"
+        />
+        <ExecutionDetail
+          v-else
+          :executionId="selectedExecution.execution_id"
+          :execution="selectedExecution"
+          @back="backToExecutionList"
+        />
+      </div>
+    </div>
+  </div>
+</template>
 
 <style scoped>
 /* 核心容器 */
@@ -325,7 +402,7 @@ defineExpose({
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: #1e1e1e; /* 更深的深色背景 */
+  background: #1e1e1e;
   color: #cccccc;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
@@ -340,6 +417,7 @@ defineExpose({
   background: #252526;
   border-bottom: 1px solid #333333;
   flex-shrink: 0;
+  gap: 12px;
 }
 
 .title-group {
@@ -365,6 +443,34 @@ defineExpose({
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 10px;
+}
+
+/* 标签页切换 */
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: #888;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  background: #37373d;
+  color: #fff;
+}
+
+.tab-btn.active {
+  background: #333;
+  color: #fff;
+  font-weight: 500;
 }
 
 .header-actions { display: flex; gap: 4px; }
@@ -512,7 +618,7 @@ defineExpose({
 .card-actions {
   display: flex;
   gap: 4px;
-  opacity: 0.4; /* 默认低透明度，显得整洁 */
+  opacity: 0.4;
   transition: opacity 0.2s;
 }
 

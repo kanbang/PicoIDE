@@ -293,7 +293,7 @@ defineExpose({ nodeFlowRef });
 
       <template #2>
         <div class="flow-editor">
-          <NodeFlow v-if="hasSelectedFlow" ref="nodeFlowRef" :blocks="props.blocks" :show-run="props.showRun"
+          <NodeFlow v-if="hasSelectedFlow" ref="nodeFlowRef" :blocks="props.blocks" :show-run="props.showRun" :flowId="selectedFlowId"
             @update="handleUpdate" @unsavedChanges="handleUnsavedChanges" @save="handleSave" @run="handleRun" />
 
           <div v-if="!hasSelectedFlow" class="empty-editor-full">
