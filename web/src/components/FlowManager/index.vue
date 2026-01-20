@@ -3,7 +3,7 @@ import { ref, watch, computed, nextTick } from 'vue';
 import NodeFlow from '../NodeFlow/index.vue';
 import Modal from '../common/Modal.vue';
 import SplitPane from '../common/Splitter.vue';
-import FlowList, { FlowItem } from './FlowList.vue'; // 引入新组件
+import FlowList, { FlowItem } from './FlowListPanel.vue'; // 引入新组件
 
 // Props
 interface Props {

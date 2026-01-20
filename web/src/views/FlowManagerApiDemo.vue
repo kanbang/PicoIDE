@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue';
 import FlowManager, { FlowItem } from '@/components/FlowManager/index.vue';
 import {
   getBlocks, getFlows, createFlow, updateFlow,
-  deleteFlow, duplicateFlow, executeBlocks,
+  deleteFlow, duplicateFlow, executeBlocks, executeSavedFlow,
   FlowItem as ApiFlowItem
 } from '@/api/index';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
@@ -116,7 +116,21 @@ async function handleRun(id: string, flow: any) {
   const nodeFlowInstance = flowManagerRef.value?.nodeFlowRef;
   if (!nodeFlowInstance) return;
 
-  // 2. 自动展开输出面板 (体验优化)
+  // 2. 检查并保存未保存的更改
+  const currentFlow = flows.value.find(f => f.id === id);
+  if (currentFlow && currentFlow.hasUnsavedChanges) {
+    try {
+      // 保存当前 Flow
+      await handleSave(id, flow);
+      currentFlow.hasUnsavedChanges = false;
+      showInfo('已自动保存未保存的更改');
+    } catch (error) {
+      showError('保存失败，无法执行');
+      return;
+    }
+  }
+
+  // 3. 自动展开输出面板 (体验优化)
   nodeFlowInstance.showOutputPanel();
 
   const outputPanel = nodeFlowInstance.outputPanelRef;
@@ -124,13 +138,16 @@ async function handleRun(id: string, flow: any) {
   try {
     console.log('执行 Flow:', id);
 
-    // 3. 更新 UI 为运行中
+    // 4. 更新 UI 为运行中
     outputPanel?.setExecutionStatus('running');
 
-    // 4. 调用 API
-    const result = await executeBlocks({ scripts: [], flow: flow });
+    // 5. 调用 API (使用 execute-saved 接口)
+    const result = await executeSavedFlow(id);
 
-    // 5. 更新输出面板结果
+    // 4. 调用 executeBlocks API
+    // const result = await executeBlocks({ scripts: [], flow: flow });
+
+    // 6. 更新输出面板结果
     if (outputPanel) {
       outputPanel.setExecutionStatus('completed', result.execution_time);
       outputPanel.setOutputFiles(result.output_files || []);

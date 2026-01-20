@@ -55,6 +55,13 @@ export async function executeBlocks(request: ExecuteRequest): Promise<ExecuteRes
 }
 
 /**
+ * 执行已保存的 Flow
+ */
+export async function executeSavedFlow(flowId: string): Promise<ExecuteResponse> {
+  return await api.post('/engine/execute-saved', { flow_id: flowId });
+}
+
+/**
  * 获取所有输出文件
  */
 export async function getOutputFiles(): Promise<OutputFile[]> {
