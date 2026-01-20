@@ -210,8 +210,10 @@ function handleSelect(id: string) {
 
 .file-card.active {
   background: #2d2d30;
-  border-color: #4caf50;
-  border-left: 3px solid #4caf50;
+  border-left: 4px solid #4caf50;
+  border-right: none;
+  border-top: none;
+  border-bottom: none;
 }
 
 .card-content { flex: 1; min-width: 0; }

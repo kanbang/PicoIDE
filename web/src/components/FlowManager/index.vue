@@ -77,6 +77,18 @@ watch(activeFlowItem, async (newItem) => {
 
 // 1. 新建
 function createFlow() {
+  // 如果当前 Flow 有未保存的更改，提示用户
+  if (activeFlowItem.value?.hasUnsavedChanges) {
+    // 设置特殊的 pendingFlowId 标识这是一个新建操作
+    pendingFlowId.value = '__new__';
+    showSavePrompt.value = true;
+    return;
+  }
+  
+  doCreateFlow();
+}
+
+function doCreateFlow() {
   const newFlow: FlowItem = {
     id: '', // 应由后端或父级生成 UUID，这里暂时留空
     name: `Flow ${flows.value.length + 1}`,
@@ -84,10 +96,18 @@ function createFlow() {
     hasUnsavedChanges: false
   };
   emit('create', newFlow);
+  pendingFlowId.value = null;
+  showSavePrompt.value = false;
 }
 
 // 2. 选择 (包含未保存检查)
 function selectFlow(id: string) {
+  // 如果点击的是当前已选中的 Flow，直接返回
+  if (id === selectedFlowId.value) {
+    return;
+  }
+  
+  // 如果当前 Flow 有未保存的更改，提示用户
   if (activeFlowItem.value?.hasUnsavedChanges) {
     pendingFlowId.value = id;
     showSavePrompt.value = true;
@@ -120,7 +140,11 @@ function saveCurrentFlow() {
     emit('save', selectedFlowId.value, data);
   }
 
-  if (pendingFlowId.value) {
+  if (pendingFlowId.value === '__new__') {
+    // 新建操作
+    doCreateFlow();
+  } else if (pendingFlowId.value) {
+    // 切换操作
     doSelectFlow(pendingFlowId.value);
   } else {
     showSavePrompt.value = false;
@@ -128,7 +152,19 @@ function saveCurrentFlow() {
 }
 
 function discardAndSwitch() {
-  if (pendingFlowId.value) {
+  // 清除当前 Flow 的未保存标记
+  if (selectedFlowId.value) {
+    const current = flows.value.find(s => s.id === selectedFlowId.value);
+    if (current) {
+      current.hasUnsavedChanges = false;
+    }
+  }
+
+  if (pendingFlowId.value === '__new__') {
+    // 新建操作
+    doCreateFlow();
+  } else if (pendingFlowId.value) {
+    // 切换操作
     doSelectFlow(pendingFlowId.value);
   } else {
     showSavePrompt.value = false;
