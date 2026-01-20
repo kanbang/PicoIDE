@@ -1,13 +1,18 @@
 import asyncio
 import time
-from typing import Dict, List, Any, Optional, Union
+import uuid
 import logging
+from typing import Dict, List, Any, Optional, Union
+from pathlib import Path
 from flow.setting import settings
 from flow.log import logger
 from flow.collector import file_collector
 
-
+# ==================== Option Optimization ====================
 class Option:
+    # 使用 __slots__ 减少内存占用
+    __slots__ = ('name', 'type', 'value', 'items', 'min', 'max')
+
     def __init__(
         self,
         name: str,
@@ -25,17 +30,19 @@ class Option:
         self.max = max_val
 
     def to_dict(self) -> Dict[str, Any]:
-        """导出为符合前端渲染需求的字典格式"""
+        """优化后的字典导出逻辑"""
         d = {"name": self.name, "type": self.type}
 
         if self.type != "Button":
             d["value"] = self.value
 
+        # 2. 逻辑简化：直接根据类型映射属性
         if self.type == "Select" and self.items is not None:
             d["items"] = self.items
             d["properties"] = {"items": self.items}
-
-        if self.type in ["Integer", "Number", "Slider"]:
+        
+        # 统一处理数值范围
+        if self.type in ("Integer", "Number", "Slider"):
             if self.min is not None:
                 d["min"] = self.min
             if self.max is not None:
@@ -43,11 +50,12 @@ class Option:
 
         return d
 
-
+# ==================== Block Optimization ====================
 class Block:
     def __init__(self, name: str, category: str = None):
         self.name = name
         self.category = category
+        # 使用 slots 的话 inputs/outputs 也需要调整，这里为了扩展性暂保留 dict
         self._inputs: Dict[str, Any] = {}
         self._outputs: Dict[str, Any] = {}
         self._options: Dict[str, Option] = {}
@@ -62,102 +70,73 @@ class Block:
 
     # --- 基础接口 ---
     def add_input(self, name: str):
-        self._input_names.append(name)
-        self._inputs[name] = None
+        if name not in self._inputs: # 防止重复添加
+            self._input_names.append(name)
+            self._inputs[name] = None
 
     def add_output(self, name: str):
-        self._output_names.append(name)
-        self._outputs[name] = None
+        if name not in self._outputs:
+            self._output_names.append(name)
+            self._outputs[name] = None
 
-    # --- 专用 Option 添加函数 ---
-
+    # --- Option Helper Methods (保持原有API，内部逻辑微调) ---
     def add_button_option(self, name: str):
-        """按钮类型：无需 value"""
         self._options[name] = Option(name, "Button")
 
     def add_checkbox_option(self, name: str, default: bool = True):
-        """复选框类型"""
         self._options[name] = Option(name, "Checkbox", value=default)
 
-    def add_integer_option(
-        self, name: str, default: int = 0, min_val: int = None, max_val: int = None
-    ):
-        """整数类型：支持范围限制"""
-        self._options[name] = Option(
-            name, "Integer", value=int(default), min_val=min_val, max_val=max_val
-        )
+    def add_integer_option(self, name: str, default: int = 0, min_val: int = None, max_val: int = None):
+        self._options[name] = Option(name, "Integer", value=int(default), min_val=min_val, max_val=max_val)
 
-    def add_number_option(
-        self,
-        name: str,
-        default: float = 0.0,
-        min_val: float = None,
-        max_val: float = None,
-    ):
-        """浮点数类型：支持范围限制"""
-        self._options[name] = Option(
-            name, "Number", value=float(default), min_val=min_val, max_val=max_val
-        )
+    def add_number_option(self, name: str, default: float = 0.0, min_val: float = None, max_val: float = None):
+        self._options[name] = Option(name, "Number", value=float(default), min_val=min_val, max_val=max_val)
 
-    def add_slider_option(
-        self,
-        name: str,
-        default: float = 0.0,
-        min_val: float = 0.0,
-        max_val: float = 100.0,
-    ):
-        """滑块类型：通常必须有 min/max"""
-        self._options[name] = Option(
-            name, "Slider", value=default, min_val=min_val, max_val=max_val
-        )
+    def add_slider_option(self, name: str, default: float = 0.0, min_val: float = 0.0, max_val: float = 100.0):
+        self._options[name] = Option(name, "Slider", value=default, min_val=min_val, max_val=max_val)
 
     def add_select_option(self, name: str, items: List[str], default: str = None):
-        """下拉选择类型：必须提供选项列表"""
         val = default if default else (items[0] if items else None)
         self._options[name] = Option(name, "Select", value=val, items=items)
 
     def add_text_option(self, name: str, default: str = ""):
-        """展示文本类型（通常不可编辑）"""
         self._options[name] = Option(name, "Text", value=str(default))
 
     def add_text_input_option(self, name: str, default: str = ""):
-        """单行文本输入"""
         self._options[name] = Option(name, "TextInput", value=str(default))
 
     def add_textarea_input_option(self, name: str, default: str = ""):
-        """多行文本输入"""
         self._options[name] = Option(name, "TextareaInput", value=str(default))
 
-    # --- 数据访问与执行 (保持不变) ---
     def get_option(self, name: str) -> Any:
-        return self._options[name].value if name in self._options else None
+        opt = self._options.get(name)
+        return opt.value if opt else None
 
     def set_option(self, name: str, value: Any):
-        if name in self._options:
-            opt = self._options[name]
-            # 数值校验
-            if opt.type in ["Integer", "Number", "Slider"]:
-                if opt.min is not None:
-                    value = max(opt.min, value)
-                if opt.max is not None:
-                    value = min(opt.max, value)
-            opt.value = value
+        opt = self._options.get(name)
+        if not opt:
+            return
+            
+        # 3. 优化数值校验逻辑：使用 min/max 函数前先判断 None，避免 TypeError
+        if opt.type in ("Integer", "Number", "Slider"):
+            if opt.min is not None and value < opt.min:
+                value = opt.min
+            if opt.max is not None and value > opt.max:
+                value = opt.max
+        opt.value = value
 
     def reset(self):
-        """重置运行时状态，保持配置不变"""
-        # 清除输入
-        for key in self._inputs:
-            self._inputs[key] = None
-        # 清除输出
-        for key in self._outputs:
-            self._outputs[key] = None
-        # 如果有缓存的中间计算状态（如累计和、历史 buffer），也在这里清除
+        """重置运行时状态"""
+        # 使用 fromkeys 快速重置字典值
+        self._inputs = dict.fromkeys(self._inputs, None)
+        self._outputs = dict.fromkeys(self._outputs, None)
 
     def on_compute(self, execution_id: str = None):
+        """子类覆盖此方法"""
         pass
 
     async def async_on_compute(self, execution_id: str = None):
-        """异步执行接口：在线程池中执行同步的 on_compute"""
+        """异步执行接口"""
         await asyncio.to_thread(self.on_compute, execution_id)
 
     def export_config(self):
@@ -170,22 +149,8 @@ class Block:
         }
 
 
-
-
-# ==================== BaseBlock - 基础Block类 ====================
-
-
+# ==================== BaseBlock Optimization ====================
 class BaseBlock(Block):
-    """
-    所有Block的基类，提供通用功能
-
-    功能：
-    - 统一的错误处理
-    - 日志记录
-    - 数据验证
-    - 性能监控
-    """
-
     def __init__(self, name: str, category: str = "General"):
         super().__init__(name, category)
         self._logger = logging.getLogger(f"{logger.name}.{name}")
@@ -193,21 +158,19 @@ class BaseBlock(Block):
         self._error_count = 0
         self._last_compute_time = 0.0
 
-    def _log_compute_start(self) -> None:
-        """记录计算开始"""
+    def _log_compute_start(self, execution_id: str = ""):
         self._last_compute_time = time.time()
         self._compute_count += 1
-        self._logger.debug(f"开始计算 (第 {self._compute_count} 次)")
+        self._logger.debug(f"[{execution_id}] 开始计算 (第 {self._compute_count} 次)")
 
-    def _log_compute_end(self) -> None:
-        """记录计算结束"""
+    def _log_compute_end(self):
         elapsed = time.time() - self._last_compute_time
         self._logger.debug(f"计算完成，耗时: {elapsed:.3f}s")
 
-    def _log_error(self, error: Exception, context: str = "") -> None:
-        """记录错误"""
+    def _log_error(self, error: Exception, context: str = ""):
         self._error_count += 1
-        self._logger.error(f"错误 (第 {self._error_count} 次): {context} - {error}")
+        self._logger.error(f"错误 (第 {self._error_count} 次): {context} - {error}", exc_info=True)
+
 
     def _validate_input_data(self, data: Optional[Dict[str, Any]]) -> bool:
         """验证输入数据"""
@@ -218,12 +181,12 @@ class BaseBlock(Block):
             self._logger.warning("输入数据缺少 'data' 字段")
             return False
         return True
-
-    def safe_compute(self) -> bool:
-        """安全执行计算（带错误处理）"""
-        self._log_compute_start()
+    
+    def safe_compute(self, execution_id: str = None) -> bool:
+        """安全执行计算"""
+        self._log_compute_start(execution_id)
         try:
-            self.on_compute()
+            self.on_compute(execution_id=execution_id)
             self._log_compute_end()
             return True
         except Exception as e:
@@ -231,64 +194,41 @@ class BaseBlock(Block):
             return False
 
     def _register_output_file(
-            self,
-            execution_id: str,
-            filename: str,
-            description: Optional[str] = None,
-            metadata: Optional[Dict[str, Any]] = None,
-            enable_db: Optional[bool] = None
-        ) -> str:
-            """
-            注册输出文件到文件管理器
-    
-            Args:
-                execution_id: 执行ID
-                filename: 文件名
-                description: 描述
-                metadata: 元数据
-                enable_db: 是否写入数据库（None表示使用全局配置）
-    
-            Returns:
-                文件ID
-            """
-            if execution_id is None:
-                self._logger.warning("没有提供执行ID，无法注册文件")
-                return ""
-    
-            # 生成文件ID
-            import uuid
-            file_id = f"{execution_id}_{uuid.uuid4().hex[:8]}"
-    
-            # 构建完整文件路径
-            full_path = settings.OUTPUT_DIR / filename
-    
-            # 确保目录存在
-            full_path.parent.mkdir(parents=True, exist_ok=True)
-    
-            # 获取文件类型
-            file_type = settings.FILE_TYPE_MAP.get(  full_path.suffix.lower(), "unknown"   )
-    
-            # 确定是否启用数据库写入
-            if enable_db is None:
-                enable_db = settings.ENABLE_DB_WRITE    
-            # 创建文件信息字典（用于后续批量入库）
-            file_info = {
-                "file_id": file_id,
-                "execution_id": execution_id,
-                "filename": filename,
-                "file_path": str(full_path),
-                "file_type": file_type,
-                "file_size": 0,  # 文件大小在文件写入后更新
-                "block_name": self.name,
-                "block_id": str(id(self)),
-                "description": description,
-                "metadata": metadata or {},
-            }
-    
-            # 始终将文件信息添加到收集器（无论是否启用数据库）
-            file_collector.add_file(execution_id, file_info)
-    
-            return file_id
+        self,
+        execution_id: str,
+        filename: str,
+        file_path: Path, 
+        file_size: int,   
+        description: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        注册文件核心逻辑 (纯数据操作，不进行IO写入)
+        """
+        if not execution_id:
+            self._logger.warning("没有提供执行ID，无法注册文件")
+            return ""
+
+        # 使用更高效的 UUID 生成方式 (如果不需要极高的随机性，uuid4 足够，但 hex 切片操作没问题)
+        file_id = f"{execution_id}_{uuid.uuid4().hex[:8]}"
+        file_type = settings.FILE_TYPE_MAP.get(file_path.suffix.lower(), "unknown")
+        file_info = {
+            "file_id": file_id,
+            "execution_id": execution_id,
+            "filename": filename,
+            "file_path": str(file_path),
+            "file_type": file_type,
+            "file_size": file_size,  
+            "block_name": self.name,
+            "block_id": str(id(self)),
+            "description": description,
+            "metadata": metadata or {},
+        }
+
+        # 仅一次调用收集器
+        file_collector.add_file(execution_id, file_info)
+        return file_id
+
     def _write_file(
         self,
         execution_id: str,
@@ -296,56 +236,38 @@ class BaseBlock(Block):
         write_func: callable,
         description: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        enable_db: Optional[bool] = None
     ) -> str:
         """
-        通用文件写入方法
-
-        Args:
-            execution_id: 执行ID
-            filename: 文件名
-            write_func: 写入函数，接受文件路径作为参数
-            description: 描述
-            metadata: 元数据
-            enable_db: 是否写入数据库（None表示使用全局配置）
-
-        Returns:
-            文件ID
+        优化后的文件写入方法：写入 -> 获取大小 -> 注册
+        避免了 "注册后再去列表中查找并更新大小" 的低效操作
         """
         try:
-            # 使用统一的输出目录
             full_path = settings.OUTPUT_DIR / filename
-            # 确保输出目录存在
+            
+            # 5. IO 操作优化：确保目录存在 (exist_ok=True 性能通常很好，但如果目录层级深可缓存检查)
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # 调用写入函数
+            # 执行写入
             write_func(full_path)
 
-            # 确定是否启用数据库写入
-            if enable_db is None:
-                enable_db = settings.ENABLE_DB_WRITE
+            # 6. 立即获取文件大小
+            # 如果 write_func 是异步的或者有缓冲，这里需确保 flush/close
+            if full_path.exists():
+                file_size = full_path.stat().st_size
+            else:
+                file_size = 0
+                self._logger.warning(f"文件 {filename} 写入后未找到")
 
-            # 注册到文件管理器
-            file_id = self._register_output_file(
+            # 注册文件信息（携带正确的大小）
+            return self._register_output_file(
                 execution_id=execution_id,
                 filename=filename,
+                file_path=full_path,
+                file_size=file_size, # 关键优化：直接传入大小
                 description=description,
                 metadata=metadata,
-                enable_db=enable_db
             )
 
-            # 更新文件大小
-            if file_id and full_path.exists():
-                file_size = full_path.stat().st_size
-                # 更新收集器中的文件信息
-                files = file_collector.get_files(execution_id)
-                for f in files:
-                    if f["file_id"] == file_id:
-                        f["file_size"] = file_size
-                        break
-
-            return file_id
         except Exception as e:
-            self._log_error(e, "文件写入")
+            self._log_error(e, f"文件写入失败: {filename}")
             raise
-
