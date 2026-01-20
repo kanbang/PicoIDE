@@ -10,9 +10,9 @@ LastEditTime: 2026-01-13 08:26:48
 """
 Blocks 路由
 """
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import FileResponse
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Annotated
 from pathlib import Path
 import logging
 import time
@@ -22,6 +22,7 @@ from node.daq import daq_blocks
 from flow.demo_blocks import DEMO_BLOCKS
 
 from .schema import ExecuteRequest, ExecuteResponse, ExecuteSavedRequest
+from routes.dependencies import get_business
 from flow.run import create_execution_id, make_dynamic_engine, get_json_blocks, register_business_blocks, run_flow
 from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
@@ -30,11 +31,9 @@ from flow.output import output_file_manager
 from flow.collector import file_collector
 from flow.setting import settings
 
-
 logger = logging.getLogger(__name__)
 
 USER_ID = "default"
-
 
 router = APIRouter(prefix="/api/engine", tags=["engine"])
 
@@ -85,7 +84,7 @@ def collect_output_files(execution_id: str) -> List[Dict[str, Any]]:
 
 
 @router.get("/blocks")
-async def get_blocks():
+async def get_blocks(business: Annotated[str, Depends(get_business)]):
     """
     获取所有可用的 blocks 定义
     """
@@ -99,7 +98,10 @@ async def get_blocks():
 
 
 @router.post("/execute", response_model=ExecuteResponse)
-async def execute(request: ExecuteRequest):
+async def execute(
+    request: ExecuteRequest,
+    business: Annotated[str, Depends(get_business)]
+):
     """
     执行图计算（直接执行）
 
@@ -118,6 +120,8 @@ async def execute(request: ExecuteRequest):
         if not request.flow or not request.flow.graph:
             raise HTTPException(400, "flow.graph is required")
 
+        logger.info(f"Execute request - Business: {business}")
+
         flow = request.flow.graph
 
         # 1. 加载自定义脚本
@@ -125,18 +129,17 @@ async def execute(request: ExecuteRequest):
         scripts_db = await load_scripts_from_db("/")
         scripts.extend(scripts_db)
 
-
-        # 注册业务对应的 Block 模板，临时方案重新注册，后续按需注册
+        # 2. 注册业务对应的 Block 模板，临时方案重新注册，后续按需注册
         register_business_blocks("DEMO", daq_blocks, scripts)
 
-        # 2. 计算脚本哈希
+        # 3. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
         scripts_hash = calculate_scripts_hash(scripts)
 
-        # 3. 创建执行ID
+        # 4. 创建执行ID
         execution_id = create_execution_id()
 
-        # 4. 根据配置决定是否创建 Execution 记录
+        # 5. 根据配置决定是否创建 Execution 记录
         execution = None
         if settings.ENABLE_DB_WRITE:
             from db import Execution
@@ -216,7 +219,10 @@ async def execute(request: ExecuteRequest):
 
 
 @router.post("/execute-saved", response_model=ExecuteResponse)
-async def execute_saved(request: ExecuteSavedRequest):
+async def execute_saved(
+    request: ExecuteSavedRequest,
+    business: Annotated[str, Depends(get_business)]
+):
     """
     执行已保存的图
 
@@ -235,7 +241,7 @@ async def execute_saved(request: ExecuteSavedRequest):
     8. 返回结果
     """
     try:
-        logger.info(f"Execute From DB Request - Flow ID: {request.flow_id}, Scripts Path: {request.scripts_path}, Tag: {request.tag}")
+        logger.info(f"Execute From DB Request - Flow ID: {request.flow_id}, Scripts Path: {request.scripts_path}, Tag: {request.tag}, Business: {business}")
 
         # 1. 从数据库加载 graph
         flow_db = await get_flow(USER_ID, UUID(request.flow_id))
