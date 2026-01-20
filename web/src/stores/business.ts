@@ -14,9 +14,11 @@ export const useBusinessStore = defineStore('business', () => {
     business.value = savedBusiness;
   }
 
-  // 监听变化并保存到 localStorage
+  // 监听变化并保存到 localStorage，同时重新加载页面
   watch(business, (newValue) => {
     localStorage.setItem('global_business', newValue);
+    // 重新加载页面以应用新的业务类型
+    window.location.reload();
   });
 
   return {
