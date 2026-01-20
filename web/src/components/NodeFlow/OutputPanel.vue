@@ -199,7 +199,7 @@ async function handleDeleteExecution(executionId: string) {
     await deleteExecution(executionId);
 
     showSuccess('执行记录已删除');
-    
+
     // 刷新列表
     if (executionListRef.value) {
       await executionListRef.value.refresh();
@@ -264,28 +264,22 @@ defineExpose({
         <h3>输出中心</h3>
         <span class="file-count" v-if="activeTab === 'output' && outputFiles.length">{{ outputFiles.length }}</span>
       </div>
-      
+
       <!-- 标签页切换 -->
       <div class="tabs">
-        <button 
-          :class="['tab-btn', { active: activeTab === 'output' }]"
-          @click="activeTab = 'output'"
-        >
+        <button :class="['tab-btn', { active: activeTab === 'output' }]" @click="activeTab = 'output'">
           输出中心
         </button>
-        <button 
-          v-if="flowId"
-          :class="['tab-btn', { active: activeTab === 'history' }]"
-          @click="activeTab = 'history'"
-        >
+        <button v-if="flowId" :class="['tab-btn', { active: activeTab === 'history' }]" @click="activeTab = 'history'">
           历史记录
         </button>
       </div>
-      
+
       <div class="header-actions">
         <button v-if="activeTab === 'history'" @click="refreshHistory" class="action-btn" title="刷新历史">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
+            <path d="M23 4v6h-6" />
+            <path d="M1 20v-6h6" />
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
           </svg>
         </button>
@@ -298,14 +292,19 @@ defineExpose({
         <section v-if="executionStatus" class="status-banner" :class="executionStatus">
           <div class="banner-main">
             <div class="status-indicator">
-              <svg v-if="executionStatus === 'running'" class="spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+              <svg v-if="executionStatus === 'running'" class="spin" width="18" height="18" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor">
+                <path
+                  d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
               </svg>
-              <svg v-else-if="executionStatus === 'completed'" width="18" height="18" viewBox="0 0 24 24" stroke="currentColor">
+              <svg v-else-if="executionStatus === 'completed'" width="18" height="18" viewBox="0 0 24 24"
+                stroke="currentColor">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
               <svg v-else width="18" height="18" viewBox="0 0 24 24" stroke="currentColor">
-                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
             </div>
             <div class="status-info">
@@ -316,10 +315,10 @@ defineExpose({
         </section>
 
         <div class="notif-area" v-if="errors.length || warnings.length">
-          <div v-for="(err, i) in errors" :key="'e'+i" class="notif-item error">
+          <div v-for="(err, i) in errors" :key="'e' + i" class="notif-item error">
             <span class="dot"></span> {{ err }}
           </div>
-          <div v-for="(wrn, i) in warnings" :key="'w'+i" class="notif-item warning">
+          <div v-for="(wrn, i) in warnings" :key="'w' + i" class="notif-item warning">
             <span class="dot"></span> {{ wrn }}
           </div>
         </div>
@@ -328,13 +327,24 @@ defineExpose({
           <div v-for="file in outputFiles" :key="file.file_id" class="file-card" :class="file.file_type">
             <div class="card-icon" :data-type="file.file_type">
               <template v-if="file.file_type === 'html'">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                  <polyline points="15 3 21 3 21 9" />
+                  <line x1="10" y1="14" x2="21" y2="3" />
+                </svg>
               </template>
               <template v-else-if="file.file_type === 'csv'">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="16" y2="17" /></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <line x1="8" y1="13" x2="16" y2="13" />
+                  <line x1="8" y1="17" x2="16" y2="17" />
+                </svg>
               </template>
               <template v-else>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><polyline points="13 2 13 9 20 9" /></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                  <polyline points="13 2 13 9 20 9" />
+                </svg>
               </template>
             </div>
 
@@ -352,13 +362,24 @@ defineExpose({
 
             <div class="card-actions">
               <button v-if="file.can_open" @click="openFile(file)" class="icon-btn highlight" title="预览">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8-4 8-11 8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+
               </button>
               <button @click="downloadFile(file)" class="icon-btn" title="下载">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
               </button>
               <button @click="deleteFile(file)" class="icon-btn danger" title="移除">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                </svg>
               </button>
             </div>
           </div>
@@ -367,7 +388,14 @@ defineExpose({
         <div v-else class="empty-state">
           <div class="empty-illustration">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />
+              <line x1="7" y1="2" x2="7" y2="22" />
+              <line x1="17" y1="2" x2="17" y2="22" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <line x1="2" y1="7" x2="7" y2="7" />
+              <line x1="2" y1="17" x2="7" y2="17" />
+              <line x1="17" y1="17" x2="22" y2="17" />
+              <line x1="17" y1="7" x2="22" y2="7" />
             </svg>
           </div>
           <h4>暂无数据产生</h4>
@@ -377,19 +405,10 @@ defineExpose({
 
       <!-- 历史记录标签页 -->
       <div v-show="activeTab === 'history'">
-        <ExecutionList
-          ref="executionListRef"
-          v-if="!selectedExecution"
-          :flowId="flowId"
-          @select="selectExecution"
-          @delete="handleDeleteExecution"
-        />
-        <ExecutionDetail
-          v-else
-          :executionId="selectedExecution.execution_id"
-          :execution="selectedExecution"
-          @back="backToExecutionList"
-        />
+        <ExecutionList ref="executionListRef" v-if="!selectedExecution" :flowId="flowId" @select="selectExecution"
+          @delete="handleDeleteExecution" />
+        <ExecutionDetail v-else :executionId="selectedExecution.execution_id" :execution="selectedExecution"
+          @back="backToExecutionList" />
       </div>
     </div>
   </div>
@@ -426,7 +445,9 @@ defineExpose({
   gap: 10px;
 }
 
-.header-icon { color: #888; }
+.header-icon {
+  color: #888;
+}
 
 .panel-header h3 {
   margin: 0;
@@ -473,7 +494,10 @@ defineExpose({
   font-weight: 500;
 }
 
-.header-actions { display: flex; gap: 4px; }
+.header-actions {
+  display: flex;
+  gap: 4px;
+}
 
 .action-btn {
   background: transparent;
@@ -489,8 +513,15 @@ defineExpose({
   transition: all 0.2s;
 }
 
-.action-btn:hover { background: #37373d; color: #fff; }
-.action-btn.danger:hover { background: #902722; color: #fff; }
+.action-btn:hover {
+  background: #37373d;
+  color: #fff;
+}
+
+.action-btn.danger:hover {
+  background: #902722;
+  color: #fff;
+}
 
 /* 主体内容区 */
 .panel-body {
@@ -511,27 +542,59 @@ defineExpose({
   background: rgba(0, 122, 204, 0.15);
   border-color: #007acc;
 }
+
 .status-banner.completed {
   background: rgba(76, 175, 80, 0.1);
   border-color: #4caf50;
 }
+
 .status-banner.failed {
   background: rgba(244, 67, 54, 0.1);
   border-color: #f44336;
 }
 
-.banner-main { display: flex; align-items: center; gap: 12px; }
+.banner-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
-.status-info { display: flex; flex-direction: column; }
-.status-msg { font-size: 13px; font-weight: 500; color: #fff; }
-.status-time { font-size: 11px; opacity: 0.6; }
+.status-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.status-msg {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.status-time {
+  font-size: 11px;
+  opacity: 0.6;
+}
 
 /* 动画 */
-.spin { animation: spin 2s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.spin {
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 /* 错误警告通知 */
-.notif-area { margin-bottom: 16px; }
+.notif-area {
+  margin-bottom: 16px;
+}
+
 .notif-item {
   font-size: 12px;
   padding: 6px 10px;
@@ -541,9 +604,23 @@ defineExpose({
   align-items: center;
   gap: 8px;
 }
-.notif-item.error { background: rgba(244, 67, 54, 0.15); color: #f88070; }
-.notif-item.warning { background: rgba(255, 193, 7, 0.1); color: #ffd54f; }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+.notif-item.error {
+  background: rgba(244, 67, 54, 0.15);
+  color: #f88070;
+}
+
+.notif-item.warning {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffd54f;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
 
 /* 文件网格 */
 .file-grid {
@@ -568,7 +645,7 @@ defineExpose({
   background: #2d2d30;
   border-color: #444;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .card-icon {
@@ -582,14 +659,34 @@ defineExpose({
   color: #888;
 }
 
-.file-card.html .card-icon { color: #007acc; background: rgba(0,122,204,0.1); }
-.file-card.csv .card-icon { color: #4caf50; background: rgba(76,175,80,0.1); }
+.file-card.html .card-icon {
+  color: #007acc;
+  background: rgba(0, 122, 204, 0.1);
+}
 
-.card-icon svg { width: 20px; height: 20px; stroke-width: 1.5; }
+.file-card.csv .card-icon {
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.1);
+}
 
-.card-content { flex: 1; min-width: 0; }
+.card-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.5;
+}
 
-.name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
 .name {
   font-size: 13px;
   color: #e1e1e1;
@@ -622,7 +719,9 @@ defineExpose({
   transition: opacity 0.2s;
 }
 
-.file-card:hover .card-actions { opacity: 1; }
+.file-card:hover .card-actions {
+  opacity: 1;
+}
 
 .icon-btn {
   background: #333;
@@ -638,10 +737,24 @@ defineExpose({
   transition: all 0.2s;
 }
 
-.icon-btn:hover { background: #444; color: #fff; }
-.icon-btn.highlight { color: #007acc; }
-.icon-btn.highlight:hover { background: #007acc; color: #fff; }
-.icon-btn.danger:hover { background: #902722; color: #fff; }
+.icon-btn:hover {
+  background: #444;
+  color: #fff;
+}
+
+.icon-btn.highlight {
+  color: #007acc;
+}
+
+.icon-btn.highlight:hover {
+  background: #007acc;
+  color: #fff;
+}
+
+.icon-btn.danger:hover {
+  background: #902722;
+  color: #fff;
+}
 
 /* 空状态 */
 .empty-state {
@@ -660,12 +773,34 @@ defineExpose({
   opacity: 0.2;
 }
 
-.empty-state h4 { color: #888; margin: 0 0 8px 0; font-size: 16px; }
-.empty-state p { font-size: 12px; line-height: 1.6; max-width: 260px; }
+.empty-state h4 {
+  color: #888;
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
+.empty-state p {
+  font-size: 12px;
+  line-height: 1.6;
+  max-width: 260px;
+}
 
 /* 滚动条美化 */
-.panel-body::-webkit-scrollbar { width: 10px; }
-.panel-body::-webkit-scrollbar-track { background: transparent; }
-.panel-body::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; border: 3px solid #1e1e1e; }
-.panel-body::-webkit-scrollbar-thumb:hover { background: #444; }
+.panel-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.panel-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel-body::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
+  border: 3px solid #1e1e1e;
+}
+
+.panel-body::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
 </style>
