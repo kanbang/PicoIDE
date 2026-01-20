@@ -77,7 +77,7 @@ class FlowData(BaseModel):
 
 class ExecuteRequest(BaseModel):
     """执行请求模型"""
-
+    business: Optional[str] = None
     scripts: Optional[List[str]] = None
     flow: Optional[FlowData] = None
 

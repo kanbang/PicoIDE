@@ -18,6 +18,7 @@ import numpy as np
 from flow.output import output_file_manager
 from flow.collector import file_collector
 from flow.setting import settings
+import uuid
 
 def _build_blocks(scripts: List[str] = None) -> List[Block]:
     blocks = []
@@ -36,13 +37,12 @@ def _build_blocks(scripts: List[str] = None) -> List[Block]:
             # 2. 执行脚本
             exec(script, namespace)
 
-            # 3. 智能发现：遍历命名空间，找到所有 Block 的子类并实例化
+            # 3. 智能发现：遍历命名空间，找到所有 BaseBlock 的子类
             for name, obj in namespace.items():
-                # 排除 Block 基类本身，只找子类
+                # 排除 BaseBlock 基类本身，只找子类
                 if inspect.isclass(obj) and issubclass(obj, Block) and obj is not Block and obj is not BaseBlock:
-                    instance = obj()  # 实例化
-                    blocks.append(instance)
-                    print(f"成功动态加载节点: {instance.name}")
+                    blocks.append(obj)
+                    print(f"成功动态加载节点: {obj.NAME}")
 
         except Exception as e:
             print(f"❌ 执行脚本失败: {str(e)}")
@@ -62,35 +62,66 @@ def get_json_blocks(blocks: List[Block], scripts: List[str] = None):
     """获取所有 blocks 的 JSON 配置"""
     script_blocks = _build_blocks(scripts)
     script_blocks.extend(blocks)
-    return [b.export_config() for b in script_blocks]
+    return [b().export_config() for b in script_blocks]
 
 
 engine_manager = EngineManager(pool_size=5)
 
+
+def register_business_blocks(business: str, blocks: List[Block], scripts: List[str] = None):
+    """
+    注册业务对应的 Block 模板
+
+    Args:
+        business: 业务标识
+        blocks: Block 模板列表
+        scripts: 可选的脚本列表（动态定义 Block）
+    """
+    if scripts:
+        script_blocks = _build_blocks(scripts)
+        script_blocks.extend(blocks)
+    else:
+        script_blocks = blocks
+
+    engine_manager.register_business(business, script_blocks)
+
+
 # 注册业务：Demo（包含所有内置节点）
-engine_manager.register_business("DEMO", DEMO_BLOCKS)
+register_business_blocks("DEMO", DEMO_BLOCKS)
 
 
-async def run_flow(business_id: str, flow: dict, execution_id: str = None):
+def create_execution_id() -> str:
+    """
+    创建新的执行ID
+
+    Returns:
+        执行ID
+    """
+    execution_id = f"exec_{uuid.uuid4().hex[:8]}"
+    return execution_id
+
+
+async def run_flow(business: str, scripts: List[str], flow: dict, execution_id: str = None):
     """
     执行 flow
 
     Args:
-        business_id: 脚本列表
+        business: 业务标识
+        scripts: 脚本列表
         flow: flow 配置
         execution_id: 执行ID（用于文件追踪）
     """
 
     # 创建执行ID（如果未提供）
     if execution_id is None:
-        execution_id = output_file_manager.create_execution_id()
+        execution_id = create_execution_id()
 
     # 执行流程，传递 execution_id（使用异步执行）
     # async with await engine_manager.acquire("daq", flow) as engine:
     #     await engine.async_run(execution_id)
 
     # 使用同步执行版本
-    with engine_manager.acquire_sync(business_id, flow) as engine:
+    with engine_manager.acquire_sync(business, flow) as engine:
         engine.run(execution_id)
 
     # 执行完成后，批量将文件信息写入数据库

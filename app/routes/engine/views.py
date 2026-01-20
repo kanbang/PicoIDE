@@ -18,10 +18,11 @@ import logging
 import time
 from datetime import datetime
 
+from node.daq import daq_blocks
 from flow.demo_blocks import DEMO_BLOCKS
 
 from .schema import ExecuteRequest, ExecuteResponse, ExecuteSavedRequest
-from flow.run import make_dynamic_engine, get_json_blocks, run_flow
+from flow.run import create_execution_id, make_dynamic_engine, get_json_blocks, register_business_blocks, run_flow
 from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
 from uuid import UUID
@@ -91,7 +92,7 @@ async def get_blocks():
     try:
         # 从数据库加载自定义 blocks
         scripts = await load_scripts_from_db("/")
-        blocks = get_json_blocks(DEMO_BLOCKS, scripts)
+        blocks = get_json_blocks(daq_blocks, scripts)
         return {"blocks": blocks}
     except Exception as e:
         raise HTTPException(500, f"Failed to get blocks: {str(e)}")
@@ -124,12 +125,16 @@ async def execute(request: ExecuteRequest):
         scripts_db = await load_scripts_from_db("/")
         scripts.extend(scripts_db)
 
+
+        # 注册业务对应的 Block 模板，临时方案重新注册，后续按需注册
+        register_business_blocks("DEMO", daq_blocks, scripts)
+
         # 2. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
         scripts_hash = calculate_scripts_hash(scripts)
 
         # 3. 创建执行ID
-        execution_id = output_file_manager.create_execution_id()
+        execution_id = create_execution_id()
 
         # 4. 根据配置决定是否创建 Execution 记录
         execution = None
@@ -151,7 +156,7 @@ async def execute(request: ExecuteRequest):
 
         # 6. 执行 flow（传递 execution_id）
         try:
-            result = await run_flow(scripts, flow.model_dump(by_alias=True), execution_id)
+            result = await run_flow(request.business, scripts, flow.model_dump(by_alias=True), execution_id)
 
             # 收集输出文件
             # 根据配置决定从数据库还是收集器获取
@@ -248,6 +253,13 @@ async def execute_saved(request: ExecuteSavedRequest):
         scripts = await load_scripts_from_db(request.scripts_path)
         logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
 
+
+
+        # 注册业务对应的 Block 模板，临时方案重新注册，后续按需注册
+        # register_business_blocks("DEMO", DEMO_BLOCKS, scripts)
+        register_business_blocks("DEMO", daq_blocks, scripts)
+
+
         # 3. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
         scripts_hash = calculate_scripts_hash(scripts)
@@ -261,7 +273,7 @@ async def execute_saved(request: ExecuteSavedRequest):
             source = "tag"
         else:
             # 默认模式：生成新 ID
-            execution_id = output_file_manager.create_execution_id()
+            execution_id = create_execution_id()
             source = "saved"
 
         # 5. 根据配置决定是否创建 Execution 记录
@@ -286,7 +298,7 @@ async def execute_saved(request: ExecuteSavedRequest):
 
         # 7. 执行 flow（传递 execution_id）
         try:
-            result = await run_flow(scripts, graph, execution_id)
+            result = await run_flow("DEMO", scripts, graph, execution_id)
 
             # 收集输出文件
             # 根据配置决定从数据库还是收集器获取

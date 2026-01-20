@@ -8,10 +8,11 @@ from flow.setting import settings
 from flow.log import logger
 from flow.collector import file_collector
 
+
 # ==================== Option Optimization ====================
 class Option:
     # 使用 __slots__ 减少内存占用
-    __slots__ = ('name', 'type', 'value', 'items', 'min', 'max')
+    __slots__ = ("name", "type", "value", "items", "min", "max")
 
     def __init__(
         self,
@@ -40,7 +41,7 @@ class Option:
         if self.type == "Select" and self.items is not None:
             d["items"] = self.items
             d["properties"] = {"items": self.items}
-        
+
         # 统一处理数值范围
         if self.type in ("Integer", "Number", "Slider"):
             if self.min is not None:
@@ -50,11 +51,13 @@ class Option:
 
         return d
 
+
 # ==================== Block Optimization ====================
 class Block:
-    def __init__(self, name: str, category: str = None):
-        self.name = name
-        self.category = category
+    NAME = "Block"
+    CATEGORY = "General"
+
+    def __init__(self):
         # 使用 slots 的话 inputs/outputs 也需要调整，这里为了扩展性暂保留 dict
         self._inputs: Dict[str, Any] = {}
         self._outputs: Dict[str, Any] = {}
@@ -70,7 +73,7 @@ class Block:
 
     # --- 基础接口 ---
     def add_input(self, name: str):
-        if name not in self._inputs: # 防止重复添加
+        if name not in self._inputs:  # 防止重复添加
             self._input_names.append(name)
             self._inputs[name] = None
 
@@ -86,14 +89,34 @@ class Block:
     def add_checkbox_option(self, name: str, default: bool = True):
         self._options[name] = Option(name, "Checkbox", value=default)
 
-    def add_integer_option(self, name: str, default: int = 0, min_val: int = None, max_val: int = None):
-        self._options[name] = Option(name, "Integer", value=int(default), min_val=min_val, max_val=max_val)
+    def add_integer_option(
+        self, name: str, default: int = 0, min_val: int = None, max_val: int = None
+    ):
+        self._options[name] = Option(
+            name, "Integer", value=int(default), min_val=min_val, max_val=max_val
+        )
 
-    def add_number_option(self, name: str, default: float = 0.0, min_val: float = None, max_val: float = None):
-        self._options[name] = Option(name, "Number", value=float(default), min_val=min_val, max_val=max_val)
+    def add_number_option(
+        self,
+        name: str,
+        default: float = 0.0,
+        min_val: float = None,
+        max_val: float = None,
+    ):
+        self._options[name] = Option(
+            name, "Number", value=float(default), min_val=min_val, max_val=max_val
+        )
 
-    def add_slider_option(self, name: str, default: float = 0.0, min_val: float = 0.0, max_val: float = 100.0):
-        self._options[name] = Option(name, "Slider", value=default, min_val=min_val, max_val=max_val)
+    def add_slider_option(
+        self,
+        name: str,
+        default: float = 0.0,
+        min_val: float = 0.0,
+        max_val: float = 100.0,
+    ):
+        self._options[name] = Option(
+            name, "Slider", value=default, min_val=min_val, max_val=max_val
+        )
 
     def add_select_option(self, name: str, items: List[str], default: str = None):
         val = default if default else (items[0] if items else None)
@@ -116,7 +139,7 @@ class Block:
         opt = self._options.get(name)
         if not opt:
             return
-            
+
         # 3. 优化数值校验逻辑：使用 min/max 函数前先判断 None，避免 TypeError
         if opt.type in ("Integer", "Number", "Slider"):
             if opt.min is not None and value < opt.min:
@@ -141,8 +164,8 @@ class Block:
 
     def export_config(self):
         return {
-            "name": self.name,
-            "category": self.category,
+            "name": self.NAME,
+            "category": self.CATEGORY,
             "inputs": [{"name": n} for n in self._input_names],
             "outputs": [{"name": n} for n in self._output_names],
             "options": [opt.to_dict() for opt in self._options.values()],
@@ -151,10 +174,11 @@ class Block:
 
 # ==================== BaseBlock Optimization ====================
 
+
 class BaseBlock(Block):
-    def __init__(self, name: str, category: str = "General"):
-        super().__init__(name, category)
-        self._logger = logging.getLogger(f"{logger.name}.{name}")
+    def __init__(self):
+        super().__init__()
+        self._logger = logging.getLogger(f"{logger.name}.{self.NAME}")
         self._compute_count = 0
         self._error_count = 0
         self._last_compute_time = 0.0
@@ -170,7 +194,9 @@ class BaseBlock(Block):
 
     def _log_error(self, error: Exception, context: str = ""):
         self._error_count += 1
-        self._logger.error(f"错误 (第 {self._error_count} 次): {context} - {error}", exc_info=True)
+        self._logger.error(
+            f"错误 (第 {self._error_count} 次): {context} - {error}", exc_info=True
+        )
 
     def _validate_input_data(self, data: Optional[Dict[str, Any]]) -> bool:
         if data is None:
@@ -180,7 +206,7 @@ class BaseBlock(Block):
             self._logger.warning("输入数据缺少 'data' 字段")
             return False
         return True
-    
+
     def safe_compute(self, execution_id: str = None) -> bool:
         self._log_compute_start(execution_id)
         try:
@@ -190,7 +216,7 @@ class BaseBlock(Block):
         except Exception as e:
             self._log_error(e, "on_compute")
             return False
-        
+
     def _write_file(
         self,
         filename: str,
@@ -205,18 +231,20 @@ class BaseBlock(Block):
         try:
             # 1. 生成时间标记
             now = time.localtime()
-            date_dir = time.strftime("%Y%m%d", now)      # 文件夹名：20240520
-            timestamp = time.strftime("%H%M%S", now)    # 文件名时间戳：143005
-            unique_suffix = uuid.uuid4().hex[:8]        # 随机后缀
-            
+            date_dir = time.strftime("%Y%m%d", now)  # 文件夹名：20240520
+            timestamp = time.strftime("%H%M%S", now)  # 文件名时间戳：143005
+            unique_suffix = uuid.uuid4().hex[:8]  # 随机后缀
+
             # 2. 构建分级唯一路径
             path_obj = Path(filename)
-            unique_filename = f"{path_obj.stem}_{timestamp}_{unique_suffix}{path_obj.suffix}"
-            
+            unique_filename = (
+                f"{path_obj.stem}_{timestamp}_{unique_suffix}{path_obj.suffix}"
+            )
+
             # 核心变更：在 OUTPUT_DIR 下增加一层日期目录
             target_dir = settings.OUTPUT_DIR / date_dir
             full_path = target_dir / unique_filename
-            
+
             # 确保父级目录（包括日期目录）存在
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -238,20 +266,20 @@ class BaseBlock(Block):
                 "file_id": file_id,
                 "execution_id": execution_id,
                 "filename": filename,
-                "relative_path": f"{date_dir}/{unique_filename}", # 记录相对路径，方便迁移
+                "relative_path": f"{date_dir}/{unique_filename}",  # 记录相对路径，方便迁移
                 "file_path": str(full_path),
                 "file_type": file_type,
                 "file_size": file_size,
-                "block_name": self.name,
+                "block_name": self.NAME,
                 "block_id": str(id(self)),
                 "description": description or "Unique hierarchical output",
                 "metadata": metadata or {},
-                "original_name": filename
+                "original_name": filename,
             }
 
             # 6. 推送至收集器
             file_collector.add_file(execution_id, file_info)
-    
+
             return file_id
 
         except Exception as e:

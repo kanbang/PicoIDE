@@ -7,12 +7,11 @@ Demo Blocks Collection
 - 新 Block 开发模板
 
 依赖：
-- BaseBlock
+- BaseBlock（支持 NAME / CATEGORY 类属性）
 """
 
 import asyncio
 import json
-from typing import Any
 from pathlib import Path
 
 from flow.block import BaseBlock
@@ -25,8 +24,11 @@ from flow.block import BaseBlock
 class ConstantBlock(BaseBlock):
     """常量数据源"""
 
+    NAME = "Constant"
+    CATEGORY = "Demo/Source"
+
     def __init__(self):
-        super().__init__("Constant", category="Demo/Source")
+        super().__init__()
 
         self.add_output("value")
 
@@ -59,8 +61,11 @@ class ConstantBlock(BaseBlock):
 class AddBlock(BaseBlock):
     """加法"""
 
+    NAME = "Add"
+    CATEGORY = "Demo/Math"
+
     def __init__(self):
-        super().__init__("Add", category="Demo/Math")
+        super().__init__()
 
         self.add_input("a")
         self.add_input("b")
@@ -79,8 +84,11 @@ class AddBlock(BaseBlock):
 class NormalizeBlock(BaseBlock):
     """归一化"""
 
+    NAME = "Normalize"
+    CATEGORY = "Demo/Math"
+
     def __init__(self):
-        super().__init__("Normalize", category="Demo/Math")
+        super().__init__()
 
         self.add_input("value")
         self.add_output("out")
@@ -110,8 +118,11 @@ class NormalizeBlock(BaseBlock):
 class CompareBlock(BaseBlock):
     """比较运算"""
 
+    NAME = "Compare"
+    CATEGORY = "Demo/Logic"
+
     def __init__(self):
-        super().__init__("Compare", category="Demo/Logic")
+        super().__init__()
 
         self.add_input("a")
         self.add_input("b")
@@ -151,8 +162,11 @@ class CompareBlock(BaseBlock):
 class GateBlock(BaseBlock):
     """数据门（enable=True 才通过）"""
 
+    NAME = "Gate"
+    CATEGORY = "Demo/Flow"
+
     def __init__(self):
-        super().__init__("Gate", category="Demo/Flow")
+        super().__init__()
 
         self.add_input("data")
         self.add_input("enable")
@@ -173,8 +187,11 @@ class GateBlock(BaseBlock):
 class DelayBlock(BaseBlock):
     """异步延迟"""
 
+    NAME = "Delay"
+    CATEGORY = "Demo/IO"
+
     def __init__(self):
-        super().__init__("Delay", category="Demo/IO")
+        super().__init__()
 
         self.add_input("data")
         self.add_output("out")
@@ -195,8 +212,11 @@ class DelayBlock(BaseBlock):
 class FileSinkBlock(BaseBlock):
     """文本文件输出"""
 
+    NAME = "FileSink"
+    CATEGORY = "Demo/IO"
+
     def __init__(self):
-        super().__init__("FileSink", category="Demo/IO")
+        super().__init__()
 
         self.add_input("data")
         self.add_text_input_option("filename", "output.txt")
@@ -223,8 +243,11 @@ class FileSinkBlock(BaseBlock):
 class JsonExportBlock(BaseBlock):
     """JSON 文件输出"""
 
+    NAME = "JSONExport"
+    CATEGORY = "Demo/IO"
+
     def __init__(self):
-        super().__init__("JSONExport", category="Demo/IO")
+        super().__init__()
 
         self.add_input("data")
         self.add_text_input_option("filename", "data.json")
@@ -255,8 +278,11 @@ class JsonExportBlock(BaseBlock):
 class LoggerBlock(BaseBlock):
     """日志输出"""
 
+    NAME = "Logger"
+    CATEGORY = "Demo/Debug"
+
     def __init__(self):
-        super().__init__("Logger", category="Demo/Debug")
+        super().__init__()
 
         self.add_input("data")
         self.add_checkbox_option("print", True)
@@ -273,8 +299,11 @@ class LoggerBlock(BaseBlock):
 class CounterBlock(BaseBlock):
     """状态计数器"""
 
+    NAME = "Counter"
+    CATEGORY = "Demo/Debug"
+
     def __init__(self):
-        super().__init__("Counter", category="Demo/Debug")
+        super().__init__()
 
         self.add_input("tick")
         self.add_output("count")
@@ -292,8 +321,11 @@ class CounterBlock(BaseBlock):
 class InspectorBlock(BaseBlock):
     """数据探针"""
 
+    NAME = "Inspector"
+    CATEGORY = "Demo/Debug"
+
     def __init__(self):
-        super().__init__("Inspector", category="Demo/Debug")
+        super().__init__()
 
         self.add_input("data")
         self.add_output("type")
@@ -309,7 +341,7 @@ class InspectorBlock(BaseBlock):
 
 
 # =========================================================
-# 可选：统一导出（用于自动注册）
+# 统一导出（用于自动注册）
 # =========================================================
 
 DEMO_BLOCKS = [

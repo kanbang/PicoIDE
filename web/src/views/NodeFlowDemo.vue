@@ -29,8 +29,8 @@ function loadFromStorage(): void {
   if (savedSchema) {
     try {
       const flow = JSON.parse(savedSchema);
-      // 调用 NodeFlow 暴露的 loadSchema 方法
-      nodeFlowRef.value?.loadSchema(flow);
+      // 调用 NodeFlow 暴露的 loadFlow 方法
+      nodeFlowRef.value?.loadFlow(flow);
     } catch (e) {
       console.error('解析本地存储失败:', e);
     }

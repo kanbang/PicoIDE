@@ -68,16 +68,6 @@ class OutputFileManager:
         """获取单例实例"""
         return cls()
 
-    def create_execution_id(self) -> str:
-        """
-        创建新的执行ID
-
-        Returns:
-            执行ID
-        """
-        execution_id = f"exec_{uuid.uuid4().hex[:8]}"
-        logger.info(f"创建执行ID: {execution_id}")
-        return execution_id
 
     async def register_file(
         self,

@@ -565,9 +565,10 @@ class ChannelSource(BaseBlock):
     输入：无
     输出：通道信号数据
     """
-
+    NAME = "ChannelSource"
+    CATEGORY = "输入"
     def __init__(self):
-        super().__init__("ChannelSource", category="输入")
+        super().__init__()
         self.add_output("O-List-XY")
         self.add_checkbox_option("启用", default=True)
         self.add_select_option(
@@ -610,9 +611,10 @@ class TurbineSimulator(BaseBlock):
     - 采用脉冲差分算法，使平均转速能够追踪瞬时趋势
     - 模拟径向振动与叶片通过频率 (BPF)
     """
-
+    NAME = "TurbineSimulator"
+    CATEGORY = "输入"
     def __init__(self):
-        super().__init__("TurbineSimulator", category="输入")
+        super().__init__()
 
         # --- 基础运行参数 ---
         self.add_number_option("额定转速 (RPM)", default=1500.0, min_val=0.0)
@@ -854,9 +856,10 @@ class CSVReader(BaseBlock):
     - 指定列名读取
     - 数据验证
     """
-
+    NAME = "CSVReader"
+    CATEGORY = "输入"
     def __init__(self):
-        super().__init__("CSVReader", category="输入")
+        super().__init__()
         self.add_text_input_option("文件路径", default="data.csv")
         self.add_text_input_option("X列名 (可选)", default="")
         self.add_text_input_option("Y列名 (可选)", default="")
@@ -927,9 +930,10 @@ class CSVReader(BaseBlock):
 
 class ConstantSource(BaseBlock):
     """输出常量值（用于测试或参数注入）"""
-
+    NAME = "ConstantSource"
+    CATEGORY = "输入"
     def __init__(self):
-        super().__init__("ConstantSource", category="输入")
+        super().__init__()
         self.add_text_input_option("常量值", default="0.0")
         self.add_output("O-Value")
 
@@ -960,9 +964,10 @@ class XYSplitter(BaseBlock):
     输入：XY信号
     输出：X向量、Y向量
     """
-
+    NAME = "XYSplitter"
+    CATEGORY = "预处理"
     def __init__(self):
-        super().__init__("XYSplitter", category="预处理")
+        super().__init__()
         self.add_input("I-List-XY")
         self.add_output("O-List-X")
         self.add_output("O-List-Y")
@@ -1001,9 +1006,10 @@ class XYMerger(BaseBlock):
     输入：X向量、Y向量
     输出：XY信号
     """
-
+    NAME = "XYMerger"
+    CATEGORY = "预处理"
     def __init__(self):
-        super().__init__("XYMerger", category="预处理")
+        super().__init__()
         self.add_input("I-List-X")
         self.add_input("I-List-Y")
         self.add_output("O-List-XY")
@@ -1067,9 +1073,10 @@ class TimeWindow(BaseBlock):
 
     不负责：FFT
     """
-
+    NAME = "TimeWindow"
+    CATEGORY = "信号处理"
     def __init__(self):
-        super().__init__("TimeWindow", category="信号处理")
+        super().__init__()
 
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
@@ -1204,9 +1211,10 @@ class SignalFilter(BaseBlock):
     - bandpass: 带通
     - bandstop: 带阻
     """
-
+    NAME = "SignalFilter"
+    CATEGORY = "信号处理"
     def __init__(self):
-        super().__init__("SignalFilter", category="信号处理")
+        super().__init__()
 
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
@@ -1290,9 +1298,10 @@ class EnvelopeDetector(BaseBlock):
     - 计算解析信号
     - 提取包络
     """
-
+    NAME = "EnvelopeDetector"
+    CATEGORY = "信号处理"
     def __init__(self):
-        super().__init__("EnvelopeDetector", category="信号处理")
+        super().__init__()
 
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
@@ -1348,9 +1357,10 @@ class FFT(BaseBlock):
     输入：时域信号（建议已分段）
     输出：频域信号
     """
-
+    NAME = "FFT"
+    CATEGORY = "分析"
     def __init__(self):
-        super().__init__("FFT", category="分析")
+        super().__init__()
 
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
@@ -1433,9 +1443,10 @@ class SpectralAverager(BaseBlock):
     输入：频谱列表
     输出：平均频谱
     """
-
+    NAME = "SpectralAverager"
+    CATEGORY = "分析"
     def __init__(self):
-        super().__init__("SpectralAverager", category="分析")
+        super().__init__()
 
         self.add_input("I-Spectrum-List")
         self.add_output("O-Spectrum")
@@ -1501,9 +1512,10 @@ class Stats(BaseBlock):
     - 最小值、最大值
     - 数据点数
     """
-
+    NAME = "Stats"
+    CATEGORY = "分析"
     def __init__(self):
-        super().__init__("Stats", category="分析")
+        super().__init__()
 
         self.add_input("I-List-XY")
         self.add_output("O-Dict")
@@ -1556,9 +1568,10 @@ class TachoToRPM(BaseBlock):
 
     输出：每转/多转平均转速（非瞬时量）
     """
-
+    NAME = "TachoToRPM"
+    CATEGORY = "阶次分析"
     def __init__(self):
-        super().__init__("TachoToRPM", category="阶次分析")
+        super().__init__()
 
         self.add_input("I-Pulse-XY")
         self.add_output("O-RPM-XY")
@@ -1642,9 +1655,10 @@ class AngularResampler(BaseBlock):
     输入：振动信号、键相脉冲
     输出：角域信号
     """
-
+    NAME = "AngularResampler"
+    CATEGORY = "阶次分析"
     def __init__(self):
-        super().__init__("AngularResampler", category="阶次分析")
+        super().__init__()
 
         self.add_input("I-Vibration-XY")
         self.add_input("I-Pulse-XY")
@@ -1769,9 +1783,10 @@ class RPMTrackedFFT(BaseBlock):
     输入：振动信号、转速信号
     输出：阶次谱
     """
-
+    NAME = "RPMTrackedFFT"
+    CATEGORY = "阶次分析"
     def __init__(self):
-        super().__init__("RPMTrackedFFT", category="阶次分析")
+        super().__init__()
 
         self.add_input("I-Signal-XY")
         self.add_input("I-Speed-XY")
@@ -1870,8 +1885,10 @@ class OrderMap(BaseBlock):
     - 工程上可用于汽轮机 / 长轴系
     """
 
+    NAME = "OrderMap"
+    CATEGORY = "阶次分析"
     def __init__(self):
-        super().__init__("OrderMap", category="阶次分析")
+        super().__init__()
 
         self.add_input("I-Signal-XY")   # 振动信号（时间域）
         self.add_input("I-Speed-XY")    # 转速信号（RPM）
@@ -2017,9 +2034,10 @@ class ResultSink(BaseBlock):
     - 将数据送入AdlinkBridge供前端显示
     - 支持时域、频域、其他类型分类
     """
-
+    NAME = "ResultSink"
+    CATEGORY = "输出"
     def __init__(self):
-        super().__init__("ResultSink", category="输出")
+        super().__init__()
 
         self.add_input("List-XY")
         self.add_select_option("类型", items=["时域", "频域", "FREE"], default="时域")
@@ -2063,9 +2081,10 @@ class CSVSink(BaseBlock):
     - 支持追加模式
     - 支持表头控制
     """
-
+    NAME = "CSVSink"
+    CATEGORY = "输出"
     def __init__(self):
-        super().__init__("CSVSink", category="输出")
+        super().__init__()
 
         self.add_input("I-List-XY")
         self.add_text_input_option("文件路径", default="output.csv")
@@ -2124,20 +2143,21 @@ class BaseChartViewer(BaseBlock):
     - 支持多种图表类型
     - 可配置样式和交互
     """
-
-    def __init__(self, name: str, category: str = "输出", default_type: str = "line"):
-        super().__init__(name, category=category)
+    NAME = "BaseChartViewer"
+    CATEGORY = "输出"
+    def __init__(self, default_type: str = "line"):
+        super().__init__()
 
         self.add_input("I-List-XY")
         
         # 使用统一的输出目录
-        default_filename = f"{name.lower().replace('viewer', '')}_chart.html"
+        default_filename = f"{self.NAME.lower().replace('viewer', '')}_chart.html"
         self.add_text_input_option(
             "文件路径",
             default=default_filename
         )
         self.add_text_input_option(
-            "标题", default=f"{name.replace('Viewer', '')} Chart"
+            "标题", default=f"{self.NAME.replace('Viewer', '')} Chart"
         )
         self.add_integer_option("宽度 (px)", default=1200, min_val=800, max_val=2000)
         self.add_integer_option("高度 (px)", default=700, min_val=500, max_val=1200)
@@ -2395,9 +2415,10 @@ plugins: {{
 
 class LineChartViewer(BaseChartViewer):
     """交互式折线图查看器"""
-
+    NAME = "LineChartViewer"
+    CATEGORY = "输出"
     def __init__(self):
-        super().__init__("LineChartViewer", default_type="line")
+        super().__init__(default_type="line")
 
     def on_compute(self, execution_id: str = None):
         self._generate_chart(execution_id)
@@ -2406,8 +2427,10 @@ class LineChartViewer(BaseChartViewer):
 class BarChartViewer(BaseChartViewer):
     """交互式柱状图查看器"""
 
+    NAME = "BarChartViewer"
+    CATEGORY = "输出"
     def __init__(self):
-        super().__init__("BarChartViewer", default_type="bar")
+        super().__init__(default_type="bar")
 
     def on_compute(self, execution_id: str = None):
         self._generate_chart(execution_id)
@@ -2416,8 +2439,10 @@ class BarChartViewer(BaseChartViewer):
 class ScatterChartViewer(BaseChartViewer):
     """交互式散点图查看器"""
 
+    NAME = "ScatterChartViewer"
+    CATEGORY = "输出"
     def __init__(self):
-        super().__init__("ScatterChartViewer", default_type="scatter")
+        super().__init__(default_type="scatter")
 
     def on_compute(self, execution_id: str = None):
         self._generate_chart(execution_id)
@@ -2443,9 +2468,10 @@ class TrajectoryChartViewer(BaseBlock):
     - 李萨如图形
     - 任意X-Y轨迹显示
     """
-
+    NAME = "TrajectoryChartViewer"
+    CATEGORY = "输出"
     def __init__(self):
-        super().__init__("TrajectoryChartViewer", category="输出")
+        super().__init__()
 
         self.add_input("I-List-X")
         self.add_input("I-List-Y")
@@ -2762,8 +2788,10 @@ class OrderMapChartViewer(BaseBlock):
     - 支持交互式缩放和旋转
     """
 
+    NAME = "OrderMapChartViewer"
+    CATEGORY = "输出"
     def __init__(self):
-        super().__init__("OrderMapChartViewer", category="输出")
+        super().__init__()
 
         self.add_input("I-OrderMap")
         self.add_text_input_option("文件路径", default="order_map_chart.html")
@@ -3033,8 +3061,10 @@ class MQTTPublisher(BaseBlock):
     - 发布数据到指定主题
     """
 
+    NAME = "MQTTPublisher"
+    CATEGORY = "通信"
     def __init__(self):
-        super().__init__("MQTTPublisher", category="通信")
+        super().__init__()
 
         self.add_input("I-Any")
         self.add_text_input_option("Broker地址", default="broker.hivemq.com")
@@ -3084,8 +3114,10 @@ class Logger(BaseBlock):
     - 支持自定义前缀
     """
 
+    NAME = "Logger"
+    CATEGORY = "工具"
     def __init__(self):
-        super().__init__("Logger", category="工具")
+        super().__init__()
 
         self.add_input("I-Any")
         self.add_text_input_option("前缀", default="LOG:")
@@ -3106,40 +3138,40 @@ class Logger(BaseBlock):
 
 daq_blocks = [
     # Source
-    ChannelSource(),
-    TurbineSimulator(),
-    CSVReader(),
-    ConstantSource(),
+    ChannelSource,
+    TurbineSimulator,
+    CSVReader,
+    ConstantSource,
     # Conversion
-    XYSplitter(),
-    XYMerger(),
+    XYSplitter,
+    XYMerger,
     # Processing
-    SignalFilter(),
-    EnvelopeDetector(),
-    TimeWindow(),
+    SignalFilter,
+    EnvelopeDetector,
+    TimeWindow,
     # Transform
-    FFT(),
+    FFT,
     # Analysis
-    SpectralAverager(),
-    Stats(),
+    SpectralAverager,
+    Stats,
     # Order Analysis
-    RPMTrackedFFT(),
-    OrderMap(),
-    TachoToRPM(),
-    AngularResampler(),
+    RPMTrackedFFT,
+    OrderMap,
+    TachoToRPM,
+    AngularResampler,
     # Sink
-    ResultSink(),
-    CSVSink(),
+    ResultSink,
+    CSVSink,
     # Chart Viewers
-    LineChartViewer(),
-    BarChartViewer(),
-    ScatterChartViewer(),
-    TrajectoryChartViewer(),
-    OrderMapChartViewer(),
+    LineChartViewer,
+    BarChartViewer,
+    ScatterChartViewer,
+    TrajectoryChartViewer,
+    OrderMapChartViewer,
     # Communication
-    MQTTPublisher(),
+    MQTTPublisher,
     # Debug
-    Logger(),
+    Logger,
 ]
 
 
