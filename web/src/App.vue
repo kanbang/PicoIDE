@@ -43,8 +43,8 @@ function switchTab(tab: 'single' | 'manager' | 'tinycode') {
       <div class="business-selector">
         <label for="business-select">业务:</label>
         <select id="business-select" v-model="businessStore.business">
-          <option value="daq">DEMO</option>
-          <option value="other">WAVE</option>
+          <option value="DEMO">DEMO</option>
+          <option value="WAVE">WAVE</option>
         </select>
       </div>
     </div>

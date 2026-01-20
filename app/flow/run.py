@@ -68,7 +68,7 @@ def get_json_blocks(blocks: List[Block], scripts: List[str] = None):
 engine_manager = EngineManager(pool_size=5)
 
 
-def register_business_blocks(business: str, blocks: List[Block], scripts: List[str] = None):
+def register_business(business: str, blocks: List[Block], scripts: List[str] = None):
     """
     注册业务对应的 Block 模板
 
@@ -87,8 +87,7 @@ def register_business_blocks(business: str, blocks: List[Block], scripts: List[s
 
 
 # 注册业务：Demo（包含所有内置节点）
-register_business_blocks("DEMO", DEMO_BLOCKS)
-
+register_business("DEMO", DEMO_BLOCKS)
 
 def create_execution_id() -> str:
     """
@@ -101,7 +100,7 @@ def create_execution_id() -> str:
     return execution_id
 
 
-async def run_flow(business: str, scripts: List[str], flow: dict, execution_id: str = None):
+async def run_business(business: str, flow: dict, execution_id: str = None):
     """
     执行 flow
 

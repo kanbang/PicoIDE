@@ -3136,7 +3136,7 @@ class Logger(BaseBlock):
 
 # ==================== 注册列表 ====================
 
-daq_blocks = [
+DAQ_BLOCKS = [
     # Source
     ChannelSource,
     TurbineSimulator,
@@ -3175,19 +3175,3 @@ daq_blocks = [
 ]
 
 
-# ==================== 导出接口 ====================
-
-__all__ = [
-    "DAQConfig",
-    "SignalMetadata",
-    "SignalData",
-    "DomainType",
-    "DataType",
-    "DAQError",
-    "DataValidationError",
-    "ProcessingError",
-    "ConfigError",
-    "AdlinkBridge",
-    "BaseBlock",
-    "daq_blocks",
-]

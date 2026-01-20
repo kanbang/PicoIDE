@@ -18,12 +18,13 @@ import logging
 import time
 from datetime import datetime
 
-from node.daq import daq_blocks
+from node.daq import DAQ_BLOCKS
 from flow.demo_blocks import DEMO_BLOCKS
 
 from .schema import ExecuteRequest, ExecuteResponse, ExecuteSavedRequest
 from routes.dependencies import get_business
-from flow.run import create_execution_id, make_dynamic_engine, get_json_blocks, register_business_blocks, run_flow
+from .blocks_manager import blocks_manager
+from flow.run import create_execution_id, make_dynamic_engine, get_json_blocks, register_business, run_business
 from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
 from uuid import UUID
@@ -84,16 +85,30 @@ def collect_output_files(execution_id: str) -> List[Dict[str, Any]]:
 
 
 @router.get("/blocks")
-async def get_blocks(business: Annotated[str, Depends(get_business)]):
+async def get_blocks_endpoint(business: Annotated[str, Depends(get_business)]):
     """
-    获取所有可用的 blocks 定义
+    获取指定业务类型的 blocks 定义
+
+    根据请求头中的 X-Business 参数返回对应的 Block 模板
     """
     try:
-        # 从数据库加载自定义 blocks
+        # 从业务管理器获取对应的 blocks
+        blocks = blocks_manager.get_blocks(business)
+        
+        # 加载自定义脚本
         scripts = await load_scripts_from_db("/")
-        blocks = get_json_blocks(daq_blocks, scripts)
-        return {"blocks": blocks}
+        
+        # 合并自定义 blocks
+        json_blocks = get_json_blocks(blocks, scripts)
+        
+        logger.info(f"获取 blocks - Business: {business}, Blocks: {len(json_blocks)}")
+        
+        return {"blocks": json_blocks}
+    except KeyError as e:
+        logger.error(f"业务类型不存在: {business} - {str(e)}")
+        raise HTTPException(404, f"业务类型 '{business}' 不存在，可用类型: {blocks_manager.list_businesses()}")
     except Exception as e:
+        logger.error(f"获取 blocks 失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Failed to get blocks: {str(e)}")
 
 
@@ -129,17 +144,20 @@ async def execute(
         scripts_db = await load_scripts_from_db("/")
         scripts.extend(scripts_db)
 
-        # 2. 注册业务对应的 Block 模板，临时方案重新注册，后续按需注册
-        register_business_blocks("DEMO", daq_blocks, scripts)
+        # 2. 从业务管理器获取对应的 blocks
+        blocks = blocks_manager.get_blocks(business)
+        
+        # 3. 注册业务对应的 Block 模板
+        register_business(business.upper(), blocks, scripts)
 
-        # 3. 计算脚本哈希
+        # 4. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
         scripts_hash = calculate_scripts_hash(scripts)
 
-        # 4. 创建执行ID
+        # 5. 创建执行ID
         execution_id = create_execution_id()
 
-        # 5. 根据配置决定是否创建 Execution 记录
+        # 6. 根据配置决定是否创建 Execution 记录
         execution = None
         if settings.ENABLE_DB_WRITE:
             from db import Execution
@@ -154,12 +172,12 @@ async def execute(
                 total_nodes=len(flow.nodes),
             )
 
-        # 5. 记录执行开始时间
+        # 7. 记录执行开始时间
         start_time = time.time()
 
-        # 6. 执行 flow（传递 execution_id）
+        # 8. 执行 flow（传递 execution_id 和 business）
         try:
-            result = await run_flow(request.business, scripts, flow.model_dump(by_alias=True), execution_id)
+            result = await run_business(business.upper(), flow.model_dump(by_alias=True), execution_id)
 
             # 收集输出文件
             # 根据配置决定从数据库还是收集器获取
@@ -178,7 +196,7 @@ async def execute(
                 execution.result = str(result)[:1000] if result else None
                 await execution.save()
 
-            # 构建响应
+            # 9. 构建响应
             response = {
                 "ok": True,
                 "result": result,
@@ -259,18 +277,18 @@ async def execute_saved(
         scripts = await load_scripts_from_db(request.scripts_path)
         logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
 
+        # 3. 从业务管理器获取对应的 blocks
+        blocks = blocks_manager.get_blocks(business)
 
+        # 4. 注册业务对应的 Block 模板
+        # !!! 测试方案，重新注册，后续按需注册
+        register_business(business.upper(), blocks, scripts)
 
-        # 注册业务对应的 Block 模板，临时方案重新注册，后续按需注册
-        # register_business_blocks("DEMO", DEMO_BLOCKS, scripts)
-        register_business_blocks("DEMO", daq_blocks, scripts)
-
-
-        # 3. 计算脚本哈希
+        # 5. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
         scripts_hash = calculate_scripts_hash(scripts)
 
-        # 4. 确定 execution_id 和清理策略
+        # 6. 确定 execution_id 和清理策略
         if request.tag:
             # Tag 模式：清理旧数据
             if settings.ENABLE_DB_WRITE:
@@ -282,7 +300,7 @@ async def execute_saved(
             execution_id = create_execution_id()
             source = "saved"
 
-        # 5. 根据配置决定是否创建 Execution 记录
+        # 7. 根据配置决定是否创建 Execution 记录
         execution = None
         if settings.ENABLE_DB_WRITE:
             from db import Execution
@@ -299,12 +317,12 @@ async def execute_saved(
                 total_nodes=len(graph.get("nodes", [])),
             )
 
-        # 6. 记录执行开始时间
+        # 8. 记录执行开始时间
         start_time = time.time()
 
-        # 7. 执行 flow（传递 execution_id）
+        # 9. 执行 flow（传递 execution_id 和 business）
         try:
-            result = await run_flow("DEMO", scripts, graph, execution_id)
+            result = await run_business(business.upper(), graph, execution_id)
 
             # 收集输出文件
             # 根据配置决定从数据库还是收集器获取
@@ -323,7 +341,7 @@ async def execute_saved(
                 execution.result = str(result)[:1000] if result else None
                 await execution.save()
 
-            # 8. 构建响应
+            # 11. 构建响应
             response = {
                 "ok": True,
                 "result": result,
