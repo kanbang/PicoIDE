@@ -666,48 +666,6 @@ class BaseBlock(Block):
             return False
         return True
 
-    def _extract_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        智能提取数据，支持多种格式
-
-        Args:
-            data: 输入数据字典
-
-        Returns:
-            提取的数据字典
-        """
-        # 格式1: SignalData格式 {"type": "time", "data": {...}}
-        if "data" in data and isinstance(data["data"], dict):
-            return data["data"]
-
-        # 格式2: 直接包含x和y的旧格式 {"x": [...], "y": [...]}
-        if "x" in data or "y" in data:
-            return data
-
-        # 格式3: 其他格式，直接返回
-        return data
-
-    def _get_xy_data(self, data: Dict[str, Any]) -> Tuple[List[float], List[float]]:
-        """
-        获取XY数据，支持多种格式
-
-        Args:
-            data: 输入数据字典
-
-        Returns:
-            (x, y) 元组
-        """
-        extracted = self._extract_data(data)
-
-        x = extracted.get("x", [])
-        y = extracted.get("y", [])
-
-        # 如果x为空但y不为空，生成索引作为x
-        if not x and y:
-            x = list(range(len(y)))
-
-        return x, y
-
     def safe_compute(self) -> bool:
         """安全执行计算（带错误处理）"""
         self._log_compute_start()
@@ -1270,8 +1228,14 @@ class XYSplitter(BaseBlock):
             if not self._validate_input_data(data_packet):
                 return
 
-            # 使用辅助方法提取数据
-            x_data, y_data = self._get_xy_data(data_packet)
+            # 直接从SignalData格式中提取数据
+            inner = data_packet.get("data", {})
+            x_data = inner.get("x", [])
+            y_data = inner.get("y", [])
+
+            # 如果x为空但y不为空，生成索引作为x
+            if not x_data and y_data:
+                x_data = list(range(len(y_data)))
 
             self.set_interface("O-List-X", {"type": "list1d", "data": x_data})
             self.set_interface("O-List-Y", {"type": "list1d", "data": y_data})
@@ -2325,9 +2289,8 @@ class ResultSink(BaseBlock):
             t = self.get_option("类型")
             name = self.get_option("名称")
 
-            # 提取数据（支持SignalData格式）
-            data_value = self._extract_data(i_data)
-            payload = {"name": name, "value": data_value}
+            # 直接使用SignalData格式
+            payload = {"name": name, "value": i_data}
 
             if t == "时域":
                 adlink_bridge_instance.add_data_t(payload)
@@ -2374,12 +2337,13 @@ class CSVSink(BaseBlock):
             mode = "a" if self.get_option("追加模式") else "w"
             header = self.get_option("包含表头") and mode == "w"
 
-            # 使用辅助方法提取数据
-            data = self._extract_data(i_data)
-            x = data.get("x", [])
-            y = data.get("y", [])
+            # 直接从SignalData格式中提取数据
+            inner = i_data.get("data", {})
+            x = inner.get("x", [])
+            y = inner.get("y", [])
 
-            if not x:
+            # 如果x为空但y不为空，生成索引作为x
+            if not x and y:
                 x = list(range(len(y)))
 
             df = pd.DataFrame({"x": x, "y": y})
@@ -2445,10 +2409,14 @@ class BaseChartViewer(BaseBlock):
             if not self._validate_input_data(i_data):
                 return
 
-            # 使用辅助方法提取数据
-            raw_data = self._extract_data(i_data)
-            x_raw = raw_data.get("x", [])
-            y_raw = raw_data.get("y", [])
+            # 直接从SignalData格式中提取数据
+            inner = i_data.get("data", {})
+            x_raw = inner.get("x", [])
+            y_raw = inner.get("y", [])
+
+            # 如果x为空但y不为空，生成索引作为x
+            if not x_raw and y_raw:
+                x_raw = list(range(len(y_raw)))
 
             if len(y_raw) == 0:
                 self._logger.warning("Y数据为空")
