@@ -150,6 +150,7 @@ class Block:
 
 
 # ==================== BaseBlock Optimization ====================
+
 class BaseBlock(Block):
     def __init__(self, name: str, category: str = "General"):
         super().__init__(name, category)
@@ -171,9 +172,7 @@ class BaseBlock(Block):
         self._error_count += 1
         self._logger.error(f"错误 (第 {self._error_count} 次): {context} - {error}", exc_info=True)
 
-
     def _validate_input_data(self, data: Optional[Dict[str, Any]]) -> bool:
-        """验证输入数据"""
         if data is None:
             self._logger.warning("输入数据为空")
             return False
@@ -183,7 +182,6 @@ class BaseBlock(Block):
         return True
     
     def safe_compute(self, execution_id: str = None) -> bool:
-        """安全执行计算"""
         self._log_compute_start(execution_id)
         try:
             self.on_compute(execution_id=execution_id)
@@ -193,81 +191,58 @@ class BaseBlock(Block):
             self._log_error(e, "on_compute")
             return False
 
-    def _register_output_file(
-        self,
-        execution_id: str,
-        filename: str,
-        file_path: Path, 
-        file_size: int,   
-        description: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """
-        注册文件核心逻辑 (纯数据操作，不进行IO写入)
-        """
-        if not execution_id:
-            self._logger.warning("没有提供执行ID，无法注册文件")
-            return ""
-
-        # 使用更高效的 UUID 生成方式 (如果不需要极高的随机性，uuid4 足够，但 hex 切片操作没问题)
-        file_id = f"{execution_id}_{uuid.uuid4().hex[:8]}"
-        file_type = settings.FILE_TYPE_MAP.get(file_path.suffix.lower(), "unknown")
-        file_info = {
-            "file_id": file_id,
-            "execution_id": execution_id,
-            "filename": filename,
-            "file_path": str(file_path),
-            "file_type": file_type,
-            "file_size": file_size,  
-            "block_name": self.name,
-            "block_id": str(id(self)),
-            "description": description,
-            "metadata": metadata or {},
-        }
-
-        # 仅一次调用收集器
-        file_collector.add_file(execution_id, file_info)
-        return file_id
-
     def _write_file(
-        self,
-        execution_id: str,
-        filename: str,
-        write_func: callable,
-        description: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> str:
+            self,
+            filename: str,
+            write_func: callable,
+            execution_id: Optional[str],
+            description: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None,
+        ) -> str:
         """
-        优化后的文件写入方法：写入 -> 获取大小 -> 注册
-        避免了 "注册后再去列表中查找并更新大小" 的低效操作
+        原子化执行：路径准备 -> 写入 -> 状态获取 -> 系统注册
+        完善版：支持无 execution_id 模式，确保流程不中断
         """
+
         try:
+            # 1. 路径构建与环境准备
             full_path = settings.OUTPUT_DIR / filename
-            
-            # 5. IO 操作优化：确保目录存在 (exist_ok=True 性能通常很好，但如果目录层级深可缓存检查)
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # 执行写入
+            # 2. 执行写入回调
             write_func(full_path)
 
-            # 6. 立即获取文件大小
-            # 如果 write_func 是异步的或者有缓冲，这里需确保 flush/close
+            # 3. 获取文件状态 (Size)
+            file_size = 0
             if full_path.exists():
                 file_size = full_path.stat().st_size
             else:
-                file_size = 0
-                self._logger.warning(f"文件 {filename} 写入后未找到")
+                self._logger.warning(f"文件 {filename} 写入逻辑已执行，但未在磁盘找到文件")
 
-            # 注册文件信息（携带正确的大小）
-            return self._register_output_file(
-                execution_id=execution_id,
-                filename=filename,
-                file_path=full_path,
-                file_size=file_size, # 关键优化：直接传入大小
-                description=description,
-                metadata=metadata,
-            )
+            # 4. 生成元数据与注册记录
+            file_id = f"{execution_id or 'temp'}_{uuid.uuid4().hex[:8]}"
+            file_type = settings.FILE_TYPE_MAP.get(full_path.suffix.lower(), "unknown")
+
+            file_info = {
+                "file_id": file_id,
+                "execution_id": execution_id,
+                "filename": filename,
+                "file_path": str(full_path),
+                "file_type": file_type,
+                "file_size": file_size,
+                "block_name": self.name,
+                "block_id": str(id(self)),
+                "description": description or "Automatically generated file",
+                "metadata": metadata or {},
+            }
+
+            # 5. 推送至收集器
+            if execution_id:
+                file_collector.add_file(execution_id, file_info)
+    
+            return file_id
 
         except Exception as e:
-            self._log_error(e, f"文件写入失败: {filename}")
+            # 这里捕获的是核心 IO 或逻辑错误
+            self._log_error(e, f"文件处理流程彻底失败: {filename}")
             raise

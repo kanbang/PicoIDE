@@ -2101,9 +2101,9 @@ class CSVSink(BaseBlock):
                 self._logger.debug(f"数据已保存: {full_path}")
 
             self._write_file(
-                execution_id=execution_id,
                 filename=file_path,
                 write_func=write_csv,
+                execution_id=execution_id,
                 description="CSV数据文件"
             )
 
@@ -2254,9 +2254,9 @@ class BaseChartViewer(BaseBlock):
                 self._logger.info(f"图表已生成: {full_path}")
 
             self._write_file(
-                execution_id=execution_id,
                 filename=file_path,
                 write_func=write_html,
+                execution_id=execution_id,
                 description=f"{title}图表",
                 metadata={
                     "chart_type": self.chart_type,
@@ -2736,9 +2736,9 @@ class TrajectoryChartViewer(BaseBlock):
                 self._logger.info(f"轨迹图已生成: {full_path}")
 
             self._write_file(
-                execution_id=execution_id,
                 filename=file_path,
                 write_func=write_html,
+                execution_id=execution_id,
                 description=f"{title}轨迹图",
                 metadata={
                     "chart_type": "trajectory",
@@ -2832,9 +2832,9 @@ class OrderMapChartViewer(BaseBlock):
                 self._logger.info(f"阶次图已生成: {full_path}")
 
             self._write_file(
-                execution_id=execution_id,
                 filename=file_path,
                 write_func=write_html,
+                execution_id=execution_id,
                 description=f"{title}阶次图",
                 metadata={
                     "chart_type": "order_map",
