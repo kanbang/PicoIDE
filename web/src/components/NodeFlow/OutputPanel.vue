@@ -171,6 +171,7 @@ async function cleanupFiles() {
 
 // 历史记录相关方法
 function selectExecution(execution: ExecutionRecord) {
+  console.log('OutputPanel - selectExecution called:', execution.execution_id);
   selectedExecution.value = execution;
 }
 

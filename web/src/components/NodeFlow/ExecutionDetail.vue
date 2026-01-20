@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { getExecutionOutputs } from '@/api/execute';
 import { showError } from '@/utils/toast';
 import type { ExecutionRecord } from './ExecutionList.vue';
@@ -32,11 +32,22 @@ const loading = ref(false);
 
 async function loadOutputs() {
   if (!props.executionId) return;
-  
+
+  // 如果 execution 对象中已经有 output_files，直接使用
+  if (props.execution?.output_files) {
+    console.log('ExecutionDetail - 使用 execution 中的 output_files:', props.execution.output_files.length);
+    outputFiles.value = props.execution.output_files;
+    return;
+  }
+
+  // 否则从 API 加载
   loading.value = true;
   try {
+    console.log('ExecutionDetail - loadOutputs called, executionId:', props.executionId);
     const result = await getExecutionOutputs(props.executionId);
+    console.log('ExecutionDetail - API返回结果:', result);
     outputFiles.value = result.output_files;
+    console.log('ExecutionDetail - output_files:', outputFiles.value);
   } catch (error) {
     console.error('加载执行输出文件失败:', error);
     showError('加载输出文件失败');
@@ -57,11 +68,11 @@ function formatTime(isoString: string): string {
   const date = new Date(isoString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
-  
+
   if (diffMs < 60000) return '刚刚';
   if (diffMs < 3600000) return Math.floor(diffMs / 60000) + '分钟前';
   if (diffMs < 86400000) return Math.floor(diffMs / 3600000) + '小时前';
-  
+
   return date.toLocaleString('zh-CN', {
     month: '2-digit',
     day: '2-digit',
@@ -112,7 +123,14 @@ async function downloadFile(file: OutputFile) {
   }
 }
 
-watch(() => props.executionId, () => {
+watch(() => props.executionId, (newId) => {
+  console.log('ExecutionDetail - executionId changed:', newId);
+  if (newId) {
+    loadOutputs();
+  }
+});
+
+onMounted(() => {
   if (props.executionId) {
     loadOutputs();
   }
@@ -132,7 +150,7 @@ defineExpose({
       </svg>
       返回列表
     </button>
-    
+
     <div v-if="execution" class="execution-info">
       <h4>执行信息</h4>
       <div class="info-grid">
@@ -168,16 +186,16 @@ defineExpose({
         </div>
       </div>
     </div>
-    
+
     <div class="files-header">
       <h4>输出文件 ({{ outputFiles.length }})</h4>
     </div>
-    
+
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
       <p>加载输出文件...</p>
     </div>
-    
+
     <div v-else-if="outputFiles.length > 0" class="file-grid">
       <div v-for="file in outputFiles" :key="file.file_id" class="file-card" :class="file.file_type">
         <div class="card-icon" :data-type="file.file_type">
@@ -218,15 +236,15 @@ defineExpose({
         <div class="card-actions">
           <button v-if="file.can_open" @click="openFile(file)" class="icon-btn highlight" title="预览">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M1 12s4-8 11-8 11 8-4 8-11 8-11-8z"/>
-              <circle cx="12" cy="12" r="3"/>
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
             </svg>
           </button>
           <button @click="downloadFile(file)" class="icon-btn" title="下载">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
           </button>
         </div>
@@ -262,9 +280,9 @@ defineExpose({
   align-self: flex-start;
 }
 
-.back-btn:hover { 
-  background: #444; 
-  color: #fff; 
+.back-btn:hover {
+  background: #444;
+  color: #fff;
 }
 
 .execution-info {
@@ -302,10 +320,22 @@ defineExpose({
   color: #e1e1e1;
 }
 
-.info-item .value.status-running { color: #007acc; }
-.info-item .value.status-completed { color: #4caf50; }
-.info-item .value.status-failed { color: #f44336; }
-.info-item .value.failed { color: #f44336; }
+.info-item .value.status-running {
+  color: #007acc;
+}
+
+.info-item .value.status-completed {
+  color: #4caf50;
+}
+
+.info-item .value.status-failed {
+  color: #f44336;
+}
+
+.info-item .value.failed {
+  color: #f44336;
+}
+
 .info-item .value.tag {
   background: #3c3c3c;
   padding: 2px 6px;
@@ -343,8 +373,13 @@ defineExpose({
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .file-grid {
@@ -382,14 +417,34 @@ defineExpose({
   flex-shrink: 0;
 }
 
-.file-card.html .card-icon { color: #007acc; background: rgba(0,122,204,0.1); }
-.file-card.csv .card-icon { color: #4caf50; background: rgba(76,175,80,0.1); }
+.file-card.html .card-icon {
+  color: #007acc;
+  background: rgba(0, 122, 204, 0.1);
+}
 
-.card-icon svg { width: 20px; height: 20px; stroke-width: 1.5; }
+.file-card.csv .card-icon {
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.1);
+}
 
-.card-content { flex: 1; min-width: 0; }
+.card-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.5;
+}
 
-.name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
 .name {
   font-size: 13px;
   color: #e1e1e1;
@@ -421,7 +476,9 @@ defineExpose({
   transition: opacity 0.2s;
 }
 
-.file-card:hover .card-actions { opacity: 1; }
+.file-card:hover .card-actions {
+  opacity: 1;
+}
 
 .icon-btn {
   background: #333;
@@ -437,9 +494,19 @@ defineExpose({
   transition: all 0.2s;
 }
 
-.icon-btn:hover { background: #444; color: #fff; }
-.icon-btn.highlight { color: #007acc; }
-.icon-btn.highlight:hover { background: #007acc; color: #fff; }
+.icon-btn:hover {
+  background: #444;
+  color: #fff;
+}
+
+.icon-btn.highlight {
+  color: #007acc;
+}
+
+.icon-btn.highlight:hover {
+  background: #007acc;
+  color: #fff;
+}
 
 .empty-state {
   flex: 1;

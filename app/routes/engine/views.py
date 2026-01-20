@@ -561,6 +561,7 @@ async def get_executions(
     tag: Optional[str] = None,
     flow_id: Optional[str] = None,
     scripts_hash: Optional[str] = None,
+    include_outputs: bool = False,
     limit: int = 20,
     offset: int = 0
 ) -> Dict[str, Any]:
@@ -573,6 +574,7 @@ async def get_executions(
     - tag: 按 tag 过滤
     - flow_id: 按 flow ID 过滤
     - scripts_hash: 按脚本哈希过滤
+    - include_outputs: 是否包含输出文件列表（当 flow_id 指定时）
     - limit: 返回数量限制
     - offset: 偏移量
     """
@@ -598,8 +600,66 @@ async def get_executions(
 
         executions = await query.order_by("-start_time").limit(limit).offset(offset).all()
 
-        return {
-            "executions": [
+        # 如果需要包含输出文件且指定了 flow_id
+        if include_outputs and flow_id:
+            # 获取所有相关的 execution_id
+            execution_ids = [e.execution_id for e in executions]
+            
+            # 批量获取所有输出文件
+            from db import Output
+            outputs = await Output.filter(
+                execution_id__in=execution_ids,
+                is_deleted=False
+            ).all()
+            
+            # 按 execution_id 分组
+            outputs_by_execution = {}
+            for o in outputs:
+                if o.execution_id not in outputs_by_execution:
+                    outputs_by_execution[o.execution_id] = []
+                outputs_by_execution[o.execution_id].append({
+                    "file_id": o.file_id,
+                    "execution_id": o.execution_id,
+                    "filename": o.filename,
+                    "file_path": o.file_path,
+                    "file_type": o.file_type,
+                    "file_size": o.file_size,
+                    "created_at": o.created_at.isoformat(),
+                    "block_name": o.block_name,
+                    "block_id": o.block_id,
+                    "description": o.description,
+                    "metadata": o.metadata,
+                    "can_open": o.file_type in output_file_manager.settings.BROWSER_OPENABLE,
+                    "can_download": True,
+                })
+            
+            # 构建响应，包含输出文件
+            executions_data = []
+            for e in executions:
+                exec_data = {
+                    "execution_id": e.execution_id,
+                    "user_id": e.user_id,
+                    "source": e.source,
+                    "flow_id": str(e.flow_id) if e.flow_id else None,
+                    "tag": e.tag,
+                    "scripts_path": e.scripts_path,
+                    "scripts_hash": e.scripts_hash,
+                    "status": e.status,
+                    "result": e.result,
+                    "total_nodes": e.total_nodes,
+                    "executed_nodes": e.executed_nodes,
+                    "failed_nodes": e.failed_nodes,
+                    "execution_time": e.execution_time,
+                    "start_time": e.start_time.isoformat(),
+                    "end_time": e.end_time.isoformat() if e.end_time else None,
+                    "metadata": e.metadata,
+                    "output_files": outputs_by_execution.get(e.execution_id, []),
+                    "output_files_count": len(outputs_by_execution.get(e.execution_id, [])),
+                }
+                executions_data.append(exec_data)
+        else:
+            # 不包含输出文件
+            executions_data = [
                 {
                     "execution_id": e.execution_id,
                     "user_id": e.user_id,
@@ -619,7 +679,10 @@ async def get_executions(
                     "metadata": e.metadata,
                 }
                 for e in executions
-            ],
+            ]
+
+        return {
+            "executions": executions_data,
             "count": len(executions),
             "limit": limit,
             "offset": offset,
@@ -684,12 +747,15 @@ async def get_execution_outputs(
         # 验证执行是否存在
         from db import Execution
 
+        logger.info(f"get_execution_outputs - 查询执行ID: {execution_id}")
+
         execution = await Execution.filter(
             user_id=USER_ID,
             execution_id=execution_id
         ).first()
 
         if not execution:
+            logger.warning(f"get_execution_outputs - 执行不存在: {execution_id}")
             raise HTTPException(404, f"Execution not found: {execution_id}")
 
         # 获取输出文件
@@ -700,6 +766,8 @@ async def get_execution_outputs(
             limit=limit,
             offset=offset
         )
+
+        logger.info(f"get_execution_outputs - 找到 {len(output_files)} 个输出文件")
 
         return {
             "execution_id": execution_id,

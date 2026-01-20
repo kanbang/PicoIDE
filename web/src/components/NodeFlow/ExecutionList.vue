@@ -45,7 +45,7 @@ async function loadExecutions() {
   
   loading.value = true;
   try {
-    const result = await getFlowExecutions(props.flowId, undefined, props.limit, props.offset);
+    const result = await getFlowExecutions(props.flowId, undefined, true, props.limit, props.offset);
     executions.value = result.executions;
     total.value = result.total;
   } catch (error) {
@@ -152,6 +152,9 @@ defineExpose({
           <div class="execution-meta">
             <span>{{ exec.executed_nodes }}/{{ exec.total_nodes }} 节点</span>
             <span v-if="exec.failed_nodes > 0" class="failed-count">{{ exec.failed_nodes }} 失败</span>
+            <span v-if="exec.output_files_count !== undefined" class="file-count-badge">
+              {{ exec.output_files_count }} 文件
+            </span>
             <span v-if="exec.tag" class="tag">{{ exec.tag }}</span>
           </div>
         </div>
@@ -303,6 +306,11 @@ defineExpose({
   padding: 1px 4px;
   border-radius: 3px;
   color: #aaa;
+}
+
+.file-count-badge {
+  color: #4caf50;
+  font-weight: 500;
 }
 
 .execution-actions {

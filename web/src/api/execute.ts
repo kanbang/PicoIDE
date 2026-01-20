@@ -95,11 +95,12 @@ export async function cleanupOutputFiles(maxAgeHours: number = 24): Promise<any>
 }
 
 /**
- * 获取指定 Flow 的所有执行记录
+ * 获取指定 Flow 的所有执行记录（包含输出文件）
  */
 export async function getFlowExecutions(
   flowId: string,
   status?: string,
+  includeOutputs: boolean = true,
   limit: number = 20,
   offset: number = 0
 ): Promise<{
@@ -108,11 +109,17 @@ export async function getFlowExecutions(
   limit: number;
   offset: number;
 }> {
-  let url = `/engine/flows/${flowId}/executions?limit=${limit}&offset=${offset}`;
+  let url = `/engine/executions?flow_id=${flowId}&include_outputs=${includeOutputs}&limit=${limit}&offset=${offset}`;
   if (status) {
     url += `&status=${status}`;
   }
-  return await api.get(url);
+  const result = await api.get(url);
+  return {
+    executions: result.executions,
+    total: result.count,
+    limit: result.limit,
+    offset: result.offset,
+  };
 }
 
 /**
@@ -151,4 +158,6 @@ export interface ExecutionRecord {
   tag: string | null;
   scripts_path: string;
   scripts_hash: string;
+  output_files?: OutputFile[];
+  output_files_count?: number;
 }
