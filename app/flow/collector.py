@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-19 16:15:36
 LastEditors: zhai
-LastEditTime: 2026-01-20 16:25:02
+LastEditTime: 2026-01-20 17:44:53
 '''
 """
 文件信息收集器 - 用于批量入库
@@ -24,6 +24,8 @@ class FileCollector:
     _instance = None
     _lock = Lock()
 
+    _temp_execution_id = "_temp_"
+
     def __new__(cls):
         if cls._instance is None:
             with cls._lock:
@@ -41,9 +43,10 @@ class FileCollector:
             file_info: 文件信息字典
         """
         with self._lock:
-            if execution_id not in self._files:
-                self._files[execution_id] = []
-            self._files[execution_id].append(file_info)
+            exe_id = execution_id or self._temp_execution_id
+            if exe_id not in self._files:
+                self._files[exe_id] = []
+            self._files[exe_id].append(file_info)
 
     def get_files(self, execution_id: str) -> List[Dict[str, Any]]:
         """
@@ -57,8 +60,9 @@ class FileCollector:
         """
         
         with self._lock:
-            files = self._files.get(execution_id, [])
-            
+            exe_id = execution_id or self._temp_execution_id
+            files = self._files.get(exe_id, [])
+
             # 添加缺失的字段，保持与数据库查询格式一致
             for f in files:
                 file_type = f.get("file_type", "unknown")
@@ -79,8 +83,9 @@ class FileCollector:
             execution_id: 执行ID
         """
         with self._lock:
-            if execution_id in self._files:
-                del self._files[execution_id]
+            exe_id = execution_id or self._temp_execution_id
+            if exe_id in self._files:
+                del self._files[exe_id]
 
 
 # 全局实例

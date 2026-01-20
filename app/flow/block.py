@@ -190,59 +190,70 @@ class BaseBlock(Block):
         except Exception as e:
             self._log_error(e, "on_compute")
             return False
-
+        
     def _write_file(
-            self,
-            filename: str,
-            write_func: callable,
-            execution_id: Optional[str],
-            description: Optional[str] = None,
-            metadata: Optional[Dict[str, Any]] = None,
-        ) -> str:
+        self,
+        filename: str,
+        write_func: callable,
+        execution_id: Optional[str],
+        description: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """
-        原子化执行：路径准备 -> 写入 -> 状态获取 -> 系统注册
-        完善版：支持无 execution_id 模式，确保流程不中断
+        原子化执行：自动分目录 -> 路径唯一化 -> 写入 -> 系统注册
         """
-
         try:
-            # 1. 路径构建与环境准备
-            full_path = settings.OUTPUT_DIR / filename
+            # 1. 生成时间标记
+            now = time.localtime()
+            date_dir = time.strftime("%Y%m%d", now)      # 文件夹名：20240520
+            timestamp = time.strftime("%H%M%S", now)    # 文件名时间戳：143005
+            unique_suffix = uuid.uuid4().hex[:8]        # 随机后缀
+            
+            # 2. 构建分级唯一路径
+            path_obj = Path(filename)
+            unique_filename = f"{path_obj.stem}_{timestamp}_{unique_suffix}{path_obj.suffix}"
+            
+            # 核心变更：在 OUTPUT_DIR 下增加一层日期目录
+            target_dir = settings.OUTPUT_DIR / date_dir
+            full_path = target_dir / unique_filename
+            
+            # 确保父级目录（包括日期目录）存在
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # 2. 执行写入回调
+            # 3. 执行写入回调
             write_func(full_path)
 
-            # 3. 获取文件状态 (Size)
+            # 4. 获取文件状态 (Size)
             file_size = 0
             if full_path.exists():
                 file_size = full_path.stat().st_size
             else:
-                self._logger.warning(f"文件 {filename} 写入逻辑已执行，但未在磁盘找到文件")
+                self._logger.warning(f"文件 {unique_filename} 写入后未找到")
 
-            # 4. 生成元数据与注册记录
-            file_id = f"{execution_id or 'temp'}_{uuid.uuid4().hex[:8]}"
+            # 5. 生成元数据与注册记录
+            file_id = f"{execution_id or 'temp'}_{unique_suffix}"
             file_type = settings.FILE_TYPE_MAP.get(full_path.suffix.lower(), "unknown")
 
             file_info = {
                 "file_id": file_id,
                 "execution_id": execution_id,
                 "filename": filename,
+                "relative_path": f"{date_dir}/{unique_filename}", # 记录相对路径，方便迁移
                 "file_path": str(full_path),
                 "file_type": file_type,
                 "file_size": file_size,
                 "block_name": self.name,
                 "block_id": str(id(self)),
-                "description": description or "Automatically generated file",
+                "description": description or "Unique hierarchical output",
                 "metadata": metadata or {},
+                "original_name": filename
             }
 
-            # 5. 推送至收集器
-            if execution_id:
-                file_collector.add_file(execution_id, file_info)
+            # 6. 推送至收集器
+            file_collector.add_file(execution_id, file_info)
     
             return file_id
 
         except Exception as e:
-            # 这里捕获的是核心 IO 或逻辑错误
-            self._log_error(e, f"文件处理流程彻底失败: {filename}")
+            self._log_error(e, f"文件处理失败: {filename}")
             raise
