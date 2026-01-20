@@ -24,11 +24,10 @@ from datetime import datetime
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from pathlib import Path
-
+from scipy.interpolate import interp1d
 import numpy as np
 import pandas as pd
 import scipy.signal as signal
-from scipy.interpolate import interp1d
 
 from flow.block import Block
 
@@ -51,10 +50,6 @@ class DAQConfig:
     DEFAULT_WINDOW_TYPE = "hann"
     MAX_WINDOW_SIZE = 1048576  # 2^20
     MIN_WINDOW_SIZE = 64
-
-    # 性能
-    ENABLE_CACHE = True
-    PARALLEL_THRESHOLD = 10000  # 数据点数超过此值时启用并行处理
 
     # 日志
     LOG_LEVEL = logging.INFO
@@ -272,20 +267,6 @@ class SignalData:
 
         return True, "OK"
 
-    def get_fs(self) -> float:
-        """获取采样率"""
-        return self.meta.fs
-
-    def get_duration(self) -> float:
-        """获取持续时间"""
-        if len(self.x) >= 2:
-            return self.x[-1] - self.x[0]
-        return 0.0
-
-    def get_nyquist(self) -> float:
-        """获取奈奎斯特频率"""
-        return self.meta.fs / 2.0
-
 
 # 配置日志
 logging.basicConfig(level=DAQConfig.LOG_LEVEL, format=DAQConfig.LOG_FORMAT)
@@ -346,14 +327,6 @@ def calculate_fs_from_time_axis(t: np.ndarray) -> float:
     return 1.0 / dt
 
 
-def safe_divide(a: float, b: float, default: float = 0.0) -> float:
-    """安全除法"""
-    if b == 0:
-        logger.warning(f"除零错误: {a} / {b}，返回默认值 {default}")
-        return default
-    return a / b
-
-
 # ==================== AdlinkBridge - 工业级采集卡桥接类 ====================
 
 
@@ -391,7 +364,6 @@ class AdlinkBridge:
 
         # 状态
         self._initialized: bool = False
-        self._lock = False
 
         logger.info("AdlinkBridge 已初始化")
 
@@ -403,13 +375,6 @@ class AdlinkBridge:
         except ConfigError as e:
             logger.error(f"设置采样率失败: {e}")
             raise
-
-    def set_adrange(self, AdRange: float) -> None:
-        """设置量程"""
-        if AdRange <= 0:
-            raise ConfigError(f"无效的量程: {AdRange}")
-        self.AdRange = AdRange
-        logger.debug(f"量程已设置为: {self.AdRange}")
 
     def add_channel(self, channel: int) -> None:
         """添加启用通道"""
@@ -584,14 +549,6 @@ class AdlinkBridge:
         self.data_xy.clear()
         logger.info("AdlinkBridge 已重置")
 
-    def get_card_param(self) -> Dict[str, Any]:
-        """获取采集参数"""
-        return {
-            "fSamplerate": self.fSamplerate,
-            "channels": self.channels,
-            "AdRange": self.AdRange,
-        }
-
     def get_result_data(self) -> Dict[str, List[Dict[str, Any]]]:
         """获取并清空结果数据"""
         ret = {
@@ -603,16 +560,6 @@ class AdlinkBridge:
         self.data_p.clear()
         self.data_xy.clear()
         return ret
-
-    def init_card(self) -> None:
-        """初始化采集卡（模拟）"""
-        if self._initialized:
-            logger.warning("采集卡已初始化，跳过重复初始化")
-            return
-
-        # 这里可以添加真实采集卡的初始化代码
-        self._initialized = True
-        logger.info("采集卡已初始化")
 
 
 # 全局实例
@@ -797,15 +744,6 @@ class BaseBlock(Block):
         except Exception as e:
             self._log_error(e, "文件写入")
             raise
-
-    def get_stats(self) -> Dict[str, Any]:
-        """获取统计信息"""
-        return {
-            "name": self.name,
-            "compute_count": self._compute_count,
-            "error_count": self._error_count,
-            "error_rate": safe_divide(self._error_count, self._compute_count, 0.0),
-        }
 
 
 # ==================== Source Blocks ====================
