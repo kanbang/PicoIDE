@@ -2,6 +2,7 @@
  * axios 实例和拦截器配置
  */
 import axios from 'axios';
+import { useBusinessStore } from '@/stores/business';
 
 export const api = axios.create({
   baseURL: '/api',
@@ -14,7 +15,10 @@ export const api = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
-    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+    // 从 Pinia store 获取 business（自动缓存）
+    const businessStore = useBusinessStore();
+    config.headers['X-Business'] = businessStore.business;
+    console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url} (business: ${businessStore.business})`);
     return config;
   },
   (error) => {

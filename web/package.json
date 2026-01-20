@@ -22,6 +22,7 @@
     "@baklavajs/themes": "^2.8.1",
     "axios": "^1.13.2",
     "baklavajs": "^2.8.1",
+    "pinia": "^3.0.4",
     "vue": "^3.5.26"
   },
   "devDependencies": {
