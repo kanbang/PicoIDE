@@ -5,6 +5,17 @@ poetry run python -m PyInstaller -F -i main.ico --copy-metadata tortoise-orm  --
 
 
 
+# TODO
+# 多条线 → 同一个 input
+
+# 👉 建议明确三种输入策略（至少设计层面）：
+
+# 策略	行为
+# single	后写覆盖前写
+# list	append
+# dict	按 src_id 存
+
+
 ### python Block class
 
 ``` py

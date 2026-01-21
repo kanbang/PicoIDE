@@ -83,13 +83,16 @@ async def run_business(business: str, flow: dict, execution_id: str = None):
     if execution_id is None:
         execution_id = create_execution_id()
 
+    async with await engine_manager.acquire(business, flow) as engine:
+        await engine.start(execution_id)
+
     # 执行流程，传递 execution_id（使用异步执行）
     # async with await engine_manager.acquire(business, flow) as engine:
     #     await engine.async_run(execution_id)
 
     # 使用同步执行版本
-    with engine_manager.acquire_sync(business, flow) as engine:
-        engine.run(execution_id)
+    # with engine_manager.acquire_sync(business, flow) as engine:
+    #     engine.run(execution_id)
 
     # 执行完成后，批量将文件信息写入数据库
     await _batch_save_outputs(execution_id)

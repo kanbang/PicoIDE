@@ -1,200 +1,147 @@
 import asyncio
 import networkx as nx
-from typing import Any, Dict, List, Tuple, Type, Optional
-from flow.block import Block
+import logging
+from typing import Any, Dict, List, Tuple, Type, Set
+from collections import defaultdict
 
+from flow.block import Block
 
 class ComputeEngine:
     def __init__(self):
-        # 存储类对象 Type[Block]
         self.block_registry: Dict[str, Type[Block]] = {}
         self.instances: Dict[str, Block] = {}
+        self._graph = nx.MultiDiGraph()
         self.on_log = print
-        self._compiled_sequence: List[Tuple[Block, List[Tuple[Block, str, str]]]] = []
+        
+        # 运行时状态
+        self.running_tasks: List[asyncio.Task] = []
+        self._node_locks: Dict[str, asyncio.Lock] = {}
+        # 记录每个节点当前等待了多少个前驱节点的信号
+        self._ready_counts: Dict[str, int] = defaultdict(int)
 
     def log(self, msg: str):
-        if self.on_log:
-            self.on_log(f"[Engine] {msg}")
+        if self.on_log: self.on_log(f"[Engine] {msg}")
 
     def set_blocks(self, block_classes: List[Type[Block]]):
-        """
-        核心优化：直接读取类属性 NAME 进行注册，无需实例化
-        """
         for cls in block_classes:
-            if not hasattr(cls, "NAME") or cls.NAME is None:
-                self.log(f"⚠️ 跳过无效注册：类 {cls.__name__} 未定义 NAME 属性")
-                continue
-
             self.block_registry[cls.NAME] = cls
-            self.log(
-                f"已注册组件类: {cls.NAME} (Category: {getattr(cls, 'CATEGORY', 'Unknown')})"
-            )
-
-    def export_all_blocks(self) -> List[Dict]:
-        """
-        导出所有注册节点的配置描述
-        注意：options 等动态属性仍需一次临时实例化来解析 add_option 逻辑
-        """
-        configs = []
-        for cls in self.block_registry.values():
-            # 这里的实例化仅用于获取 export_config 产生的 UI 描述
-            configs.append(cls().export_config())
-        return configs
+            self.log(f"已注册: {cls.NAME}")
 
     def set_flow(self, flow: Dict[str, Any]):
-        self.log("🛠️  正在构建计算图...")
-
-        temp_graph = nx.MultiDiGraph()
+        self.log("🛠️ 正在编译计算图...")
+        self._graph.clear()
         self.instances = {}
         port_to_node = {}
 
-        # 1. 节点实例化
+        # 1. 实例化
         for node_data in flow["nodes"]:
-            t_name = node_data["type"]
             n_id = node_data["id"]
-
-            block_cls = self.block_registry.get(t_name)
-            if not block_cls:
-                self.log(f"⚠️ 找不到类型为 {t_name} 的注册组件")
-                continue
-
-            # 直接实例化
+            block_cls = self.block_registry.get(node_data["type"])
+            if not block_cls: continue
+            
             instance = block_cls()
             instance.instance_id = n_id
             self.instances[n_id] = instance
-            temp_graph.add_node(n_id)
+            self._node_locks[n_id] = asyncio.Lock()
+            self._graph.add_node(n_id)
 
-            # 配置选项处理
             for key, info in node_data.get("inputs", {}).items():
-                p_id = info["id"]
                 if key in instance._options:
                     instance.set_option(key, info.get("value"))
                 else:
-                    port_to_node[p_id] = (n_id, key)
-
+                    port_to_node[info["id"]] = (n_id, key)
             for key, info in node_data.get("outputs", {}).items():
                 port_to_node[info["id"]] = (n_id, key)
 
-        # 2. 建立逻辑连接
+        # 2. 建立连接
         for conn in flow["connections"]:
             src = port_to_node.get(conn["from"])
             dst = port_to_node.get(conn["to"])
             if src and dst:
-                temp_graph.add_edge(src[0], dst[0], out_p=src[1], in_p=dst[1])
+                self._graph.add_edge(src[0], dst[0], out_p=src[1], in_p=dst[1])
+        
+        self.log(f"✅ 图构建完成，节点数: {len(self.instances)}")
 
-        # 3. 环路检测
-        try:
-            nx.find_cycle(temp_graph, orientation="original")
-            raise ValueError("Flowchart contains cycles")
-        except nx.NetworkXNoCycle:
-            pass
+    async def _execute_single_node(self, n_id: str, execution_id: str):
+        """执行单个节点并尝试触发下游"""
+        block = self.instances[n_id]
+        
+        # 1. 执行计算
+        try:# 1. 搬运数据
+            for pred_id in self._graph.predecessors(n_id):
+                pred_block = self.instances[pred_id]
+                
+                # 获取 pred_id 到 n_id 之间的所有边数据
+                edges_dict = self._graph.get_edge_data(pred_id, n_id)
+                if edges_dict:
+                    for edge_data in edges_dict.values():
+                        # edge_data 实际上就是我们 add_edge 时传入的字典
+                        src_port = edge_data.get("out_p")
+                        dst_port = edge_data.get("in_p")
+                        
+                        # 执行数据传递
+                        block._inputs[dst_port] = pred_block._outputs.get(src_port)
 
-        # 4. 生成指令序列 (拓扑排序)
-        self._compiled_sequence = []
-        execution_order = list(nx.topological_sort(temp_graph))
-
-        for n_id in execution_order:
-            current_instance = self.instances[n_id]
-            transfers = []
-
-            for pred_id, _, edge_data in temp_graph.in_edges(n_id, data=True):
-                out_p = edge_data["out_p"]
-                in_p = edge_data["in_p"]
-                transfers.append((self.instances[pred_id], out_p, in_p))
-
-            self._compiled_sequence.append((current_instance, transfers))
-
-        self.log(f"✅ 编译完成。")
-
-    def run(self, execution_id: str = None):
-        """
-        同步执行：针对工业主循环优化，达到 O(1) 调度性能
-
-        Args:
-            execution_id: 执行ID，用于追踪输出文件
-        """
-        self.log("🚀 开始同步执行流程...")
-        try:
-            for block, transfers in self._compiled_sequence:
-                # 1. 极致高效的数据流转（纯内存指针访问）
-                for src_block, src_port, dst_port in transfers:
-                    block._inputs[dst_port] = src_block._outputs.get(src_port)
-
-                # 2. 执行计算
-                try:
-                    block.on_compute(execution_id)
-                    self.log(f"✅ 节点 {block.NAME} [{block.instance_id}] 执行完成")
-                except Exception as e:
-                    self.log(
-                        f"💥 节点 {block.NAME} [{block.instance_id}] 执行出错: {e}"
-                    )
-                    raise e
-            self.log("✨ 流程全部同步执行完毕")
+            # 2. 执行计算
+            await block.async_on_compute(execution_id)
+            # self.log(f"DEBUG: 节点 {block.NAME}({n_id}) 执行完毕")
         except Exception as e:
-            self.log(f"🛑 流程运行异常终止：{e}")
+            self.log(f"💥 节点 {n_id} 执行出错: {e}")
+            return
 
-    async def async_run(self, execution_id: str = None):
+        # 2. 通知下游节点
+        for succ_id in self._graph.successors(n_id):
+            asyncio.create_task(self._notify_node(succ_id, n_id, execution_id))
+
+    async def _notify_node(self, n_id: str, from_id: str, execution_id: str):
         """
-        异步执行：基于 Event 驱动的最大化并行调度
-
-        Args:
-            execution_id: 执行ID，用于追踪输出文件
+        下游节点被前驱通知：
+        只有当所有前驱都 ready，才触发执行
         """
-        self.log("🚀 开始异步并行执行...")
+        async with self._node_locks[n_id]:
+            self._ready_counts[n_id] += 1
+            expected = self._graph.in_degree(n_id)
+            
+            if self._ready_counts[n_id] >= expected:
+                self._ready_counts[n_id] = 0 # 重置计数器
+                # 触发下游执行（不持有锁以允许并发）
+                asyncio.create_task(self._execute_single_node(n_id, execution_id))
 
-        # 1. 准备所有节点的事件
-        done_events = {n_id: asyncio.Event() for n_id in self.instances}
-
-        async def execute_node(
-            n_id: str, block: Block, transfers: List[Tuple[Block, str, str]]
-        ):
-            # 2. 等待当前节点的所有前驱节点完成
-            # 我们通过 transfers 列表直接获取依赖的源 Block
-            if transfers:
-                # 提取所有源 Block 的 instance_id，去重
-                dependency_ids = list({src_b.instance_id for src_b, _, _ in transfers})
-
-                # 并行等待这些 ID 对应的 Event
-                await asyncio.gather(
-                    *(done_events[dep_id].wait() for dep_id in dependency_ids)
-                )
-
-            # 3. 静态数据搬运（此时前驱节点已确保 outputs 就绪）
-            for src_block, src_port, dst_port in transfers:
-                block._inputs[dst_port] = src_block._outputs.get(src_port)
-
-            # 4. 执行异步计算逻辑
+    async def _source_loop(self, n_id: str, execution_id: str):
+        """源节点（入度为0）的常驻循环"""
+        block = self.instances[n_id]
+        self.log(f"📡 源节点启动: {block.NAME}")
+        while True:
             try:
-                # 调用 Block 的异步执行接口
+                # 阻塞直到源节点产生新数据（例如 MQTT 收到消息）
                 await block.async_on_compute(execution_id)
-                self.log(f"✅ 节点 {block.NAME} [{block.instance_id}] 执行完成")
+                
+                # 源节点完成后，立即通知其所有下游
+                for succ_id in self._graph.successors(n_id):
+                    asyncio.create_task(self._notify_node(succ_id, n_id, execution_id))
+                
+                # 防止非阻塞节点过快消耗 CPU
+                await asyncio.sleep(0.001)
             except Exception as e:
-                self.log(f"💥 节点 {block.NAME} [{block.instance_id}] 执行出错: {e}")
-                raise e  # 向上抛出以触发 gather 的异常终止
-            finally:
-                # 无论成功失败都必须 set，防止下游节点永久死锁
-                done_events[n_id].set()
+                self.log(f"⚠️ 源节点 {n_id} 异常: {e}")
+                await asyncio.sleep(1)
 
-        # 5. 启动所有任务
+    async def start(self, execution_id: str = "stream_001"):
+        """正式启动引擎"""
+        self.log("🚀 事件驱动引擎启动中...")
+        source_nodes = [n for n, d in self._graph.in_degree() if d == 0]
+        
+        if not source_nodes:
+            self.log("❌ 流程中没有源节点(入度为0)，无法启动")
+            return
+
+        for n_id in source_nodes:
+            task = asyncio.create_task(self._source_loop(n_id, execution_id))
+            self.running_tasks.append(task)
+
         try:
-            # 直接从预编译序列创建任务，保证数据一致性
-            async_tasks = [
-                execute_node(block.instance_id, block, transfers)
-                for block, transfers in self._compiled_sequence
-            ]
-
-            await asyncio.gather(*async_tasks)
-            self.log("✨ 异步流程全部执行完毕")
-        except Exception as e:
-            self.log(f"🛑 异步运行中断: {e}")
+            await asyncio.gather(*self.running_tasks)
+        except asyncio.CancelledError:
+            self.log("🛑 引擎已停止")
 
 
-# TODO
-# 多条线 → 同一个 input
-
-# 👉 建议明确三种输入策略（至少设计层面）：
-
-# 策略	行为
-# single	后写覆盖前写
-# list	append
-# dict	按 src_id 存
