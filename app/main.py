@@ -34,7 +34,6 @@ USER_ID = "default"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db(DB_PATH)
-    await ensure_root_directory(USER_ID)
     print("Database initialized")
     yield
     await close_db()

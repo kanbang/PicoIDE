@@ -632,8 +632,8 @@ class TurbineSimulator(BaseBlock):
 
         # --- 机械特征参数 ---
         self.add_integer_option(
-            "键相脉冲 PPR", default=64, min_val=1
-        )  # 推荐设为64以看清趋势
+            "键相脉冲 PPR", default=1, min_val=1
+        )  
         self.add_number_option("1X 振幅 (μm)", default=25.0, min_val=0.0)
         self.add_integer_option("叶片数 (BPF)", default=50, min_val=1)
 

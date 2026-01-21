@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-08 09:32:18
 LastEditors: zhai
-LastEditTime: 2026-01-19 19:08:43
+LastEditTime: 2026-01-21 12:25:28
 '''
 """
 数据库模块
@@ -20,6 +20,7 @@ class File(Model):
     """文件模型"""
     id = fields.UUIDField(pk=True, default=uuid.uuid4)
     user_id = fields.CharField(max_length=255)
+    business = fields.CharField(max_length=50, default="")
     path = fields.CharField(max_length=1024)
     type = fields.IntField()  # 1=file, 2=dir
     content = fields.BinaryField(null=True)
@@ -27,7 +28,7 @@ class File(Model):
 
     class Meta:
         table = "files"
-        unique_together = (("user_id", "path"),)
+        unique_together = (("user_id", "business", "path"),)
 
 
 class Flow(Model):
@@ -135,11 +136,12 @@ async def close_db():
     await Tortoise.close_connections()
 
 
-async def ensure_root_directory(user_id: str):
+async def ensure_root_directory(user_id: str, business: str):
     """确保根目录存在"""
-    if not await File.filter(user_id=user_id, path="/").exists():
+    if not await File.filter(user_id=user_id, business=business, path="/").exists():
         await File.create(
             user_id=user_id,
+            business=business,
             path="/",
             type=2,
             mtime=int(time.time() * 1000),
