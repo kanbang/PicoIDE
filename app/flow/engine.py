@@ -24,7 +24,7 @@ class ComputeEngine:
         self.status = EngineStatus.IDLE
         self._node_locks: Dict[str, asyncio.Lock] = {}
         # 使用 (node_id, exec_id) 组合作为计数 Key，防止批次污染
-        self._ready_slots = defaultdict(set)
+        self._ready_ports = defaultdict(set)
         self._running_tasks: Set[asyncio.Task] = set()
         self._shutdown_event = asyncio.Event()
 
@@ -45,7 +45,7 @@ class ComputeEngine:
         self._graph.clear()
         self.instances = {}
         self._node_locks = {}
-        self._ready_slots.clear()
+        self._ready_ports.clear()
         
         port_map = {} 
 
@@ -98,7 +98,7 @@ class ComputeEngine:
             raise
         except Exception as e:
             self.logger.error(f"Node {n_id} [{block.NAME}] execution failed: {e}", exc_info=True)
-            # 注意：此处可扩展错误传播逻辑，清理 _ready_slots 或通知下游失败
+            # 注意：此处可扩展错误传播逻辑，清理 _ready_ports 或通知下游失败
 
     async def _trigger_successors(self, n_id: str, exec_id: str):
         """数据搬运与屏障同步"""
@@ -110,19 +110,24 @@ class ComputeEngine:
             succ_block = self.instances[succ_id]
             
             async with self._node_locks[succ_id]:
+                
+                # 记录是哪个“来源节点”送达了数据
+                slot_key = (succ_id, exec_id)
+                
                 # 1. 物理搬运数据
                 edges = self._graph.get_edge_data(n_id, succ_id)
                 for edge in edges.values():
-                    succ_block._inputs[edge["in_p"]] = output_snapshot.get(edge["out_p"])
+                    in_port = edge["in_p"]
+                    out_port = edge["out_p"]
+                    
+                    # 物理搬运数据
+                    succ_block._inputs[in_port] = output_snapshot.get(out_port)
+                    self._ready_ports[slot_key].add(in_port)
 
-                # 记录是哪个“来源节点”送达了数据
-                slot_key = (succ_id, exec_id)
-                self._ready_slots[slot_key].add(n_id) # 使用 set 自动去重
-                
                 # 只有当 set 的长度等于入度时，才说明每个上游都到齐了
-                if len(self._ready_slots[slot_key]) >= self._graph.in_degree(succ_id):
+                if len(self._ready_ports[slot_key]) >= self._graph.in_degree(succ_id):
                     # 重置槽位
-                    del self._ready_slots[slot_key]
+                    del self._ready_ports[slot_key]
 
                     # 启动任务
                     task = asyncio.create_task(self._execute_node(succ_id, exec_id))
@@ -205,6 +210,6 @@ class ComputeEngine:
             await asyncio.gather(*self._running_tasks, return_exceptions=True)
             self._running_tasks.clear()
 
-        self._ready_slots.clear()
+        self._ready_ports.clear()
         self.status = EngineStatus.IDLE
         self.logger.info("Engine stopped.")
