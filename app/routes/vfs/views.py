@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-12 19:36:01
 LastEditors: zhai
-LastEditTime: 2026-01-21 09:29:27
+LastEditTime: 2026-01-21 11:22:08
 '''
 """
 VFS 虚拟文件系统路由
@@ -40,6 +40,7 @@ async def stat(path: str):
 
 @router.get("/readdir")
 async def readdir(path: str, business: Annotated[str, Depends(get_business)]):
+    print(f"[VFS] readdir called for business: {business}")
     path = normalize_path(path)
     return await list_dir(USER_ID, path)
 

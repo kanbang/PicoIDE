@@ -8,13 +8,26 @@
     "vscode": "^1.75.0"
   },
   "activationEvents": [
-    "onFileSystem:vfs"
+    "onFileSystem:vfs",
+    "onStartupFinished"
   ],
   "browser": "./main.js",
   "capabilities": {
     "virtualWorkspaces": true,
     "untrustedWorkspaces": {
       "supported": true
+    }
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Pico IDE VFS Settings",
+      "properties": {
+        "picoide.business": {
+          "type": "string",
+          "default": "",
+          "description": "业务标识，通过 URL 参数注入"
+        }
+      }
     }
   }
 }

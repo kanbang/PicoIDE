@@ -1,21 +1,6 @@
 exports.activate = function (context) {
     const vscode = require('vscode');
 
-    // 优先从全局变量获取 business 值（由 tinycode.html 设置）
-    let cachedBusiness = 'daq';
-    try {
-        if (typeof self !== 'undefined' && self.__PICO_IDE_BUSINESS__) {
-            cachedBusiness = self.__PICO_IDE_BUSINESS__;
-            console.log('[VFS] Initial business from global variable:', cachedBusiness);
-        } else if (typeof window !== 'undefined' && window.__PICO_IDE_BUSINESS__) {
-            cachedBusiness = window.__PICO_IDE_BUSINESS__;
-            console.log('[VFS] Initial business from window global variable:', cachedBusiness);
-        } else {
-            console.log('[VFS] Global variable __PICO_IDE_BUSINESS__ not found, using default:', cachedBusiness);
-        }
-    } catch (err) {
-        console.warn('[VFS] Failed to get business from global variable:', err);
-    }
 
     class VFSProvider {
         constructor() {
@@ -41,8 +26,10 @@ exports.activate = function (context) {
 
         // 获取当前 business 值
         _getBusiness() {
-            console.log('[VFS] _getBusiness - returning cached:', cachedBusiness);
-            return cachedBusiness;
+            const config = vscode.workspace.getConfiguration('picoide');
+            const configBusiness = config.get('business');
+
+            return configBusiness || '';
         }
 
         // 封装 fetch，自动添加 X-Business 头

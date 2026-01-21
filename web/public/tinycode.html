@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-12 09:16:50
  * @LastEditors: zhai
- * @LastEditTime: 2026-01-12 14:49:32
+ * @LastEditTime: 2026-01-21 12:14:00
 -->
 <!-- Copyright (C) Microsoft Corporation. All rights reserved. -->
 <!DOCTYPE html>
@@ -79,6 +79,46 @@
             display: none !important;
         }
     </style>
+
+    <script>
+        // 保存原始 fetch
+        const originalFetch = window.fetch;
+
+        window.fetch = async function (url, options) {
+            // 1. 检查是否是请求 product.json
+            if (typeof url === 'string' && url.includes('product.json')) {
+                console.log('[Proxy] 拦截到 product.json 请求');
+
+                // 获取 URL 中的 business 参数
+                const urlParams = new URLSearchParams(window.location.search);
+                const businessValue = urlParams.get('business') || '';
+
+                // 2. 发起原始请求获取真正的内容
+                const response = await originalFetch(url, options);
+                const config = await response.json();
+
+                // 3. 修改配置对象
+                if (!config.configurationDefaults) {
+                    config.configurationDefaults = {};
+                }
+                config.configurationDefaults['picoide.business'] = businessValue;
+
+                console.log('[Proxy] 已注入业务参数:', businessValue);
+
+                // 4. 返回修改后的内容（必须构造一个新的 Response 对象）
+                return new Response(JSON.stringify(config), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+            }
+
+            // 其他请求正常通过
+            return originalFetch(url, options);
+        };
+    </script>
 
 </head>
 

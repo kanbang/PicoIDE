@@ -67,6 +67,7 @@
 			"json",
 			"yaml",
 			"python"
-		]
+		],
+		"picoide.business": ""
 	}
 }
