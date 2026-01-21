@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-17 17:01:06
  * @LastEditors: zhai
- * @LastEditTime: 2026-01-19 19:26:55
+ * @LastEditTime: 2026-01-21 16:33:26
 -->
 <template>
   <div class="nodeflow-container">
@@ -312,7 +312,7 @@ function loadFlow(newFlow: any) {
 // --- 生命周期 ---
 onMounted(() => {
   registerCustomCommands();
-  registerFixedNodeTypes();
+  // registerFixedNodeTypes();
   registerBlocks(props.blocks || []);
 
   watch(() => props.blocks, (newBlocks) => {

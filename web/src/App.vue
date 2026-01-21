@@ -66,6 +66,7 @@ onMounted(() => {
         <select id="business-select" v-model="businessStore.business">
           <option value="DEMO">DEMO</option>
           <option value="WAVE">WAVE</option>
+          <option value="IOT">IOT</option>
         </select>
       </div>
     </div>

@@ -7,7 +7,7 @@ from collections import defaultdict
 import uuid
 
 from flow.block import BaseBlock
-from utils import singleton
+from utils.singleton import singleton
 from utils.mqtt import MqttClientEx
 from paho.mqtt import client as mqtt
 
@@ -310,6 +310,13 @@ class MqttSubscribeBlock(BaseBlock):
         """同步模式下的入口"""
         # 可以在这里使用 asyncio.run 调用 async_on_compute
         # 或者为了简单，只支持 NoWait 模式
-        asyncio.run(self.async_on_compute(execution_id))
+        # asyncio.run(self.async_on_compute(execution_id))
+
+        try:
+            loop = asyncio.get_running_loop()
+            # 如果在 loop 中，这行会报错，所以我们在这里不处理，
+            # 依靠 ComputeEngine 优先调用 async_on_compute
+        except RuntimeError:
+            asyncio.run(self.async_on_compute(execution_id))
 
 __all__ = ["MqttPublishBlock", "MqttSubscribeBlock"]
