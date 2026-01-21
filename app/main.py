@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-07 14:28:11
 LastEditors: zhai
-LastEditTime: 2026-01-19 20:32:53
+LastEditTime: 2026-01-21 09:03:51
 '''
 '''
 Descripttion: 
@@ -19,7 +19,7 @@ LastEditTime: 2026-01-12 19:40:30
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from db import init_db, close_db, ensure_root_directory
@@ -43,13 +43,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# 配置 CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # 注册路由
 app.include_router(vfs_router)
 app.include_router(engine_router)
 app.include_router(flow_router)
-
-
-app.mount("/", StaticFiles(directory="../web-code", html=True), name="web")
 
 
 if __name__ == "__main__":
