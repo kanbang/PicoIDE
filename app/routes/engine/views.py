@@ -23,7 +23,7 @@ from flow.demo_blocks import DEMO_BLOCKS
 
 from .schema import ExecuteRequest, ExecuteResponse, ExecuteSavedRequest
 from routes.dependencies import get_business
-from .blocks_manager import blocks_manager
+from .blocks_manager import blocks_registry
 from flow.run import create_execution_id, make_dynamic_engine, get_json_blocks, register_business, run_business
 from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
@@ -92,21 +92,21 @@ async def get_blocks_endpoint(business: Annotated[str, Depends(get_business)]):
     根据请求头中的 X-Business 参数返回对应的 Block 模板
     """
     try:
-        # 从业务管理器获取对应的 blocks
-        blocks = blocks_manager.get_blocks(business)
+        # 从 Block 注册表获取静态 blocks
+        static_blocks = blocks_registry.get_blocks(business)
         
-        # 加载自定义脚本
+        # 加载自定义脚本（动态 blocks）
         scripts = await load_scripts_from_db("/", business)
         
-        # 合并自定义 blocks
-        json_blocks = get_json_blocks(blocks, scripts)
+        # 合并静态 blocks 和动态 blocks
+        json_blocks = get_json_blocks(static_blocks, scripts)
         
-        logger.info(f"获取 blocks - Business: {business}, Blocks: {len(json_blocks)}")
+        logger.info(f"获取 blocks - Business: {business}, 静态: {len(static_blocks)}, 动态: {len(scripts)}, 总计: {len(json_blocks)}")
         
         return {"blocks": json_blocks}
     except KeyError as e:
         logger.error(f"业务类型不存在: {business} - {str(e)}")
-        raise HTTPException(404, f"业务类型 '{business}' 不存在，可用类型: {blocks_manager.list_businesses()}")
+        raise HTTPException(404, f"业务类型 '{business}' 不存在，可用类型: {blocks_registry.list_businesses()}")
     except Exception as e:
         logger.error(f"获取 blocks 失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Failed to get blocks: {str(e)}")
@@ -144,11 +144,11 @@ async def execute(
         scripts_db = await load_scripts_from_db("/", business)
         scripts.extend(scripts_db)
 
-        # 2. 从业务管理器获取对应的 blocks
-        blocks = blocks_manager.get_blocks(business)
+        # 2. 从 Block 注册表获取静态 blocks
+        static_blocks = blocks_registry.get_blocks(business)
         
-        # 3. 注册业务对应的 Block 模板
-        register_business(business.upper(), blocks, scripts)
+        # 3. 注册业务对应的 Block 模板（包含静态和动态 blocks）
+        register_business(business.upper(), static_blocks, scripts)
 
         # 4. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
@@ -277,12 +277,11 @@ async def execute_saved(
         scripts = await load_scripts_from_db(request.scripts_path, business)
         logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
 
-        # 3. 从业务管理器获取对应的 blocks
-        blocks = blocks_manager.get_blocks(business)
+        # 3. 从 Block 注册表获取静态 blocks
+        static_blocks = blocks_registry.get_blocks(business)
 
-        # 4. 注册业务对应的 Block 模板
-        # !!! 测试方案，重新注册，后续按需注册
-        register_business(business.upper(), blocks, scripts)
+        # 4. 注册业务对应的 Block 模板（包含静态和动态 blocks）
+        register_business(business.upper(), static_blocks, scripts)
 
         # 5. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
