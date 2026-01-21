@@ -15,28 +15,29 @@ from typing import List, Optional
 from db import Flow
 
 
-async def get_flows(user_id: str) -> List[Flow]:
+async def get_flows(user_id: str, business: str) -> List[Flow]:
     """获取用户的所有 flows"""
-    return await Flow.filter(user_id=user_id).all()
+    return await Flow.filter(user_id=user_id, business=business).all()
 
 
-async def get_flow(user_id: str, flow_id: uuid.UUID) -> Optional[Flow]:
+async def get_flow(user_id: str, business: str, flow_id: uuid.UUID) -> Optional[Flow]:
     """获取单个 flow"""
-    return await Flow.filter(id=flow_id, user_id=user_id).first()
+    return await Flow.filter(id=flow_id, user_id=user_id, business=business).first()
 
 
-async def create_flow(user_id: str, name: str, flow: dict = None) -> Flow:
+async def create_flow(user_id: str, business: str, name: str, flow: dict = None) -> Flow:
     """创建新 flow"""
     now = int(time.time() * 1000)
     return await Flow.create(
         user_id=user_id,
+        business=business,
         name=name,
         flow=flow,
         mtime=now,
     )
 
 
-async def update_flow(user_id: str, flow_id: uuid.UUID, name: str = None, flow: dict = None) -> bool:
+async def update_flow(user_id: str, business: str, flow_id: uuid.UUID, name: str = None, flow: dict = None) -> bool:
     """更新 flow"""
     now = int(time.time() * 1000)
     update_data = {"mtime": now}
@@ -45,19 +46,19 @@ async def update_flow(user_id: str, flow_id: uuid.UUID, name: str = None, flow: 
     if flow is not None:
         update_data["flow"] = flow
 
-    updated = await Flow.filter(id=flow_id, user_id=user_id).update(**update_data)
+    updated = await Flow.filter(id=flow_id, user_id=user_id, business=business).update(**update_data)
     return updated > 0
 
 
-async def delete_flow(user_id: str, flow_id: uuid.UUID) -> bool:
+async def delete_flow(user_id: str, business: str, flow_id: uuid.UUID) -> bool:
     """删除 flow"""
-    deleted = await Flow.filter(id=flow_id, user_id=user_id).delete()
+    deleted = await Flow.filter(id=flow_id, user_id=user_id, business=business).delete()
     return deleted > 0
 
 
-async def duplicate_flow(user_id: str, flow_id: uuid.UUID, new_name: str) -> Optional[Flow]:
+async def duplicate_flow(user_id: str, business: str, flow_id: uuid.UUID, new_name: str) -> Optional[Flow]:
     """复制 flow"""
-    original = await get_flow(user_id, flow_id)
+    original = await get_flow(user_id, business, flow_id)
     if not original:
         return None
-    return await create_flow(user_id, new_name, original.flow)
+    return await create_flow(user_id, business, new_name, original.flow)

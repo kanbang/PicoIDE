@@ -33,7 +33,6 @@ from flow.log import logger
 from flow.block import BaseBlock
 
 
-
 # ==================== 配置和日志系统 ====================
 
 
@@ -49,7 +48,6 @@ class DAQConfig:
     DEFAULT_WINDOW_TYPE = "hann"
     MAX_WINDOW_SIZE = 1048576  # 2^20
     MIN_WINDOW_SIZE = 64
-
 
 
 class DomainType(Enum):
@@ -258,8 +256,6 @@ class SignalData:
             return False, "元数据无效"
 
         return True, "OK"
-
-
 
 
 # ==================== 异常类 ====================
@@ -565,8 +561,10 @@ class ChannelSource(BaseBlock):
     输入：无
     输出：通道信号数据
     """
+
     NAME = "ChannelSource"
     CATEGORY = "输入"
+
     def __init__(self):
         super().__init__()
         self.add_output("O-List-XY")
@@ -611,8 +609,10 @@ class TurbineSimulator(BaseBlock):
     - 采用脉冲差分算法，使平均转速能够追踪瞬时趋势
     - 模拟径向振动与叶片通过频率 (BPF)
     """
+
     NAME = "TurbineSimulator"
     CATEGORY = "输入"
+
     def __init__(self):
         super().__init__()
 
@@ -631,9 +631,7 @@ class TurbineSimulator(BaseBlock):
         self.add_number_option("电气激励占比 (%)", default=5.0, min_val=0.0)
 
         # --- 机械特征参数 ---
-        self.add_integer_option(
-            "键相脉冲 PPR", default=1, min_val=1
-        )  
+        self.add_integer_option("键相脉冲 PPR", default=1, min_val=1)
         self.add_number_option("1X 振幅 (μm)", default=25.0, min_val=0.0)
         self.add_integer_option("叶片数 (BPF)", default=50, min_val=1)
 
@@ -736,12 +734,12 @@ class TurbineSimulator(BaseBlock):
                 + 2.0 * np.sin(bpf_num * phase_accum)
                 + np.random.normal(0, 0.5, N)
             )
-            
+
             # Y方向振动（与X正交，相位偏移90度）
             vibration_y = (
-                amp_1x * np.sin(phase_accum + np.pi/2)
-                + (amp_1x * 0.3) * np.sin(2 * phase_accum + np.pi/2)
-                + 2.0 * np.sin(bpf_num * phase_accum + np.pi/2)
+                amp_1x * np.sin(phase_accum + np.pi / 2)
+                + (amp_1x * 0.3) * np.sin(2 * phase_accum + np.pi / 2)
+                + 2.0 * np.sin(bpf_num * phase_accum + np.pi / 2)
                 + np.random.normal(0, 0.5, N)
             )
 
@@ -808,7 +806,10 @@ class TurbineSimulator(BaseBlock):
             self.set_interface(
                 "O-VibrationX-XY",
                 SignalData(
-                    x=t.tolist(), y=vibration_x.tolist(), meta=vib_x_meta, type="vibration"
+                    x=t.tolist(),
+                    y=vibration_x.tolist(),
+                    meta=vib_x_meta,
+                    type="vibration",
                 ).to_dict(),
             )
 
@@ -820,7 +821,10 @@ class TurbineSimulator(BaseBlock):
             self.set_interface(
                 "O-VibrationY-XY",
                 SignalData(
-                    x=t.tolist(), y=vibration_y.tolist(), meta=vib_y_meta, type="vibration"
+                    x=t.tolist(),
+                    y=vibration_y.tolist(),
+                    meta=vib_y_meta,
+                    type="vibration",
                 ).to_dict(),
             )
 
@@ -856,8 +860,10 @@ class CSVReader(BaseBlock):
     - 指定列名读取
     - 数据验证
     """
+
     NAME = "CSVReader"
     CATEGORY = "输入"
+
     def __init__(self):
         super().__init__()
         self.add_text_input_option("文件路径", default="data.csv")
@@ -930,8 +936,10 @@ class CSVReader(BaseBlock):
 
 class ConstantSource(BaseBlock):
     """输出常量值（用于测试或参数注入）"""
+
     NAME = "ConstantSource"
     CATEGORY = "输入"
+
     def __init__(self):
         super().__init__()
         self.add_text_input_option("常量值", default="0.0")
@@ -964,8 +972,10 @@ class XYSplitter(BaseBlock):
     输入：XY信号
     输出：X向量、Y向量
     """
+
     NAME = "XYSplitter"
     CATEGORY = "预处理"
+
     def __init__(self):
         super().__init__()
         self.add_input("I-List-XY")
@@ -1006,8 +1016,10 @@ class XYMerger(BaseBlock):
     输入：X向量、Y向量
     输出：XY信号
     """
+
     NAME = "XYMerger"
     CATEGORY = "预处理"
+
     def __init__(self):
         super().__init__()
         self.add_input("I-List-X")
@@ -1073,8 +1085,10 @@ class TimeWindow(BaseBlock):
 
     不负责：FFT
     """
+
     NAME = "TimeWindow"
     CATEGORY = "信号处理"
+
     def __init__(self):
         super().__init__()
 
@@ -1211,8 +1225,10 @@ class SignalFilter(BaseBlock):
     - bandpass: 带通
     - bandstop: 带阻
     """
+
     NAME = "SignalFilter"
     CATEGORY = "信号处理"
+
     def __init__(self):
         super().__init__()
 
@@ -1298,8 +1314,10 @@ class EnvelopeDetector(BaseBlock):
     - 计算解析信号
     - 提取包络
     """
+
     NAME = "EnvelopeDetector"
     CATEGORY = "信号处理"
+
     def __init__(self):
         super().__init__()
 
@@ -1357,8 +1375,10 @@ class FFT(BaseBlock):
     输入：时域信号（建议已分段）
     输出：频域信号
     """
+
     NAME = "FFT"
     CATEGORY = "分析"
+
     def __init__(self):
         super().__init__()
 
@@ -1443,8 +1463,10 @@ class SpectralAverager(BaseBlock):
     输入：频谱列表
     输出：平均频谱
     """
+
     NAME = "SpectralAverager"
     CATEGORY = "分析"
+
     def __init__(self):
         super().__init__()
 
@@ -1512,8 +1534,10 @@ class Stats(BaseBlock):
     - 最小值、最大值
     - 数据点数
     """
+
     NAME = "Stats"
     CATEGORY = "分析"
+
     def __init__(self):
         super().__init__()
 
@@ -1568,8 +1592,10 @@ class TachoToRPM(BaseBlock):
 
     输出：每转/多转平均转速（非瞬时量）
     """
+
     NAME = "TachoToRPM"
     CATEGORY = "阶次分析"
+
     def __init__(self):
         super().__init__()
 
@@ -1655,8 +1681,10 @@ class AngularResampler(BaseBlock):
     输入：振动信号、键相脉冲
     输出：角域信号
     """
+
     NAME = "AngularResampler"
     CATEGORY = "阶次分析"
+
     def __init__(self):
         super().__init__()
 
@@ -1783,8 +1811,10 @@ class RPMTrackedFFT(BaseBlock):
     输入：振动信号、转速信号
     输出：阶次谱
     """
+
     NAME = "RPMTrackedFFT"
     CATEGORY = "阶次分析"
+
     def __init__(self):
         super().__init__()
 
@@ -1873,7 +1903,6 @@ class RPMTrackedFFT(BaseBlock):
             raise
 
 
-
 class OrderMap(BaseBlock):
     """
     阶次瀑布图（Order Map）
@@ -1887,17 +1916,18 @@ class OrderMap(BaseBlock):
 
     NAME = "OrderMap"
     CATEGORY = "阶次分析"
+
     def __init__(self):
         super().__init__()
 
-        self.add_input("I-Signal-XY")   # 振动信号（时间域）
-        self.add_input("I-Speed-XY")    # 转速信号（RPM）
+        self.add_input("I-Signal-XY")  # 振动信号（时间域）
+        self.add_input("I-Speed-XY")  # 转速信号（RPM）
 
         self.add_output("O-OrderMap")
 
         self.add_number_option("阶次上限", default=10)
         self.add_integer_option("每转采样点", default=1024)
-        self.add_integer_option("每帧转数", default=1)   # 工业上非常重要
+        self.add_integer_option("每帧转数", default=1)  # 工业上非常重要
         self.add_integer_option("转速插值点", default=4096)
 
     def on_compute(self, execution_id: Optional[str] = None):
@@ -1930,7 +1960,7 @@ class OrderMap(BaseBlock):
 
             # ========= 3. 构造角速度 & 相位 =========
             omega = rpm_interp(t_sig) * 2 * np.pi / 60.0
-            theta = np.cumsum(omega) / fs   # θ(t)
+            theta = np.cumsum(omega) / fs  # θ(t)
 
             # ========= 4. 角度域帧划分 =========
             pts_per_rev = self.get_option("每转采样点")
@@ -1941,11 +1971,7 @@ class OrderMap(BaseBlock):
             theta_start = theta[0]
             theta_end = theta[-1]
 
-            frame_edges = np.arange(
-                theta_start,
-                theta_end - dtheta,
-                dtheta
-            )
+            frame_edges = np.arange(theta_start, theta_end - dtheta, dtheta)
 
             # 振动信号 → 角度域插值函数
             vib_theta_interp = interp1d(
@@ -2008,20 +2034,15 @@ class OrderMap(BaseBlock):
 
             self.set_interface(
                 "O-OrderMap",
-                SignalData(
-                    type="order_map",
-                    special_data=maps,
-                    meta=meta
-                ).to_dict(),
+                SignalData(type="order_map", special_data=maps, meta=meta).to_dict(),
             )
 
-            self._logger.debug(
-                f"OrderMap done: {len(maps)} frames"
-            )
+            self._logger.debug(f"OrderMap done: {len(maps)} frames")
 
         except Exception as e:
             self._log_error(e, "OrderMap")
             raise
+
 
 # ==================== Sink Blocks ====================
 
@@ -2034,8 +2055,10 @@ class ResultSink(BaseBlock):
     - 将数据送入AdlinkBridge供前端显示
     - 支持时域、频域、其他类型分类
     """
+
     NAME = "ResultSink"
     CATEGORY = "输出"
+
     def __init__(self):
         super().__init__()
 
@@ -2081,8 +2104,10 @@ class CSVSink(BaseBlock):
     - 支持追加模式
     - 支持表头控制
     """
+
     NAME = "CSVSink"
     CATEGORY = "输出"
+
     def __init__(self):
         super().__init__()
 
@@ -2123,7 +2148,7 @@ class CSVSink(BaseBlock):
                 filename=file_path,
                 write_func=write_csv,
                 execution_id=execution_id,
-                description="CSV数据文件"
+                description="CSV数据文件",
             )
 
         except Exception as e:
@@ -2143,19 +2168,18 @@ class BaseChartViewer(BaseBlock):
     - 支持多种图表类型
     - 可配置样式和交互
     """
+
     NAME = "BaseChartViewer"
     CATEGORY = "输出"
+
     def __init__(self, default_type: str = "line"):
         super().__init__()
 
         self.add_input("I-List-XY")
-        
+
         # 使用统一的输出目录
         default_filename = f"{self.NAME.lower().replace('viewer', '')}_chart.html"
-        self.add_text_input_option(
-            "文件路径",
-            default=default_filename
-        )
+        self.add_text_input_option("文件路径", default=default_filename)
         self.add_text_input_option(
             "标题", default=f"{self.NAME.replace('Viewer', '')} Chart"
         )
@@ -2282,8 +2306,8 @@ class BaseChartViewer(BaseBlock):
                     "chart_type": self.chart_type,
                     "title": title,
                     "width": width,
-                    "height": height
-                }
+                    "height": height,
+                },
             )
 
         except Exception as e:
@@ -2415,8 +2439,10 @@ plugins: {{
 
 class LineChartViewer(BaseChartViewer):
     """交互式折线图查看器"""
+
     NAME = "LineChartViewer"
     CATEGORY = "输出"
+
     def __init__(self):
         super().__init__(default_type="line")
 
@@ -2429,6 +2455,7 @@ class BarChartViewer(BaseChartViewer):
 
     NAME = "BarChartViewer"
     CATEGORY = "输出"
+
     def __init__(self):
         super().__init__(default_type="bar")
 
@@ -2441,6 +2468,7 @@ class ScatterChartViewer(BaseChartViewer):
 
     NAME = "ScatterChartViewer"
     CATEGORY = "输出"
+
     def __init__(self):
         super().__init__(default_type="scatter")
 
@@ -2468,27 +2496,23 @@ class TrajectoryChartViewer(BaseBlock):
     - 李萨如图形
     - 任意X-Y轨迹显示
     """
+
     NAME = "TrajectoryChartViewer"
     CATEGORY = "输出"
+
     def __init__(self):
         super().__init__()
 
         self.add_input("I-List-X")
         self.add_input("I-List-Y")
 
-        self.add_text_input_option(
-            "文件路径", default="trajectory_chart.html"
-        )
+        self.add_text_input_option("文件路径", default="trajectory_chart.html")
         self.add_text_input_option("标题", default="轴心轨迹图")
         self.add_integer_option("宽度 (px)", default=800, min_val=600, max_val=2000)
         self.add_integer_option("高度 (px)", default=800, min_val=600, max_val=2000)
         self.add_checkbox_option("显示网格", default=True)
         self.add_number_option("线条宽度", default=2.0, min_val=0.5, max_val=5.0)
-        self.add_select_option(
-            "配色方案",
-            items=["彩虹", "热力"],
-            default="彩虹"
-        )
+        self.add_select_option("配色方案", items=["彩虹", "热力"], default="彩虹")
 
     def on_compute(self, execution_id: str = None):
         """执行计算"""
@@ -2502,12 +2526,20 @@ class TrajectoryChartViewer(BaseBlock):
 
             # 提取数据 - 支持多种格式
             if isinstance(data_x, dict) and "data" in data_x:
-                x_data = data_x["data"] if isinstance(data_x["data"], list) else data_x["data"].get("y", [])
+                x_data = (
+                    data_x["data"]
+                    if isinstance(data_x["data"], list)
+                    else data_x["data"].get("y", [])
+                )
             else:
                 x_data = data_x if isinstance(data_x, list) else []
 
             if isinstance(data_y, dict) and "data" in data_y:
-                y_data = data_y["data"] if isinstance(data_y["data"], list) else data_y["data"].get("y", [])
+                y_data = (
+                    data_y["data"]
+                    if isinstance(data_y["data"], list)
+                    else data_y["data"].get("y", [])
+                )
             else:
                 y_data = data_y if isinstance(data_y, list) else []
 
@@ -2516,7 +2548,9 @@ class TrajectoryChartViewer(BaseBlock):
                 return
 
             if len(x_data) != len(y_data):
-                self._logger.warning(f"X和Y数据长度不匹配: {len(x_data)} != {len(y_data)}")
+                self._logger.warning(
+                    f"X和Y数据长度不匹配: {len(x_data)} != {len(y_data)}"
+                )
                 return
 
             # 获取配置
@@ -2757,7 +2791,7 @@ class TrajectoryChartViewer(BaseBlock):
 
             # 使用通用文件写入方法
             def write_html(full_path):
-                with open(full_path, 'w', encoding='utf-8') as f:
+                with open(full_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
                 self._logger.info(f"轨迹图已生成: {full_path}")
 
@@ -2770,8 +2804,8 @@ class TrajectoryChartViewer(BaseBlock):
                     "chart_type": "trajectory",
                     "title": title,
                     "width": width,
-                    "height": height
-                }
+                    "height": height,
+                },
             )
 
         except Exception as e:
@@ -2790,6 +2824,7 @@ class OrderMapChartViewer(BaseBlock):
 
     NAME = "OrderMapChartViewer"
     CATEGORY = "输出"
+
     def __init__(self):
         super().__init__()
 
@@ -2868,8 +2903,8 @@ class OrderMapChartViewer(BaseBlock):
                     "chart_type": "order_map",
                     "title": title,
                     "width": width,
-                    "height": height
-                }
+                    "height": height,
+                },
             )
 
         except Exception as e:
@@ -3063,6 +3098,7 @@ class MQTTPublisher(BaseBlock):
 
     NAME = "MQTTPublisher"
     CATEGORY = "通信"
+
     def __init__(self):
         super().__init__()
 
@@ -3116,6 +3152,7 @@ class Logger(BaseBlock):
 
     NAME = "Logger"
     CATEGORY = "工具"
+
     def __init__(self):
         super().__init__()
 
@@ -3173,5 +3210,3 @@ DAQ_BLOCKS = [
     # Debug
     Logger,
 ]
-
-

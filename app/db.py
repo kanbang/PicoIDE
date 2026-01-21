@@ -35,12 +35,14 @@ class Flow(Model):
     """Flow 模型"""
     id = fields.UUIDField(pk=True, default=uuid.uuid4)
     user_id = fields.CharField(max_length=255)
+    business = fields.CharField(max_length=50, default="daq")
     name = fields.CharField(max_length=255)
     flow = fields.JSONField(null=True)
     mtime = fields.BigIntField()
 
     class Meta:
         table = "flows"
+        unique_together = (("user_id", "business", "name"),)
 
 
 class Execution(Model):
