@@ -11,83 +11,51 @@ from flow.demo_blocks import DEMO_BLOCKS
 from db import Output
 from flow.engine import ComputeEngine
 from flow.block import Block, BaseBlock
-from flow.manager import EngineManager
+from flow.engine_manager import EngineManager
+from flow.blocks_manager import blocks_registry
 from typing import Any, List
-import inspect
-import numpy as np
 from flow.output import output_file_manager
 from flow.collector import file_collector
 from flow.setting import settings
 import uuid
 
-def _build_blocks(scripts: List[str] = None) -> List[Block]:
-    blocks = []
-    if not scripts:
-        return blocks
-
-    for script in scripts:
-        if not script or not script.strip():
-            continue
-
-        try:
-            # 1. 准备命名空间，注入必要的依赖
-            # 注意：如果脚本里用了 np，这里必须注入，或者让脚本自己 import
-            namespace = {"Block": Block, "BaseBlock": BaseBlock, "np": np}
-
-            # 2. 执行脚本
-            exec(script, namespace)
-
-            # 3. 智能发现：遍历命名空间，找到所有 BaseBlock 的子类
-            for name, obj in namespace.items():
-                # 排除 BaseBlock 基类本身，只找子类
-                if inspect.isclass(obj) and issubclass(obj, Block) and obj is not Block and obj is not BaseBlock:
-                    blocks.append(obj)
-                    print(f"成功动态加载节点: {obj.NAME}")
-
-        except Exception as e:
-            print(f"❌ 执行脚本失败: {str(e)}")
-
-    return blocks
-
-
 def make_dynamic_engine(blocks: List[Block], scripts: List[str]):
-    script_blocks = _build_blocks(scripts)
+    """创建动态引擎（已废弃，建议直接使用 register_business）"""
+    script_blocks = blocks_registry._build_blocks_from_scripts(scripts)
     script_blocks.extend(blocks)
     engine_instance = ComputeEngine()
     engine_instance.set_blocks(script_blocks)
     return engine_instance
 
 
-def get_json_blocks(blocks: List[Block], scripts: List[str] = None):
+def get_dynamic_blocks_json(blocks: List[Block], scripts: List[str] = None):
     """获取所有 blocks 的 JSON 配置"""
-    script_blocks = _build_blocks(scripts)
+    script_blocks = blocks_registry._build_blocks_from_scripts(scripts)
     script_blocks.extend(blocks)
     return [b().export_config() for b in script_blocks]
 
 
+def get_business_blocks_json(business: str, scripts: List[str] = None):
+    """获取业务对应的所有 blocks 的 JSON 配置"""
+    all_blocks = blocks_registry.get_blocks_with_scripts(business, scripts)
+    return [b().export_config() for b in all_blocks]
+
 engine_manager = EngineManager(pool_size=5)
 
 
-def register_business(business: str, blocks: List[Block], scripts: List[str] = None):
+def register_engine(business: str, scripts: List[str] = None):
     """
     注册业务对应的 Block 模板
 
     Args:
         business: 业务标识
-        blocks: Block 模板列表
+        blocks: Block 模板列表（已废弃，建议直接使用 business 参数）
         scripts: 可选的脚本列表（动态定义 Block）
     """
-    if scripts:
-        script_blocks = _build_blocks(scripts)
-        script_blocks.extend(blocks)
-    else:
-        script_blocks = blocks
+    # 使用 BlocksRegistry 获取静态和动态 blocks
+    all_blocks = blocks_registry.get_blocks_with_scripts(business, scripts)
+    engine_manager.register_business(business, all_blocks)
 
-    engine_manager.register_business(business, script_blocks)
-
-
-# 注册业务：Demo（包含所有内置节点）
-register_business("DEMO", DEMO_BLOCKS)
 
 def create_execution_id() -> str:
     """
@@ -175,3 +143,7 @@ async def _batch_save_outputs(execution_id: str):
 
     # 清除收集器中的数据
     file_collector.clear_execution(execution_id)
+
+
+# 注册业务：Demo（包含所有内置节点）
+# register_engine("DEMO", [])

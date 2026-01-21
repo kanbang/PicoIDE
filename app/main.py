@@ -2,18 +2,27 @@
 Descripttion: 
 version: 0.x
 Author: zhai
+Date: 2026-01-21 09:59:22
+LastEditors: zhai
+LastEditTime: 2026-01-21 16:15:39
+'''
+"""
+Descripttion:
+version: 0.x
+Author: zhai
 Date: 2026-01-07 14:28:11
 LastEditors: zhai
-LastEditTime: 2026-01-21 14:14:54
-'''
-'''
+LastEditTime: 2026-01-21 14:23:20
+"""
+
+"""
 Descripttion: 
 version: 0.x
 Author: zhai
 Date: 2026-01-07 14:28:11
 LastEditors: zhai
 LastEditTime: 2026-01-12 19:40:30
-'''
+"""
 """
 主应用程序
 """
@@ -28,6 +37,7 @@ from db import init_db, close_db, ensure_root_directory
 from routes.vfs.views import router as vfs_router
 from routes.engine.views import router as engine_router
 from routes.flow.views import router as flow_router
+from node.iot import IOT_BLOCKS
 
 DB_PATH = "vfs.db"
 USER_ID = "default"
@@ -60,11 +70,11 @@ app.include_router(flow_router)
 
 
 if __name__ == "__main__":
-    
-# ==================== 初始化注册 ====================
+
+    # ==================== 初始化注册 ====================
 
     # 应用启动时注册所有预定义的业务类型
     register_static_blocks("WAVE", DAQ_BLOCKS)
-
+    register_static_blocks("IOT", IOT_BLOCKS)
 
     uvicorn.run(app, host="0.0.0.0", port=8000)

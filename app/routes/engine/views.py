@@ -23,8 +23,8 @@ from flow.demo_blocks import DEMO_BLOCKS
 
 from .schema import ExecuteRequest, ExecuteResponse, ExecuteSavedRequest
 from routes.dependencies import get_business
-from .blocks_manager import blocks_registry
-from flow.run import create_execution_id, make_dynamic_engine, get_json_blocks, register_business, run_business
+from flow.blocks_manager import blocks_registry
+from flow.run import create_execution_id, get_business_blocks_json, register_engine, run_business
 from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
 from uuid import UUID
@@ -56,7 +56,7 @@ async def load_scripts_from_db(directory: str, business: str) -> List[str]:
                 if file_type == 1:  # 文件
                     if name.endswith(".py"):
                         # 读取 .py 文件内容
-                        content = await read_file(USER_ID, full_path)
+                        content = await read_file(USER_ID, full_path, business)
                         if content:
                             scripts.append(content.decode("utf-8"))
                             logger.info(f"Loaded block script: {full_path}")
@@ -69,20 +69,7 @@ async def load_scripts_from_db(directory: str, business: str) -> List[str]:
     await _load_recursive(directory)
     return scripts
 
-
-def collect_output_files(execution_id: str) -> List[Dict[str, Any]]:
-    """
-    收集执行期间创建的输出文件（使用 execution_id 追踪）
-
-    Args:
-        execution_id: 执行ID
-
-    Returns:
-        输出文件列表
-    """
-    # 使用 OutputFileManager 获取执行关联的文件
-    return output_file_manager.get_execution_files(execution_id)
-
+# ==================== 接口 ====================
 
 @router.get("/blocks")
 async def get_blocks_endpoint(business: Annotated[str, Depends(get_business)]):
@@ -92,17 +79,13 @@ async def get_blocks_endpoint(business: Annotated[str, Depends(get_business)]):
     根据请求头中的 X-Business 参数返回对应的 Block 模板
     """
     try:
-        # 从 Block 注册表获取静态 blocks
-        static_blocks = blocks_registry.get_blocks(business)
-        
         # 加载自定义脚本（动态 blocks）
         scripts = await load_scripts_from_db("/", business)
         
-        # 合并静态 blocks 和动态 blocks
-        json_blocks = get_json_blocks(static_blocks, scripts)
-        
-        logger.info(f"获取 blocks - Business: {business}, 静态: {len(static_blocks)}, 动态: {len(scripts)}, 总计: {len(json_blocks)}")
-        
+        # 获取所有 blocks 的 JSON 配置
+        json_blocks = get_business_blocks_json(business, scripts)
+
+        logger.info(f"获取 blocks - Business: {business}, 动态: {len(scripts)}, 总计: {len(json_blocks)}")
         return {"blocks": json_blocks}
     except KeyError as e:
         logger.error(f"业务类型不存在: {business} - {str(e)}")
@@ -143,12 +126,9 @@ async def execute(
         scripts = request.scripts or []
         scripts_db = await load_scripts_from_db("/", business)
         scripts.extend(scripts_db)
-
-        # 2. 从 Block 注册表获取静态 blocks
-        static_blocks = blocks_registry.get_blocks(business)
         
         # 3. 注册业务对应的 Block 模板（包含静态和动态 blocks）
-        register_business(business.upper(), static_blocks, scripts)
+        register_engine(business.upper(), scripts)
 
         # 4. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
@@ -262,7 +242,7 @@ async def execute_saved(
         logger.info(f"Execute From DB Request - Flow ID: {request.flow_id}, Scripts Path: {request.scripts_path}, Tag: {request.tag}, Business: {business}")
 
         # 1. 从数据库加载 graph
-        flow_db = await get_flow(USER_ID, UUID(request.flow_id))
+        flow_db = await get_flow(USER_ID, business, UUID(request.flow_id))
         if not flow_db:
             raise HTTPException(404, f"Flow not found: {request.flow_id}")
 
@@ -273,19 +253,22 @@ async def execute_saved(
 
         graph = flow_data["graph"]
 
+
+
+        ###################################################################################
+        # 临时处理，可优化掉
         # 2. 从数据库加载脚本
         scripts = await load_scripts_from_db(request.scripts_path, business)
         logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
 
-        # 3. 从 Block 注册表获取静态 blocks
-        static_blocks = blocks_registry.get_blocks(business)
-
         # 4. 注册业务对应的 Block 模板（包含静态和动态 blocks）
-        register_business(business.upper(), static_blocks, scripts)
+        register_engine(business.upper(), scripts)
 
         # 5. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
         scripts_hash = calculate_scripts_hash(scripts)
+        ###################################################################################
+
 
         # 6. 确定 execution_id 和清理策略
         if request.tag:
