@@ -5,11 +5,13 @@
  * @Date: 2026-01-09
 -->
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useBusinessStore } from '@/stores/business';
 import SingleNodeFlow from '@/views/NodeFlowDemo.vue';
 import SchemaManagerExample from '@/views/FlowManagerApiDemo.vue';
 import TinyCode from '@/views/TinyCode.vue';
+
+const TAB_STORAGE_KEY = 'picoide_active_tab';
 
 // 当前激活的标签页
 const activeTab = ref<'single' | 'manager' | 'tinycode'>('single');
@@ -17,10 +19,29 @@ const activeTab = ref<'single' | 'manager' | 'tinycode'>('single');
 // 使用 Pinia store
 const businessStore = useBusinessStore();
 
+// 从 localStorage 恢复 tab 状态
+function restoreTabFromStorage() {
+  const savedTab = localStorage.getItem(TAB_STORAGE_KEY);
+  if (savedTab && ['single', 'manager', 'tinycode'].includes(savedTab)) {
+    activeTab.value = savedTab as 'single' | 'manager' | 'tinycode';
+  }
+}
+
 // 切换标签页
 function switchTab(tab: 'single' | 'manager' | 'tinycode') {
   activeTab.value = tab;
+  localStorage.setItem(TAB_STORAGE_KEY, tab);
 }
+
+// 监听 tab 变化，自动保存
+watch(activeTab, (newTab) => {
+  localStorage.setItem(TAB_STORAGE_KEY, newTab);
+});
+
+// 组件挂载时恢复 tab 状态
+onMounted(() => {
+  restoreTabFromStorage();
+});
 </script>
 
 <template>

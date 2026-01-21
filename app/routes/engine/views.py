@@ -39,7 +39,7 @@ USER_ID = "default"
 router = APIRouter(prefix="/api/engine", tags=["engine"])
 
 
-async def load_scripts_from_db(directory: str = "/blocks") -> List[str]:
+async def load_scripts_from_db(directory: str, business: str) -> List[str]:
     """从数据库指定目录递归加载所有 .py 文件内容"""
     scripts = []
 
@@ -47,7 +47,7 @@ async def load_scripts_from_db(directory: str = "/blocks") -> List[str]:
         """递归加载目录"""
         try:
             # 列出目录下的所有文件和子目录
-            files = await list_dir(USER_ID, normalize_path(path))
+            files = await list_dir(USER_ID, normalize_path(path), business)
 
             for file_info in files:
                 name, file_type = file_info
@@ -96,7 +96,7 @@ async def get_blocks_endpoint(business: Annotated[str, Depends(get_business)]):
         blocks = blocks_manager.get_blocks(business)
         
         # 加载自定义脚本
-        scripts = await load_scripts_from_db("/")
+        scripts = await load_scripts_from_db("/", business)
         
         # 合并自定义 blocks
         json_blocks = get_json_blocks(blocks, scripts)
@@ -141,7 +141,7 @@ async def execute(
 
         # 1. 加载自定义脚本
         scripts = request.scripts or []
-        scripts_db = await load_scripts_from_db("/")
+        scripts_db = await load_scripts_from_db("/", business)
         scripts.extend(scripts_db)
 
         # 2. 从业务管理器获取对应的 blocks
@@ -274,7 +274,7 @@ async def execute_saved(
         graph = flow_data["graph"]
 
         # 2. 从数据库加载脚本
-        scripts = await load_scripts_from_db(request.scripts_path)
+        scripts = await load_scripts_from_db(request.scripts_path, business)
         logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
 
         # 3. 从业务管理器获取对应的 blocks

@@ -1,4 +1,10 @@
 
+
+
+poetry run python -m PyInstaller -F -i main.ico --copy-metadata tortoise-orm  --hidden-import tortoise.backends.sqlite  main.py
+
+
+
 ### python Block class
 
 ``` py

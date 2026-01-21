@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import NodeFlow from '@/components/NodeFlow/index.vue';
 import { getBlocks, executeBlocks } from '@/api/index';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
+import { useBusinessStore } from '@/stores/business';
 
-const STORAGE_KEY = 'nodeflow_flow';
+const businessStore = useBusinessStore();
+
+// 根据 business 动态生成存储键
+const STORAGE_KEY = computed(() => `nodeflow_flow_${businessStore.business}`);
 
 // --- 响应式状态 ---
 const blocks = ref<any[]>([]);
@@ -25,7 +29,7 @@ async function loadBlocks() {
 
 // 从本地存储还原画布
 function loadFromStorage(): void {
-  const savedSchema = localStorage.getItem(STORAGE_KEY);
+  const savedSchema = localStorage.getItem(STORAGE_KEY.value);
   if (savedSchema) {
     try {
       const flow = JSON.parse(savedSchema);
@@ -41,7 +45,7 @@ function loadFromStorage(): void {
 
 // 处理保存：持久化到本地
 function handleSave(data: any): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  localStorage.setItem(STORAGE_KEY.value, JSON.stringify(data));
   hasUnsavedChanges.value = false;
   showSuccess('保存成功');
 }
