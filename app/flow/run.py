@@ -84,7 +84,7 @@ async def run_business(business: str, flow: dict, execution_id: str = None):
         execution_id = create_execution_id()
 
     async with await engine_manager.acquire(business, flow) as engine:
-        await engine.start(execution_id)
+        await engine.run(execution_id)
 
     # 执行流程，传递 execution_id（使用异步执行）
     # async with await engine_manager.acquire(business, flow) as engine:

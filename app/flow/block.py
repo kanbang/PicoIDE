@@ -56,6 +56,7 @@ class Option:
 class Block:
     NAME = "Block"
     CATEGORY = "General"
+    STREAMING = False
 
     def __init__(self):
         # 使用 slots 的话 inputs/outputs 也需要调整，这里为了扩展性暂保留 dict

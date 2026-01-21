@@ -212,6 +212,7 @@ class MqttPublishBlock(BaseBlock):
 class MqttSubscribeBlock(BaseBlock):
     NAME = "MqttSubscribe"
     CATEGORY = "IoT"
+    STREAMING = True
 
     def __init__(self):
         super().__init__()
@@ -248,8 +249,10 @@ class MqttSubscribeBlock(BaseBlock):
             self._loop = asyncio.get_running_loop()
 
         # 引擎启动后，第一个执行的就是这里，它会卡在 await
-        client = mqtt_manager.get_client(self.get_option("host"), 1883)
-        client.register_topic_callback(self.get_option("topic"), self._on_mqtt_msg)
+        if not self._registered:
+            client = mqtt_manager.get_client(self.get_option("host"), 1883)
+            client.register_topic_callback(self.get_option("topic"), self._on_mqtt_msg)
+            self._registered = True
 
         # 阻塞直到新消息，一旦 get 到，本方法结束，引擎自动触发下游
         msg = await self._msg_queue.get()
