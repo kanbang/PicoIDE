@@ -54,7 +54,7 @@ def make_dynamic_engine(blocks: List[Block], scripts: List[str]):
     script_blocks = _build_blocks(scripts)
     script_blocks.extend(blocks)
     engine_instance = ComputeEngine()
-    engine_instance.register_blocks(script_blocks)
+    engine_instance.set_blocks(script_blocks)
     return engine_instance
 
 

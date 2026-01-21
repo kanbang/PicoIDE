@@ -70,7 +70,7 @@ class EngineManager:
             raise ValueError(f"Business {biz_id} not registered.")
         
         bp = ComputeEngine()
-        bp.register_blocks(self._block_libraries[biz_id])
+        bp.set_blocks(self._block_libraries[biz_id])
         # 拓扑排序与环路检测在此处一次性完成
         bp.set_flow(flow)
         

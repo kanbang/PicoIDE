@@ -16,7 +16,7 @@ class ComputeEngine:
         if self.on_log:
             self.on_log(f"[Engine] {msg}")
 
-    def register_blocks(self, block_classes: List[Type[Block]]):
+    def set_blocks(self, block_classes: List[Type[Block]]):
         """
         核心优化：直接读取类属性 NAME 进行注册，无需实例化
         """
