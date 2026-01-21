@@ -20,7 +20,7 @@
 	"additionalBuiltinExtensions": [
 		{
 			"scheme": "http",
-			"path": "./vfs-extension"
+			"path": "/vfs-extension"
 		}
 	],
 	"layout": {

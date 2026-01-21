@@ -4,11 +4,11 @@
  * @Author: zhai
  * @Date: 2026-01-10 21:08:00
  * @LastEditors: zhai
- * @LastEditTime: 2026-01-21 08:51:16
+ * @LastEditTime: 2026-01-21 09:18:35
 -->
 <template>
   <iframe
-    src="/tinycode/index.html"
+    src="/tinycode.html"
     frameborder="0"
     allowfullscreen
     class="tiny-code-iframe"

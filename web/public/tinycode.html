@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-12 09:16:50
  * @LastEditors: zhai
- * @LastEditTime: 2026-01-21 08:55:49
+ * @LastEditTime: 2026-01-12 14:49:32
 -->
 <!-- Copyright (C) Microsoft Corporation. All rights reserved. -->
 <!DOCTYPE html>
@@ -18,15 +18,15 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Tiny Code">
-    <link rel="apple-touch-icon" href="./favicon.ico" />
+    <link rel="apple-touch-icon" href="/code-192.png" />
 
     <!-- Disable pinch zooming -->
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
 
     <!-- Workbench Icon/Manifest/CSS -->
-    <link rel="icon" href="./favicon.ico" type="image/x-icon" />
-    <link rel="manifest" href="./product.json">
+    <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+    <link rel="manifest" href="/manifest.json">
     <link data-name="vs/workbench/workbench.web.main" rel="stylesheet"
         href="./vscode/out/vs/workbench/workbench.web.main.css">
 
@@ -90,10 +90,10 @@
 <script src="./vscode/out/vs/webPackagePaths.js"></script>
 <script>
     Object.keys(self.webPackagePaths).map(function (key, index) {
-        self.webPackagePaths[key] = `${window.location.origin}/tinycode/vscode/node_modules/${key}/${self.webPackagePaths[key]}`;
+        self.webPackagePaths[key] = `${window.location.origin}/vscode/node_modules/${key}/${self.webPackagePaths[key]}`;
     });
     require.config({
-        baseUrl: `${window.location.origin}/tinycode/vscode/out`,
+        baseUrl: `${window.location.origin}/vscode/out`,
         recordStats: true,
         trustedTypesPolicy: window.trustedTypes?.createPolicy('amdLoader', {
             createScriptURL(value) {
