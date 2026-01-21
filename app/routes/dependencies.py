@@ -12,7 +12,7 @@ def get_business(http_request: Request) -> str:
         http_request: FastAPI Request 对象
         
     Returns:
-        业务类型字符串，默认值为 "daq"
+        业务类型字符串，默认值为 "DEMO"
         
     Example:
         ```python

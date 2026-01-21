@@ -1,9 +1,19 @@
+'''
+Descripttion: 
+version: 0.x
+Author: zhai
+Date: 2026-01-12 19:36:01
+LastEditors: zhai
+LastEditTime: 2026-01-21 09:29:27
+'''
 """
 VFS 虚拟文件系统路由
 """
-from fastapi import APIRouter, Request, HTTPException
+from typing import Annotated
+from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import Response
 
+from routes.dependencies import get_business
 from services import (
     normalize_path,
     stat_file,
@@ -29,7 +39,7 @@ async def stat(path: str):
 
 
 @router.get("/readdir")
-async def readdir(path: str):
+async def readdir(path: str, business: Annotated[str, Depends(get_business)]):
     path = normalize_path(path)
     return await list_dir(USER_ID, path)
 

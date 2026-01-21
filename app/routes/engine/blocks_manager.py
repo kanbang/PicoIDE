@@ -1,3 +1,11 @@
+'''
+Descripttion: 
+version: 0.x
+Author: zhai
+Date: 2026-01-20 21:07:02
+LastEditors: zhai
+LastEditTime: 2026-01-21 09:39:08
+'''
 """
 Business 与 Blocks 映射管理模块
 
@@ -56,7 +64,7 @@ class BlocksManager:
         Example:
             ```python
             manager = BusinessManager()
-            blocks = manager.get_blocks("daq")
+            blocks = manager.get_blocks("DEMO")
             ```
         """
         # 转换为小写，支持大小写不敏感
@@ -163,7 +171,7 @@ def get_blocks_for_business(business: str) -> Any:
         
     Example:
         ```python
-        blocks = get_blocks_for_business("daq")
+        blocks = get_blocks_for_business("DEMO")
         ```
     """
     return blocks_manager.get_blocks(business)

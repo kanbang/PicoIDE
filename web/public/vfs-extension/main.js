@@ -1,6 +1,22 @@
 exports.activate = function (context) {
     const vscode = require('vscode');
 
+    // 优先从全局变量获取 business 值（由 tinycode.html 设置）
+    let cachedBusiness = 'daq';
+    try {
+        if (typeof self !== 'undefined' && self.__PICO_IDE_BUSINESS__) {
+            cachedBusiness = self.__PICO_IDE_BUSINESS__;
+            console.log('[VFS] Initial business from global variable:', cachedBusiness);
+        } else if (typeof window !== 'undefined' && window.__PICO_IDE_BUSINESS__) {
+            cachedBusiness = window.__PICO_IDE_BUSINESS__;
+            console.log('[VFS] Initial business from window global variable:', cachedBusiness);
+        } else {
+            console.log('[VFS] Global variable __PICO_IDE_BUSINESS__ not found, using default:', cachedBusiness);
+        }
+    } catch (err) {
+        console.warn('[VFS] Failed to get business from global variable:', err);
+    }
+
     class VFSProvider {
         constructor() {
             this._emitter = new vscode.EventEmitter();
@@ -23,8 +39,23 @@ exports.activate = function (context) {
             this._emitter.fire(changes);
         }
 
+        // 获取当前 business 值
+        _getBusiness() {
+            console.log('[VFS] _getBusiness - returning cached:', cachedBusiness);
+            return cachedBusiness;
+        }
+
+        // 封装 fetch，自动添加 X-Business 头
+        async _fetch(url, options = {}) {
+            const headers = {
+                ...(options.headers || {}),
+                'X-Business': this._getBusiness()
+            };
+            return fetch(url, { ...options, headers });
+        }
+
         async stat(uri) {
-            const res = await fetch(`/api/vfs/stat?path=${encodeURIComponent(uri.path)}`);
+            const res = await this._fetch(`/api/vfs/stat?path=${encodeURIComponent(uri.path)}`);
             if (!res.ok) throw vscode.FileSystemError.FileNotFound(uri);
             const data = await res.json();
             return {
@@ -36,7 +67,7 @@ exports.activate = function (context) {
         }
 
         async readDirectory(uri) {
-            const res = await fetch(`/api/vfs/readdir?path=${encodeURIComponent(uri.path)}`);
+            const res = await this._fetch(`/api/vfs/readdir?path=${encodeURIComponent(uri.path)}`);
             if (!res.ok) throw vscode.FileSystemError.FileNotFound(uri);
             const entries = await res.json();
             return entries.map(([name, type]) => [
@@ -46,7 +77,7 @@ exports.activate = function (context) {
         }
 
         async createDirectory(uri) {
-            const res = await fetch(`/api/vfs/mkdir?path=${encodeURIComponent(uri.path)}`, { method: 'POST' });
+            const res = await this._fetch(`/api/vfs/mkdir?path=${encodeURIComponent(uri.path)}`, { method: 'POST' });
             if (!res.ok) throw vscode.FileSystemError.Unavailable('Failed to create directory');
 
             this._fireSoon(
@@ -56,7 +87,7 @@ exports.activate = function (context) {
         }
 
         async readFile(uri) {
-            const res = await fetch(`/api/vfs/read?path=${encodeURIComponent(uri.path)}`);
+            const res = await this._fetch(`/api/vfs/read?path=${encodeURIComponent(uri.path)}`);
             if (!res.ok) throw vscode.FileSystemError.FileNotFound(uri);
             const arrayBuffer = await res.arrayBuffer();
             return new Uint8Array(arrayBuffer);
@@ -81,7 +112,7 @@ exports.activate = function (context) {
                 throw vscode.FileSystemError.FileNotFound(uri);
             }
 
-            const res = await fetch(`/api/vfs/write?path=${encodeURIComponent(uri.path)}`, {
+            const res = await this._fetch(`/api/vfs/write?path=${encodeURIComponent(uri.path)}`, {
                 method: 'POST',
                 body: content
             });
@@ -104,7 +135,7 @@ exports.activate = function (context) {
                 }
             }
 
-            const res = await fetch(`/api/vfs/delete?path=${encodeURIComponent(uri.path)}`, { method: 'DELETE' });
+            const res = await this._fetch(`/api/vfs/delete?path=${encodeURIComponent(uri.path)}`, { method: 'DELETE' });
             if (!res.ok) throw vscode.FileSystemError.Unavailable('Failed to delete');
 
             this._fireSoon(

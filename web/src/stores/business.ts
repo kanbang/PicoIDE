@@ -1,3 +1,11 @@
+/*
+ * @Descripttion: 
+ * @version: 0.x
+ * @Author: zhai
+ * @Date: 2026-01-20 20:49:45
+ * @LastEditors: zhai
+ * @LastEditTime: 2026-01-21 09:37:41
+ */
 /**
  * 全局业务状态管理
  */
@@ -6,7 +14,7 @@ import { ref, watch } from 'vue';
 
 export const useBusinessStore = defineStore('business', () => {
   // 业务类型
-  const business = ref<string>('daq');
+  const business = ref<string>('DEMO');
 
   // 从 localStorage 初始化
   const savedBusiness = localStorage.getItem('global_business');
