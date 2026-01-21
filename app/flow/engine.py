@@ -1,12 +1,10 @@
 import asyncio
 import networkx as nx
 import logging
+import copy
 from enum import Enum, auto
 from typing import Any, Dict, List, Type, Optional, Set, Tuple
 from collections import defaultdict
-
-# 假设 Block 基类已在外部定义
-# from flow.block import Block
 
 class EngineStatus(Enum):
     IDLE = auto()
@@ -25,7 +23,8 @@ class ComputeEngine:
         # 运行时状态管理
         self.status = EngineStatus.IDLE
         self._node_locks: Dict[str, asyncio.Lock] = {}
-        self._ready_counts: Dict[str, int] = defaultdict(int)
+        # 使用 (node_id, exec_id) 组合作为计数 Key，防止批次污染
+        self._ready_slots = defaultdict(set)
         self._running_tasks: Set[asyncio.Task] = set()
         self._shutdown_event = asyncio.Event()
 
@@ -39,24 +38,23 @@ class ComputeEngine:
         self.logger.info(f"Registered {len(block_classes)} block types.")
 
     def set_flow(self, flow: Dict[str, Any]):
-        """编译计算图"""
+        """编译计算图并进行拓扑检查"""
         if self.status != EngineStatus.IDLE:
             raise RuntimeError("Cannot recompile flow while engine is running.")
 
         self._graph.clear()
         self.instances = {}
         self._node_locks = {}
-        self._ready_counts.clear()
+        self._ready_slots.clear()
         
         port_map = {} 
 
-        # 实例化节点
+        # 1. 实例化节点
         for n_data in flow["nodes"]:
             n_id = n_data["id"]
             cls = self.block_registry.get(n_data["type"])
             if not cls:
-                self.logger.warning(f"Unknown block type: {n_data['type']}")
-                continue
+                raise ValueError(f"Unknown block type: {n_data['type']}")
             
             inst = cls()
             inst.instance_id = n_id
@@ -64,7 +62,7 @@ class ComputeEngine:
             self._node_locks[n_id] = asyncio.Lock()
             self._graph.add_node(n_id)
 
-            # 配置端口映射
+            # 配置端口映射与静态 Option
             for k, v in n_data.get("inputs", {}).items():
                 if k in inst._options:
                     inst.set_option(k, v.get("value"))
@@ -73,125 +71,140 @@ class ComputeEngine:
             for k, v in n_data.get("outputs", {}).items():
                 port_map[v["id"]] = (n_id, k)
 
-        # 建立拓扑连接
+        # 2. 建立拓扑连接
         for conn in flow["connections"]:
             src = port_map.get(conn["from"])
             dst = port_map.get(conn["to"])
             if src and dst:
                 self._graph.add_edge(src[0], dst[0], out_p=src[1], in_p=dst[1])
+
+        # 3. 拓扑合法性检查
+        if not nx.is_directed_acyclic_graph(self._graph):
+            self.logger.warning("Graph contains cycles. Ensure blocks handle feedback loops properly.")
         
-        self.logger.info(f"Flow compiled: {len(self.instances)} nodes, {self._graph.number_of_edges()} connections.")
+        self.logger.info(f"Flow compiled: {len(self.instances)} nodes.")
 
     # --- 2. 核心调度逻辑 ---
 
     async def _execute_node(self, n_id: str, exec_id: str):
-        """执行普通节点的计算并触发其下游"""
+        """执行节点计算"""
         block = self.instances[n_id]
         try:
-            # 执行节点的业务逻辑
+            # 执行业务逻辑
             await block.async_on_compute(exec_id)
-            # 递归触发下游
+            # 成功后触发下游
             await self._trigger_successors(n_id, exec_id)
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            self.logger.error(f"Node execution error {n_id} ({block.NAME}): {e}", exc_info=True)
+            self.logger.error(f"Node {n_id} [{block.NAME}] execution failed: {e}", exc_info=True)
+            # 注意：此处可扩展错误传播逻辑，清理 _ready_slots 或通知下游失败
 
     async def _trigger_successors(self, n_id: str, exec_id: str):
-        """核心：数据搬运与屏障同步(Barrier Synchronization)"""
+        """数据搬运与屏障同步"""
         block = self.instances[n_id]
-        successors = list(self._graph.successors(n_id))
+        # 关键：获取输出快照，实现数据隔离
+        output_snapshot = {k: copy.copy(v) for k, v in block._outputs.items()}
         
-        for succ_id in successors:
+        for succ_id in list(self._graph.successors(n_id)):
             succ_block = self.instances[succ_id]
             
-            # 1. 数据物理搬运 (Data Marshalling)
-            edges = self._graph.get_edge_data(n_id, succ_id)
-            for edge in edges.values():
-                succ_block._inputs[edge["in_p"]] = block._outputs.get(edge["out_p"])
-
-            # 2. 屏障同步：确保多入度节点集齐所有输入
             async with self._node_locks[succ_id]:
-                self._ready_counts[succ_id] += 1
-                # 信号量满足入度要求
-                if self._ready_counts[succ_id] >= self._graph.in_degree(succ_id):
-                    self._ready_counts[succ_id] = 0
-                    
-                    # 启动下游任务
+                # 1. 物理搬运数据
+                edges = self._graph.get_edge_data(n_id, succ_id)
+                for edge in edges.values():
+                    succ_block._inputs[edge["in_p"]] = output_snapshot.get(edge["out_p"])
+
+                # 记录是哪个“来源节点”送达了数据
+                slot_key = (succ_id, exec_id)
+                self._ready_slots[slot_key].add(n_id) # 使用 set 自动去重
+                
+                # 只有当 set 的长度等于入度时，才说明每个上游都到齐了
+                if len(self._ready_slots[slot_key]) >= self._graph.in_degree(succ_id):
+                    # 重置槽位
+                    del self._ready_slots[slot_key]
+
+                    # 启动任务
                     task = asyncio.create_task(self._execute_node(succ_id, exec_id))
                     self._running_tasks.add(task)
                     task.add_done_callback(self._running_tasks.discard)
 
     async def _source_worker(self, n_id: str, exec_id: str):
-        """源节点(Source)专用 Worker，负责生产数据泵"""
+        """源节点驱动器"""
         block = self.instances[n_id]
+        is_streaming = getattr(block, "STREAMING", False)
         
         while not self._shutdown_event.is_set():
             try:
-                # 阻塞直到源节点产出新数据
+                # 生产数据
                 await block.async_on_compute(exec_id)
                 
-                # 源节点产出数据后，异步抛出下游分支
-                asyncio.create_task(self._trigger_successors(n_id, exec_id))
-                
-                # 根据 Block 属性判断是流式源还是单次源
-                if not getattr(block, "STREAMING", False):
-                    self.logger.info(f"Once-style source {n_id} finished.")
+                # 触发下游（不等待下游执行完，实现流水线并行）
+                trigger_task = asyncio.create_task(self._trigger_successors(n_id, exec_id))
+                self._running_tasks.add(trigger_task)
+                trigger_task.add_done_callback(self._running_tasks.discard)
+
+                if not is_streaming:
                     break
                 
-                await asyncio.sleep(0.001) # 微小让权
+                # 这里的频率控制应由 Block 内部的 async_on_compute 实现（如 await sleep）
+                await asyncio.sleep(0) 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self.logger.error(f"Source worker {n_id} error: {e}")
-                await asyncio.sleep(1) # 故障避让
+                self.logger.error(f"Source {n_id} error: {e}")
+                await asyncio.sleep(1) # 故障退避
 
-    # --- 3. 外部控制接口 ---
+    # --- 3. 运行控制 ---
 
-    async def run(self, execution_id: str = "exec_default"):
-        """启动引擎的主入口"""
+    async def run(self, execution_id: str = "exec_001"):
+        """启动引擎"""
         if self.status != EngineStatus.IDLE:
+            self.logger.warning("Engine is already running.")
             return
 
         self.status = EngineStatus.RUNNING
         self._shutdown_event.clear()
-        self.logger.info(f"Engine started (ExecID: {execution_id}).")
-
-        # 识别入度为 0 的拓扑源
-        sources = [n for n, d in self._graph.in_degree() if d == 0]
         
-        # 启动所有源 Worker
+        # 识别入度为 0 的源节点
+        sources = [n for n, d in self._graph.in_degree() if d == 0]
+        if not sources:
+            self.logger.error("No source nodes found in flow!")
+            self.status = EngineStatus.IDLE
+            return
+
         for n_id in sources:
             task = asyncio.create_task(self._source_worker(n_id, execution_id))
             self._running_tasks.add(task)
             task.add_done_callback(self._running_tasks.discard)
 
+        # 维持运行直到主动停止或任务清空
         try:
-            # 持续运行，直到手动停止或所有任务运行完毕
             while not self._shutdown_event.is_set():
                 if not self._running_tasks:
-                    self.logger.info("All tasks completed. Engine exiting.")
+                    self.logger.info("Pipeline idle. All tasks finished.")
                     break
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.1)
         finally:
             await self.stop()
 
     async def stop(self):
-        """优雅停止引擎"""
-        if self.status == EngineStatus.STOPPING:
+        """安全停止"""
+        if self.status != EngineStatus.RUNNING:
             return
             
         self.status = EngineStatus.STOPPING
         self._shutdown_event.set()
         
         if self._running_tasks:
-            self.logger.info(f"Stopping {len(self._running_tasks)} active tasks...")
+            self.logger.info(f"Cancelling {len(self._running_tasks)} tasks...")
             for task in list(self._running_tasks):
-                if not task.done():
-                    task.cancel()
+                task.cancel()
             
+            # 等待所有任务收尾
             await asyncio.gather(*self._running_tasks, return_exceptions=True)
             self._running_tasks.clear()
 
+        self._ready_slots.clear()
         self.status = EngineStatus.IDLE
-        self.logger.info("Engine stopped safely.")
+        self.logger.info("Engine stopped.")
