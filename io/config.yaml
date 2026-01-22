@@ -1,0 +1,28 @@
+# PicoIDE IO 服务配置文件
+
+# 序列化方式: msgpack 或 json
+serialization: msgpack
+
+# 服务端口配置
+services:
+  can:
+    req_port: 5555
+    pub_port: 5557
+    ipc: flow_can
+
+  modbus:
+    req_port: 5556
+    pub_port: 5558
+    ipc: flow_modbus
+
+# 日志配置
+logging:
+  level: INFO
+  format: '%(asctime)s [%(levelname)s] [%(name)s:%(process)d] %(message)s'
+  datefmt: '%H:%M:%S'
+
+# Modbus 默认配置
+modbus:
+  default_timeout: 2
+  default_baudrate: 9600
+  poll_interval: 0.05  # 轮询间隔（秒）

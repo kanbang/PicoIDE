@@ -5,21 +5,19 @@ import signal
 import logging
 import zmq
 import zmq.asyncio
-import msgpack
-import struct
 from abc import ABC, abstractmethod
+from config_loader import config
+from serializer import serializer
 
-# 配置常量增加 PUB 端口定义
-CONF = {
-    "CAN": {"port": 5555, "pub_port": 5557, "ipc": "flow_can"},
-    "MODBUS": {"port": 5556, "pub_port": 5558, "ipc": "flow_modbus"},
-}
 
 def setup_logger(name):
+    """配置日志记录器"""
+    log_config = config.logging_config
+    level = getattr(logging, log_config.get('level', 'INFO'))
     logging.basicConfig(
-        level=logging.INFO,
-        format=f'%(asctime)s [%(levelname)s] [{name}:{os.getpid()}] %(message)s',
-        datefmt='%H:%M:%S'
+        level=level,
+        format=log_config.get('format', '%(asctime)s [%(levelname)s] %(message)s'),
+        datefmt=log_config.get('datefmt', '%H:%M:%S')
     )
     return logging.getLogger(name)
 
@@ -45,26 +43,30 @@ class BaseIOService(ABC):
         根据操作系统自动选择绑定地址
         :param is_pub: 是否获取发布通道(PUB)的地址
         """
-        conf = CONF[self.service_key]
-        port_key = "pub_port" if is_pub else "port"
+        svc_config = config.get_service_config(self.service_key)
+        port_key = "pub_port" if is_pub else "req_port"
         ipc_suffix = "_pub" if is_pub else ""
-        
+
         if self.is_windows:
-            # Windows 下绑定所有网卡，但在调试信息中显示 127.0.0.1
-            addr = f"tcp://*:{conf[port_key]}"
+            # Windows 下绑定所有网卡
+            addr = f"tcp://*:{svc_config[port_key]}"
             return addr
         else:
-            ipc_file = f"/tmp/{conf['ipc']}{ipc_suffix}.ipc"
+            ipc_file = f"/tmp/{svc_config['ipc']}{ipc_suffix}.ipc"
             if os.path.exists(ipc_file):
-                try: os.unlink(ipc_file)
-                except: pass
+                try:
+                    os.unlink(ipc_file)
+                except:
+                    pass
             return f"ipc://{ipc_file}"
 
     def pack(self, data):
-        return msgpack.packb(data, use_bin_type=True)
+        """使用配置的序列化器"""
+        return serializer.pack(data)
 
     def unpack(self, data):
-        return msgpack.unpackb(data, raw=False)
+        """使用配置的序列化器"""
+        return serializer.unpack(data)
 
     @abstractmethod
     async def main_loop(self):
@@ -74,7 +76,7 @@ class BaseIOService(ABC):
         import asyncio
         if self.is_windows:
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        
+
         try:
             asyncio.run(self.main_loop())
         except KeyboardInterrupt:
@@ -82,5 +84,29 @@ class BaseIOService(ABC):
         except Exception as e:
             self.logger.exception(f"服务运行崩溃: {e}")
         finally:
-            self.ctx.term()
-            self.logger.info("ZMQ 上下文已释放，进程退出。")
+            # 清理资源
+            self._cleanup()
+
+    def _cleanup(self):
+        """清理资源"""
+        # 终止 ZMQ 上下文（会自动关闭所有 socket）
+        self.ctx.term()
+
+        # 清理 IPC 文件（仅 Linux）
+        if not self.is_windows:
+            for is_pub in [False, True]:
+                ipc_file = self._get_ipc_file(is_pub)
+                if ipc_file and os.path.exists(ipc_file):
+                    try:
+                        os.unlink(ipc_file)
+                        self.logger.info(f"清理 IPC 文件: {ipc_file}")
+                    except Exception as e:
+                        self.logger.warning(f"清理 IPC 文件失败: {e}")
+
+        self.logger.info("资源清理完成，进程退出。")
+
+    def _get_ipc_file(self, is_pub=False):
+        """获取 IPC 文件路径"""
+        svc_config = config.get_service_config(self.service_key)
+        ipc_suffix = "_pub" if is_pub else ""
+        return f"/tmp/{svc_config['ipc']}{ipc_suffix}.ipc"

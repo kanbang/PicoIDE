@@ -1,11 +1,10 @@
 import asyncio
 import zmq
 import zmq.asyncio
-import msgpack
 import time
-import struct
 from pymodbus.client import ModbusTcpClient, ModbusSerialClient
 from common import BaseIOService
+from config_loader import config
 
 class ConnectionPool:
     """自动管理多台硬件设备的连接实例"""
@@ -53,6 +52,9 @@ class ModbusService(BaseIOService):
         pub_sock.bind(self.get_addr(is_pub=True))
         self.logger.info(f"PUB 推送通道已就绪: {self.get_addr(is_pub=True)}")
 
+        # 从配置获取轮询间隔
+        poll_interval = config.modbus_config.get('poll_interval', 0.05)
+
         while self.running:
             # 1. 优先消耗写操作队列
             while not self.task_queue.empty():
@@ -74,7 +76,7 @@ class ModbusService(BaseIOService):
 
                     count = 2 if "32" in info["type"] else 1
                     res = client.read_holding_registers(addr, count, slave=slave)
-                    
+
                     if not res.isError():
                         val = res.registers
                         # 变化检测 (COV)
@@ -86,8 +88,8 @@ class ModbusService(BaseIOService):
                             await pub_sock.send_multipart([b"modbus.update", self.pack(msg)])
                 except Exception as e:
                     self.logger.error(f"轮询异常: {e}")
-            
-            await asyncio.sleep(0.05) # 轮询间隔
+
+            await asyncio.sleep(poll_interval)
 
     async def do_write(self, cfg, slave, addr, val, dtype):
         """实际硬件写入动作"""
