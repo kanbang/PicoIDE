@@ -43,22 +43,29 @@ class BaseIOService(ABC):
         根据操作系统自动选择绑定地址
         :param is_pub: 是否获取发布通道(PUB)的地址
         """
-        svc_config = config.get_service_config(self.service_key)
-        port_key = "pub_port" if is_pub else "req_port"
-        ipc_suffix = "_pub" if is_pub else ""
-
         if self.is_windows:
-            # Windows 下绑定所有网卡
-            addr = f"tcp://*:{svc_config[port_key]}"
-            return addr
+            port = self._get_port(is_pub)
+            return f"tcp://*:{port}"
         else:
-            ipc_file = f"/tmp/{svc_config['ipc']}{ipc_suffix}.ipc"
+            ipc_file = self._get_ipc_file(is_pub)
             if os.path.exists(ipc_file):
                 try:
                     os.unlink(ipc_file)
                 except:
                     pass
             return f"ipc://{ipc_file}"
+
+    def _get_port(self, is_pub=False):
+        """获取端口号"""
+        svc_config = config.get_service_config(self.service_key)
+        port_key = "pub_port" if is_pub else "req_port"
+        return svc_config[port_key]
+
+    def _get_ipc_file(self, is_pub=False):
+        """获取 IPC 文件路径"""
+        svc_config = config.get_service_config(self.service_key)
+        ipc_suffix = "_pub" if is_pub else ""
+        return f"/tmp/{svc_config['ipc']}{ipc_suffix}.ipc"
 
     def pack(self, data):
         """使用配置的序列化器"""
@@ -94,19 +101,17 @@ class BaseIOService(ABC):
 
         # 清理 IPC 文件（仅 Linux）
         if not self.is_windows:
-            for is_pub in [False, True]:
-                ipc_file = self._get_ipc_file(is_pub)
-                if ipc_file and os.path.exists(ipc_file):
-                    try:
-                        os.unlink(ipc_file)
-                        self.logger.info(f"清理 IPC 文件: {ipc_file}")
-                    except Exception as e:
-                        self.logger.warning(f"清理 IPC 文件失败: {e}")
+            self._cleanup_ipc_files()
 
         self.logger.info("资源清理完成，进程退出。")
 
-    def _get_ipc_file(self, is_pub=False):
-        """获取 IPC 文件路径"""
-        svc_config = config.get_service_config(self.service_key)
-        ipc_suffix = "_pub" if is_pub else ""
-        return f"/tmp/{svc_config['ipc']}{ipc_suffix}.ipc"
+    def _cleanup_ipc_files(self):
+        """清理 IPC 文件"""
+        for is_pub in [False, True]:
+            ipc_file = self._get_ipc_file(is_pub)
+            if ipc_file and os.path.exists(ipc_file):
+                try:
+                    os.unlink(ipc_file)
+                    self.logger.info(f"清理 IPC 文件: {ipc_file}")
+                except Exception as e:
+                    self.logger.warning(f"清理 IPC 文件失败: {e}")
