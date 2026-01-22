@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import os
+import zmq
 
 # 添加父目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,6 +15,7 @@ if platform.system() == "Windows":
 # 导入新的客户端 API
 from client_api import IOClient, ModbusConfig, ModbusWriteRequest, ModbusSubscribeTask, ModbusSubscribeRequest
 from config_loader import config
+from serializer import serializer
 
 
 async def test_modbus_write():
@@ -144,6 +146,75 @@ async def test_can_receive():
         client.close()
 
 
+async def test_modbus_subscribe_listen():
+    """测试 Modbus 订阅并监听变化"""
+    print("\n" + "=" * 50)
+    print("测试 Modbus 订阅并监听变化")
+    print("=" * 50)
+
+    client = IOClient()
+
+    try:
+        # 创建 Modbus 配置
+        mb_config = ModbusConfig(host='127.0.0.1', port=502)
+
+        # 创建订阅任务列表
+        tasks = [
+            ModbusSubscribeTask(addr=10, dtype='uint16'),
+            ModbusSubscribeTask(addr=11, dtype='uint16'),
+        ]
+
+        # 使用辅助类创建订阅请求
+        sub_req = ModbusSubscribeRequest(
+            config=mb_config,
+            slave=1,
+            tasks=tasks
+        )
+
+        print(f"发送订阅请求: {sub_req.to_dict()}")
+
+        # 执行订阅
+        result = await client.modbus_subscribe(sub_req)
+        print(f"订阅结果: {result}")
+
+        # 监听订阅变化（接收 PUB 端口的消息）
+        print("\n开始监听订阅变化（按 Ctrl+C 停止）...")
+        print("提示：在另一个终端执行写操作来触发变化推送")
+        print("例如: client.write_register(mb_config, 1, 10, 888)")
+
+        count = 0
+        while count < 10:  # 监听 10 次变化后退出
+            try:
+                # 创建 PUB socket 监听变化
+                pub_sock = client.ctx.socket(zmq.SUB)
+                pub_addr = client._get_connect_addr("modbus", is_pub=True)
+                pub_sock.connect(pub_addr)
+                pub_sock.setsockopt(zmq.SUBSCRIBE, b"modbus.update")
+
+                # 接收消息
+                msg = await pub_sock.recv_multipart()
+                topic = msg[0]
+                data = serializer.unpack(msg[1]) if len(msg) > 1 else {}
+
+                print(f"\n[订阅更新] 主题: {topic.decode()}")
+                print(f"  数据: {data}")
+                count += 1
+
+                pub_sock.close()
+
+            except asyncio.CancelledError:
+                print("\n监听已停止")
+                break
+            except Exception as e:
+                print(f"接收消息失败: {e}")
+                await asyncio.sleep(1)
+
+    except Exception as e:
+        print(f"Modbus 订阅监听测试失败: {e}")
+    finally:
+        client.close()
+
+
 async def main():
     """主测试函数"""
     print("PicoIDE IO 客户端测试")
@@ -155,6 +226,7 @@ async def main():
     await test_modbus_subscribe()
     await test_convenience_methods()
     # await test_can_receive()
+    await test_modbus_subscribe_listen()  # 新增：监听订阅变化
 
     print("\n" + "=" * 50)
     print("所有测试完成")
