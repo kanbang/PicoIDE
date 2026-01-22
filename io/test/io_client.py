@@ -32,7 +32,7 @@ async def test_modbus_write():
         write_req = ModbusWriteRequest(
             config=mb_config,
             slave=1,
-            addr=40010,
+            addr=10,
             val=999,
             dtype='uint16'
         )
@@ -63,9 +63,9 @@ async def test_modbus_subscribe():
 
         # 创建订阅任务列表
         tasks = [
-            ModbusSubscribeTask(addr=40010, dtype='uint16'),
-            ModbusSubscribeTask(addr=40011, dtype='uint16'),
-            ModbusSubscribeTask(addr=40012, dtype='uint16'),
+            ModbusSubscribeTask(addr=10, dtype='uint16'),
+            ModbusSubscribeTask(addr=11, dtype='uint16'),
+            ModbusSubscribeTask(addr=12, dtype='uint16'),
         ]
 
         # 使用辅助类创建订阅请求
@@ -102,7 +102,7 @@ async def test_convenience_methods():
         result = await client.write_register(
             config=mb_config,
             slave=1,
-            addr=40020,
+            addr=20,
             val=1234,
             dtype='uint16'
         )
@@ -112,7 +112,7 @@ async def test_convenience_methods():
         result = await client.subscribe_registers(
             config=mb_config,
             slave=1,
-            addresses=[40030, 40031, 40032],
+            addresses=[30, 31, 32],
             dtype='uint16'
         )
         print(f"便捷订阅结果: {result}")

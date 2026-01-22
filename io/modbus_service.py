@@ -96,8 +96,12 @@ class ModbusService(BaseIOService):
         client = self.conn_pool.get_client(cfg)
         if not client.connected: client.connect()
         # pymodbus v3.x API: write_register(address, value, device_id=slave)
-        res = client.write_register(address=addr, value=int(val), device_id=slave)
-        return {"status": "ok"} if not res.isError() else {"status": "error", "msg": str(res)}
+        try:
+            res = client.write_register(address=addr, value=int(val), device_id=slave)
+            return {"status": "ok"} if not res.isError() else {"status": "error", "msg": str(res)}
+        except Exception as e:
+            self.logger.error(f"写寄存器失败: {e}")
+            return {"status": "error", "msg": str(e)}
 
     async def main_loop(self):
         asyncio.create_task(self.poll_worker())
