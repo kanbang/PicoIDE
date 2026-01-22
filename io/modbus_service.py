@@ -75,7 +75,7 @@ class ModbusService(BaseIOService):
                     if not client.connected: client.connect()
 
                     count = 2 if "32" in info["type"] else 1
-                    res = client.read_holding_registers(addr, count, slave=slave)
+                    res = client.read_holding_registers(address=addr, count=count, device_id=slave)
 
                     if not res.isError():
                         val = res.registers
@@ -95,8 +95,8 @@ class ModbusService(BaseIOService):
         """实际硬件写入动作"""
         client = self.conn_pool.get_client(cfg)
         if not client.connected: client.connect()
-        # pymodbus v3.x API: write_register(address, value, slave=slave)
-        res = client.write_register(address=addr, value=int(val), slave=slave)
+        # pymodbus v3.x API: write_register(address, value, device_id=slave)
+        res = client.write_register(address=addr, value=int(val), device_id=slave)
         return {"status": "ok"} if not res.isError() else {"status": "error", "msg": str(res)}
 
     async def main_loop(self):
