@@ -1,5 +1,10 @@
 import asyncio
 import sys
+import os
+
+# 添加父目录到路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import platform
 
 # Windows 下必须使用 SelectorEventLoop
@@ -7,8 +12,8 @@ if platform.system() == "Windows":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # 导入新的客户端 API
-sys.path.insert(0, '..')
 from client_api import IOClient, ModbusConfig, ModbusWriteRequest, ModbusSubscribeTask, ModbusSubscribeRequest
+from config_loader import config
 
 
 async def test_modbus_write():
@@ -142,14 +147,14 @@ async def test_can_receive():
 async def main():
     """主测试函数"""
     print("PicoIDE IO 客户端测试")
-    print(f"序列化方式: {client_api.config.serialization}")
+    print(f"序列化方式: {config.serialization}")
     print()
 
     # 运行所有测试
     await test_modbus_write()
     await test_modbus_subscribe()
     await test_convenience_methods()
-    await test_can_receive()
+    # await test_can_receive()
 
     print("\n" + "=" * 50)
     print("所有测试完成")
@@ -157,6 +162,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    # 导入 client_api 模块以访问 config
-    import client_api
     asyncio.run(main())

@@ -6,7 +6,13 @@ import asyncio
 import platform
 import zmq
 import zmq.asyncio
+import sys
+import os
 from typing import Optional, Dict, Any, List
+
+# 添加父目录到路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from config_loader import config
 from serializer import serializer
 
@@ -116,24 +122,23 @@ class IOClient:
 
     async def _get_modbus_socket(self) -> zmq.Socket:
         """获取或创建 Modbus REQ socket"""
-        if "MODBUS" not in self._sockets:
+        if "modbus" not in self._sockets:
             sock = self.ctx.socket(zmq.REQ)
-            addr = self._get_connect_addr("MODBUS")
+            addr = self._get_connect_addr("modbus")
             sock.connect(addr)
             sock.setsockopt(zmq.RCVTIMEO, 2000)
-            self._sockets["MODBUS"] = sock
-        return self._sockets["MODBUS"]
+            self._sockets["modbus"] = sock
+        return self._sockets["modbus"]
 
     async def _get_can_socket(self) -> zmq.Socket:
         """获取或创建 CAN SUB socket"""
-        if "CAN" not in self._sockets:
+        if "can" not in self._sockets:
             sock = self.ctx.socket(zmq.SUB)
-            addr = self._get_connect_addr("CAN", is_pub=True)
+            addr = self._get_connect_addr("can", is_pub=True)
             sock.connect(addr)
             sock.setsockopt(zmq.SUBSCRIBE, b"")
-            self._sockets["CAN"] = sock
-        return self._sockets["CAN"]
-
+            self._sockets["can"] = sock
+        return self._sockets["can"]
     # ========== Modbus API ==========
 
     async def modbus_write(self, request: ModbusWriteRequest) -> Dict[str, Any]:

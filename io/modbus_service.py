@@ -37,7 +37,7 @@ class PriorityTask:
 
 class ModbusService(BaseIOService):
     def __init__(self):
-        super().__init__("MODBUS")
+        super().__init__("modbus")
         self.conn_pool = ConnectionPool(self.logger)
         self.task_queue = asyncio.PriorityQueue()
         self.subscriptions = {} # { (conn_key, slave, addr): {"type": dtype, "last_val": None} }
@@ -95,8 +95,8 @@ class ModbusService(BaseIOService):
         """实际硬件写入动作"""
         client = self.conn_pool.get_client(cfg)
         if not client.connected: client.connect()
-        # 简化版：仅演示 uint16 写入
-        res = client.write_register(addr, int(val), slave=slave)
+        # pymodbus v3.x API: write_register(address, value, slave=slave)
+        res = client.write_register(address=addr, value=int(val), slave=slave)
         return {"status": "ok"} if not res.isError() else {"status": "error", "msg": str(res)}
 
     async def main_loop(self):

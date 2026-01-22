@@ -28,7 +28,7 @@ class BaseIOService(ABC):
         self.ctx = zmq.asyncio.Context()
         self.running = True
         self.is_windows = platform.system() == "Windows"
-        
+
         # 信号注册
         if not self.is_windows:
             signal.signal(signal.SIGTERM, self._signal_handler)
@@ -57,15 +57,17 @@ class BaseIOService(ABC):
 
     def _get_port(self, is_pub=False):
         """获取端口号"""
-        svc_config = config.get_service_config(self.service_key)
+        services = config._config.get('services', {})
+        svc_config = services.get(self.service_key, {})
         port_key = "pub_port" if is_pub else "req_port"
-        return svc_config[port_key]
+        return svc_config.get(port_key)
 
     def _get_ipc_file(self, is_pub=False):
         """获取 IPC 文件路径"""
-        svc_config = config.get_service_config(self.service_key)
+        services = config._config.get('services', {})
+        svc_config = services.get(self.service_key, {})
         ipc_suffix = "_pub" if is_pub else ""
-        return f"/tmp/{svc_config['ipc']}{ipc_suffix}.ipc"
+        return f"/tmp/{svc_config.get('ipc', 'flow')}{ipc_suffix}.ipc"
 
     def pack(self, data):
         """使用配置的序列化器"""
