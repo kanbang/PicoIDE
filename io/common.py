@@ -1,11 +1,3 @@
-'''
-Descripttion: 
-version: 0.x
-Author: zhai
-Date: 2026-01-22 10:54:07
-LastEditors: zhai
-LastEditTime: 2026-01-22 10:54:21
-'''
 import os
 import sys
 import platform
@@ -14,16 +6,16 @@ import logging
 import zmq
 import zmq.asyncio
 import msgpack
+import struct
 from abc import ABC, abstractmethod
 
-# 配置常量
+# 配置常量增加 PUB 端口定义
 CONF = {
-    "CAN": {"port": 5555, "ipc": "flow_can"},
-    "MODBUS": {"port": 5556, "ipc": "flow_modbus"},
+    "CAN": {"port": 5555, "pub_port": 5557, "ipc": "flow_can"},
+    "MODBUS": {"port": 5556, "pub_port": 5558, "ipc": "flow_modbus"},
 }
 
 def setup_logger(name):
-    """配置带时间戳和进程ID的日志"""
     logging.basicConfig(
         level=logging.INFO,
         format=f'%(asctime)s [%(levelname)s] [{name}:{os.getpid()}] %(message)s',
@@ -40,36 +32,35 @@ class BaseIOService(ABC):
         self.is_windows = platform.system() == "Windows"
         
         # 信号注册
+        if not self.is_windows:
+            signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
 
     def _signal_handler(self, signum, frame):
-        self.logger.info(f"接收到终止信号 ({signum})，准备退出...")
+        self.logger.info(f"接收到终止信号 ({signum})，准备安全退出...")
         self.running = False
 
-    def get_bind_address(self):
-        """根据操作系统自动选择绑定地址"""
+    def get_addr(self, is_pub=False):
+        """
+        根据操作系统自动选择绑定地址
+        :param is_pub: 是否获取发布通道(PUB)的地址
+        """
         conf = CONF[self.service_key]
+        port_key = "pub_port" if is_pub else "port"
+        ipc_suffix = "_pub" if is_pub else ""
+        
         if self.is_windows:
-            addr = f"tcp://*:{conf['port']}"
-            self.logger.info(f"Platform: Windows -> Binding TCP: {addr}")
+            # Windows 下绑定所有网卡，但在调试信息中显示 127.0.0.1
+            addr = f"tcp://*:{conf[port_key]}"
             return addr
         else:
-            ipc_file = f"/tmp/{conf['ipc']}.ipc"
-            # 鲁棒性：启动前清理残留文件
+            ipc_file = f"/tmp/{conf['ipc']}{ipc_suffix}.ipc"
             if os.path.exists(ipc_file):
-                try:
-                    os.unlink(ipc_file)
-                    self.logger.warning(f"清理了残留的 IPC 文件: {ipc_file}")
-                except OSError as e:
-                    self.logger.error(f"清理 IPC 文件失败: {e}")
-            
-            addr = f"ipc://{ipc_file}"
-            self.logger.info(f"Platform: Linux -> Binding IPC: {addr}")
-            return addr
+                try: os.unlink(ipc_file)
+                except: pass
+            return f"ipc://{ipc_file}"
 
     def pack(self, data):
-        """使用 MessagePack 高效序列化"""
         return msgpack.packb(data, use_bin_type=True)
 
     def unpack(self, data):
@@ -80,17 +71,16 @@ class BaseIOService(ABC):
         pass
 
     def start(self):
-        """入口方法"""
         import asyncio
         if self.is_windows:
-            # Windows 下 asyncio 策略调整
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         
         try:
             asyncio.run(self.main_loop())
         except KeyboardInterrupt:
-            self.logger.info("服务已停止")
+            pass
         except Exception as e:
-            self.logger.exception(f"服务发生未捕获异常: {e}")
+            self.logger.exception(f"服务运行崩溃: {e}")
         finally:
             self.ctx.term()
+            self.logger.info("ZMQ 上下文已释放，进程退出。")
