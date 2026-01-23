@@ -2,6 +2,7 @@ import asyncio
 import zmq
 import zmq.asyncio
 import time
+import random
 from pymodbus.client import ModbusTcpClient, ModbusSerialClient
 from common import BaseIOService
 from config_loader import config
@@ -42,9 +43,30 @@ class ModbusService(BaseIOService):
         self.task_queue = asyncio.PriorityQueue()
         self.subscriptions = {} # { (conn_key, slave, addr): {"type": dtype, "last_val": None} }
         self.cache = {}         # { (conn_key, slave, addr): value }
+        # 重试配置
+        self.max_retries = config.modbus_config.get('max_retries', 3)
+        self.retry_delay_base = config.modbus_config.get('retry_delay_base', 0.5)  # 指数退避基础延迟 (s)
 
     def _get_conn_key(self, cfg):
         return f"{cfg.get('type','tcp')}://{cfg.get('host','127.0.0.1')}:{cfg.get('port',502)}"
+
+    async def reconnect(self, client):
+        """重连逻辑：指数退避重试"""
+        for attempt in range(self.max_retries):
+            try:
+                if client.connected:
+                    client.close()
+                if client.connect():
+                    self.logger.info("Modbus 连接重置成功")
+                    return True
+                else:
+                    delay = self.retry_delay_base * (2 ** attempt) + random.uniform(0, 0.1)  # 抖动避免同步风暴
+                    self.logger.warning(f"连接重试 {attempt+1}/{self.max_retries} 失败，等待 {delay:.2f}s")
+                    await asyncio.sleep(delay)
+            except Exception as e:
+                self.logger.error(f"重连异常: {e}")
+        self.logger.error("达到最大重试次数，连接失败")
+        return False
 
     async def poll_worker(self):
         """背景轮询协程：执行周期性读取并检测变化推送"""
@@ -68,65 +90,80 @@ class ModbusService(BaseIOService):
 
             # 2. 轮询已订阅的地址
             for (ckey, slave, addr), info in list(self.subscriptions.items()):
-                try:
-                    # 解析 ckey 回 cfg
-                    parts = ckey.split('://')
-                    if len(parts) != 2:
-                        raise ValueError(f"Invalid connection key: {ckey}")
-                    ctype = parts[0]
-                    host_port = parts[1].split(':')
-                    if len(host_port) != 2:
-                        raise ValueError(f"Invalid host:port in key: {ckey}")
-                    host, port_str = host_port
+                success = False
+                for attempt in range(self.max_retries):
                     try:
-                        port = int(port_str)
-                    except ValueError:
-                        raise ValueError(f"Invalid port in key: {ckey}")
-                    cfg = {'type': ctype, 'host': host, 'port': port}
+                        # 解析 ckey 回 cfg
+                        parts = ckey.split('://')
+                        if len(parts) != 2:
+                            raise ValueError(f"Invalid connection key: {ckey}")
+                        ctype = parts[0]
+                        host_port = parts[1].split(':')
+                        if len(host_port) != 2:
+                            raise ValueError(f"Invalid host:port in key: {ckey}")
+                        host, port_str = host_port
+                        try:
+                            port = int(port_str)
+                        except ValueError:
+                            raise ValueError(f"Invalid port in key: {ckey}")
+                        cfg = {'type': ctype, 'host': host, 'port': port}
 
-                    client = self.conn_pool.get_client(cfg)
-                    if not client.connected:
-                        if not client.connect():
-                            raise ConnectionError(f"Failed to connect to {ckey}")
-                    
-                    count = 2 if "32" in info["type"] else 1
-                    res = client.read_holding_registers(address=addr, count=count, slave=slave)
+                        client = self.conn_pool.get_client(cfg)
+                        if not client.connected:
+                            if not await self.reconnect(client):
+                                break  # 跳过此订阅项
 
-                    if res.isError():
-                        raise RuntimeError(f"Modbus read error: {res}")
+                        count = 2 if "32" in info["type"] else 1
+                        res = client.read_holding_registers(address=addr, count=count, slave=slave)
 
-                    val = res.registers
-                    # 变化检测 (COV)
-                    if val != info["last_val"]:
-                        info["last_val"] = val
-                        self.cache[(ckey, slave, addr)] = val
-                        # 推送消息
-                        msg = {"ckey": ckey, "slave": slave, "addr": addr, "val": val, "ts": time.time()}
-                        await pub_sock.send_multipart([b"modbus.update", self.pack(msg)])
-                except Exception as e:
-                    self.logger.error(f"轮询异常: {e}")
+                        if res.isError():
+                            raise RuntimeError(f"Modbus read error: {res}")
+
+                        val = res.registers
+                        # 变化检测 (COV)
+                        if val != info["last_val"]:
+                            info["last_val"] = val
+                            self.cache[(ckey, slave, addr)] = val
+                            # 推送消息
+                            msg = {"ckey": ckey, "slave": slave, "addr": addr, "val": val, "ts": time.time()}
+                            await pub_sock.send_multipart([b"modbus.update", self.pack(msg)])
+                        success = True
+                        break  # 成功后退出重试
+                    except Exception as e:
+                        self.logger.warning(f"轮询重试 {attempt+1}/{self.max_retries}: {e}")
+                        delay = self.retry_delay_base * (2 ** attempt) + random.uniform(0, 0.1)
+                        await asyncio.sleep(delay)
+                if not success:
+                    self.logger.error(f"轮询失败，已达到最大重试: {ckey}, slave={slave}, addr={addr}")
 
             await asyncio.sleep(poll_interval)
 
     async def do_write(self, cfg, slave, addr, val, dtype):
         """实际硬件写入动作"""
         client = self.conn_pool.get_client(cfg)
-        if not client.connected:
-            if not client.connect():
-                raise ConnectionError("Failed to connect for write")
-        
-        # pymodbus API: write_register(address, value, slave=slave)
-        try:
-            res = client.write_register(address=addr, value=int(val), slave=slave)
-            if res.isError():
-                raise RuntimeError(f"Modbus write error: {res}")
-            return {"status": "ok"}
-        except ValueError as e:
-            self.logger.error(f"Value conversion error: {e}")
-            return {"status": "error", "msg": str(e)}
-        except Exception as e:
-            self.logger.error(f"写寄存器失败: {e}")
-            return {"status": "error", "msg": str(e)}
+        success = False
+        for attempt in range(self.max_retries):
+            try:
+                if not client.connected:
+                    if not await self.reconnect(client):
+                        break
+
+                # pymodbus API: write_register(address, value, slave=slave)
+                res = client.write_register(address=addr, value=int(val), slave=slave)
+                if res.isError():
+                    raise RuntimeError(f"Modbus write error: {res}")
+                success = True
+                return {"status": "ok"}
+            except ValueError as e:
+                self.logger.error(f"Value conversion error: {e}")
+                return {"status": "error", "msg": str(e)}
+            except Exception as e:
+                self.logger.warning(f"写重试 {attempt+1}/{self.max_retries}: {e}")
+                delay = self.retry_delay_base * (2 ** attempt) + random.uniform(0, 0.1)
+                await asyncio.sleep(delay)
+        if not success:
+            self.logger.error("写操作失败，已达到最大重试")
+            return {"status": "error", "msg": "Max retries reached"}
 
     async def main_loop(self):
         asyncio.create_task(self.poll_worker())
