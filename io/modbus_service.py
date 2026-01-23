@@ -331,6 +331,9 @@ class ModbusService(BaseIOService):
                     res = await task.func(*task.args)
                     if not task.future.done():
                         task.future.set_result(res)
+                except asyncio.CancelledError:
+                    if not task.future.done():
+                        task.future.set_exception(asyncio.CancelledError("Task cancelled"))
                 except Exception as e:
                     self.logger.error(f"Processor task error: {e}")
                     self.logger.error(traceback.format_exc())
@@ -590,7 +593,12 @@ class ModbusService(BaseIOService):
                         continue
                     fut = asyncio.get_running_loop().create_future()
                     await self.task_queue.put(PriorityTask(priority, fut, self.do_write, (req["config"], slave, addr, val, dtype, register_type)))
-                    res = await asyncio.wait_for(fut, timeout=10.0)
+                    try:
+                        res = await asyncio.wait_for(fut, timeout=10.0)
+                    except asyncio.TimeoutError:
+                        if not fut.done():
+                            fut.cancel()
+                        res = {"status": "error", "msg": "Operation timeout"}
                     await rep_sock.send(self.pack(res))
                 elif op == "batch_write":
                     slave = req.get("slave", 1)
@@ -604,7 +612,11 @@ class ModbusService(BaseIOService):
                             continue
                     fut = asyncio.get_running_loop().create_future()
                     await self.task_queue.put(PriorityTask(priority, fut, self.do_batch_write, (req["config"], slave, tasks)))
-                    res = await asyncio.wait_for(fut, timeout=10.0)
+                    try:
+                        res = await asyncio.wait_for(fut, timeout=10.0)
+                    except asyncio.TimeoutError:
+                        fut.cancel()
+                        res = {"status": "error", "msg": "Operation timeout"}
                     await rep_sock.send(self.pack(res))
                 elif op == "subscribe":
                     ckey = self._get_conn_key(req["config"])
@@ -640,7 +652,11 @@ class ModbusService(BaseIOService):
                     else:
                         fut = asyncio.get_running_loop().create_future()
                         await self.task_queue.put(PriorityTask(priority, fut, self.do_read, (req["config"], slave, addr, dtype, cache_it, register_type)))
-                        res = await asyncio.wait_for(fut, timeout=10.0)
+                        try:
+                            res = await asyncio.wait_for(fut, timeout=10.0)
+                        except asyncio.TimeoutError:
+                            fut.cancel()
+                            res = {"status": "error", "msg": "Operation timeout"}
                         await rep_sock.send(self.pack(res))
                 elif op == "batch_read":
                     slave = req.get("slave", 1)
@@ -655,7 +671,11 @@ class ModbusService(BaseIOService):
                     cache_it = req.get("cache_it", True)
                     fut = asyncio.get_running_loop().create_future()
                     await self.task_queue.put(PriorityTask(priority, fut, self.do_batch_read, (req["config"], slave, tasks, cache_it)))
-                    res = await asyncio.wait_for(fut, timeout=10.0)
+                    try:
+                        res = await asyncio.wait_for(fut, timeout=10.0)
+                    except asyncio.TimeoutError:
+                        fut.cancel()
+                        res = {"status": "error", "msg": "Operation timeout"}
                     await rep_sock.send(self.pack(res))
                 elif op == "set_heartbeat":
                     ckey = self._get_conn_key(req["config"])
@@ -671,8 +691,6 @@ class ModbusService(BaseIOService):
                     await rep_sock.send(self.pack({"status": "ok", "msg": "Heartbeat set"}))
                 else:
                     await rep_sock.send(self.pack({"status": "error", "msg": "Unknown operation"}))
-            except asyncio.TimeoutError:
-                await rep_sock.send(self.pack({"status": "error", "msg": "Operation timeout"}))
             except KeyError as e:
                 await rep_sock.send(self.pack({"status": "error", "msg": f"Missing key: {e}"}))
             except Exception as e:
@@ -705,7 +723,9 @@ class ModbusService(BaseIOService):
         await self.send_queue.join()
         while not self.task_queue.empty():
             task = await self.task_queue.get()
-            task.future.set_exception(asyncio.CancelledError("Service shutdown"))
+            if not task.future.done():
+                task.future.set_exception(asyncio.CancelledError("Service shutdown"))
+
             self.task_queue.task_done()
         for task in self.heartbeat_tasks.values():
             task.cancel()
