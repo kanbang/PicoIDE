@@ -43,10 +43,18 @@ class Config:
                 'format': '%(asctime)s [%(levelname)s] [%(name)s:%(process)d] %(message)s',
                 'datefmt': '%H:%M:%S'
             },
-            'modbus': {
+            'modbus_config': {
+                'max_retries': 3,
+                'retry_delay_base': 0.5,
+                'poll_interval': 0.1,
+                'heartbeat_interval': 10,
+                'heartbeat_addr': 0,
+                'word_order': 'big',
+                'max_registers': 125,
+                'gap_threshold': 10,
+                'queue_maxsize': 100,
                 'default_timeout': 2,
                 'default_baudrate': 9600,
-                'poll_interval': 0.05
             }
         }
 
@@ -98,7 +106,7 @@ class Config:
     @property
     def modbus_config(self) -> Dict[str, Any]:
         """获取 Modbus 配置"""
-        return self._config.get('modbus', {})
+        return self._config.get('modbus_config', {})
 
 
 # 全局配置实例

@@ -21,8 +21,16 @@ logging:
   format: '%(asctime)s [%(levelname)s] [%(name)s:%(process)d] %(message)s'
   datefmt: '%H:%M:%S'
 
-# Modbus 默认配置
-modbus:
-  default_timeout: 2
-  default_baudrate: 9600
-  poll_interval: 0.05  # 轮询间隔（秒）
+# Modbus 配置
+modbus_config:
+  max_retries: 3  # 最大重试次数
+  retry_delay_base: 0.5  # 重试延迟基数（秒）
+  poll_interval: 0.1  # 轮询间隔（秒）
+  heartbeat_interval: 10  # 心跳间隔（秒）
+  heartbeat_addr: 0  # 默认心跳地址
+  word_order: big  # 字序（big 或 little）
+  max_registers: 125  # 最大寄存器数
+  gap_threshold: 10  # 批量操作间隙阈值
+  queue_maxsize: 100  # 队列最大大小
+  default_timeout: 2  # 默认超时（秒）
+  default_baudrate: 9600  # 默认波特率

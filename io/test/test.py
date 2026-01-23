@@ -324,7 +324,7 @@ async def test_multi_subscribe(client):
 
     # 写值触发推送
     await client.send_request(WriteRequest(config=tcp_config, slave=1, addr=200, val=1111))
-    await client.send_request(WriteRequest(config=tcp_config, slave=1, addr=201, val=2.22))
+    await client.send_request(WriteRequest(config=tcp_config, slave=1, addr=201, val=2.22, type=DataType.FLOAT32))
     # await client.send_request(WriteRequest(config=tcp_config, slave=2, addr=200, val=2222))
     try:
         await client.send_request(WriteRequest(config=serial_config, slave=1, addr=200, val=3333))
