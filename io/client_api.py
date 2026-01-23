@@ -9,14 +9,15 @@ import zmq.asyncio
 import sys
 import os
 from typing import Optional, Dict, Any, List
-
-# 添加父目录到路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from config_loader import config
 from serializer import serializer
 
+import platform
 
+# Windows 下必须使用 SelectorEventLoop
+if platform.system() == "Windows":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
 class ModbusConfig:
     """Modbus 连接配置"""
 

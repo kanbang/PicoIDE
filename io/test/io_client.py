@@ -6,11 +6,7 @@ import zmq
 # 添加父目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import platform
 
-# Windows 下必须使用 SelectorEventLoop
-if platform.system() == "Windows":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # 导入新的客户端 API
 from client_api import IOClient, ModbusConfig, ModbusWriteRequest, ModbusSubscribeTask, ModbusSubscribeRequest
