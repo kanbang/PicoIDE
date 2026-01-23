@@ -69,23 +69,40 @@ class ModbusService(BaseIOService):
             # 2. 轮询已订阅的地址
             for (ckey, slave, addr), info in list(self.subscriptions.items()):
                 try:
-                    # 这里的 ckey 简化处理，实际应解析回 cfg
-                    cfg = {"host": ckey.split('://')[1].split(':')[0], "port": int(ckey.split(':')[-1])}
+                    # 解析 ckey 回 cfg
+                    parts = ckey.split('://')
+                    if len(parts) != 2:
+                        raise ValueError(f"Invalid connection key: {ckey}")
+                    ctype = parts[0]
+                    host_port = parts[1].split(':')
+                    if len(host_port) != 2:
+                        raise ValueError(f"Invalid host:port in key: {ckey}")
+                    host, port_str = host_port
+                    try:
+                        port = int(port_str)
+                    except ValueError:
+                        raise ValueError(f"Invalid port in key: {ckey}")
+                    cfg = {'type': ctype, 'host': host, 'port': port}
+
                     client = self.conn_pool.get_client(cfg)
-                    if not client.connected: client.connect()
-
+                    if not client.connected:
+                        if not client.connect():
+                            raise ConnectionError(f"Failed to connect to {ckey}")
+                    
                     count = 2 if "32" in info["type"] else 1
-                    res = client.read_holding_registers(address=addr, count=count, device_id=slave)
+                    res = client.read_holding_registers(address=addr, count=count, slave=slave)
 
-                    if not res.isError():
-                        val = res.registers
-                        # 变化检测 (COV)
-                        if val != info["last_val"]:
-                            info["last_val"] = val
-                            self.cache[(ckey, slave, addr)] = val
-                            # 推送消息
-                            msg = {"ckey": ckey, "slave": slave, "addr": addr, "val": val, "ts": time.time()}
-                            await pub_sock.send_multipart([b"modbus.update", self.pack(msg)])
+                    if res.isError():
+                        raise RuntimeError(f"Modbus read error: {res}")
+
+                    val = res.registers
+                    # 变化检测 (COV)
+                    if val != info["last_val"]:
+                        info["last_val"] = val
+                        self.cache[(ckey, slave, addr)] = val
+                        # 推送消息
+                        msg = {"ckey": ckey, "slave": slave, "addr": addr, "val": val, "ts": time.time()}
+                        await pub_sock.send_multipart([b"modbus.update", self.pack(msg)])
                 except Exception as e:
                     self.logger.error(f"轮询异常: {e}")
 
@@ -94,11 +111,19 @@ class ModbusService(BaseIOService):
     async def do_write(self, cfg, slave, addr, val, dtype):
         """实际硬件写入动作"""
         client = self.conn_pool.get_client(cfg)
-        if not client.connected: client.connect()
-        # pymodbus v3.x API: write_register(address, value, device_id=slave)
+        if not client.connected:
+            if not client.connect():
+                raise ConnectionError("Failed to connect for write")
+        
+        # pymodbus API: write_register(address, value, slave=slave)
         try:
-            res = client.write_register(address=addr, value=int(val), device_id=slave)
-            return {"status": "ok"} if not res.isError() else {"status": "error", "msg": str(res)}
+            res = client.write_register(address=addr, value=int(val), slave=slave)
+            if res.isError():
+                raise RuntimeError(f"Modbus write error: {res}")
+            return {"status": "ok"}
+        except ValueError as e:
+            self.logger.error(f"Value conversion error: {e}")
+            return {"status": "error", "msg": str(e)}
         except Exception as e:
             self.logger.error(f"写寄存器失败: {e}")
             return {"status": "error", "msg": str(e)}
@@ -110,27 +135,34 @@ class ModbusService(BaseIOService):
         rep_sock.bind(self.get_addr())
 
         while self.running:
-            raw = await rep_sock.recv()
-            req = self.unpack(raw)
-            op = req.get('op')
+            try:
+                raw = await rep_sock.recv()
+                req = self.unpack(raw)
+                op = req.get('op')
 
-            if op == 'write':
-                fut = asyncio.get_running_loop().create_future()
-                # 优先级 0 最高
-                await self.task_queue.put(PriorityTask(0, fut, self.do_write, 
-                    (req['config'], req['slave'], req['addr'], req['val'], req.get('type','uint16'))))
-                res = await asyncio.wait_for(fut, timeout=3.0)
-                await rep_sock.send(self.pack(res))
+                if op == 'write':
+                    fut = asyncio.get_running_loop().create_future()
+                    # 优先级 0 最高
+                    await self.task_queue.put(PriorityTask(0, fut, self.do_write, 
+                        (req['config'], req['slave'], req['addr'], req['val'], req.get('type','uint16'))))
+                    res = await asyncio.wait_for(fut, timeout=3.0)
+                    await rep_sock.send(self.pack(res))
 
-            elif op == 'subscribe':
-                ckey = self._get_conn_key(req['config'])
-                for t in req['tasks']:
-                    self.subscriptions[(ckey, req['slave'], t['addr'])] = {"type": t['type'], "last_val": None}
-                await rep_sock.send(self.pack({"status": "ok", "msg": "Subscribed"}))
-            
-            elif op == 'read_cache':
-                # 瞬间返回本地缓存镜像
-                await rep_sock.send(self.pack({"status": "ok", "cache": str(self.cache)}))
+                elif op == 'subscribe':
+                    ckey = self._get_conn_key(req['config'])
+                    for t in req['tasks']:
+                        self.subscriptions[(ckey, req['slave'], t['addr'])] = {"type": t['type'], "last_val": None}
+                    await rep_sock.send(self.pack({"status": "ok", "msg": "Subscribed"}))
+
+                elif op == 'read_cache':
+                    # 瞬间返回本地缓存镜像
+                    await rep_sock.send(self.pack({"status": "ok", "cache": self.cache}))
+
+                else:
+                    await rep_sock.send(self.pack({"status": "error", "msg": "Unknown operation"}))
+            except Exception as e:
+                self.logger.error(f"Main loop error: {e}")
+                await rep_sock.send(self.pack({"status": "error", "msg": str(e)}))
 
 if __name__ == "__main__":
     ModbusService().start()
