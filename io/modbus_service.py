@@ -152,9 +152,15 @@ class HoldingWriter(RegisterWriter):
 
 class CoilWriter(RegisterWriter):
     async def write(self, client, addr, payload, slave):
-        if not isinstance(payload, bool):
-            raise ValueError("Coil value must be bool")
-        res = await client.write_coil(address=addr, value=payload, device_id=slave)
+        # Support both single bool value and list of bools for batch write
+        if isinstance(payload, list):
+            if not all(isinstance(v, bool) for v in payload):
+                raise ValueError("All coil values must be bool")
+            res = await client.write_coils(address=addr, values=payload, device_id=slave)
+        else:
+            if not isinstance(payload, bool):
+                raise ValueError("Coil value must be bool")
+            res = await client.write_coil(address=addr, value=payload, device_id=slave)
         if res.isError():
             raise RuntimeError(f"Modbus write error: {res}")
 

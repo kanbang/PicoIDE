@@ -3,7 +3,8 @@
 # 序列化方式: msgpack 或 json
 serialization: msgpack
 
-zmq_mode: router
+zmq_mode: rep
+
 
 # 服务端口配置
 services:

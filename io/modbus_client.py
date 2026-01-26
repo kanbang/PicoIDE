@@ -121,7 +121,7 @@ class ModbusClient:
     """
     Modbus client supporting both REQ/REP (synchronous) and DEALER/ROUTER (asynchronous concurrent) modes.
     """
-    def __init__(self, req_addr="tcp://127.0.0.1:5556", pub_addr="tcp://127.0.0.1:5558", zmq_mode='dealer'):
+    def __init__(self, req_addr="tcp://127.0.0.1:5556", pub_addr="tcp://127.0.0.1:5558", zmq_mode='router'):
         self.ctx = zmq.asyncio.Context()
         self.req_addr = req_addr
         self.pub_addr = pub_addr
@@ -138,9 +138,9 @@ class ModbusClient:
     def _create_req_socket(self):
         if hasattr(self, 'req_sock') and self.req_sock:
             self.req_sock.close()
-        if self.zmq_mode == 'dealer':
+        if self.zmq_mode == 'router':
             self.req_sock = self.ctx.socket(zmq.DEALER)
-        elif self.zmq_mode == 'req':
+        elif self.zmq_mode == 'rep':
             self.req_sock = self.ctx.socket(zmq.REQ)
         else:
             raise ValueError(f"Unsupported zmq_mode: {self.zmq_mode}")
@@ -166,7 +166,7 @@ class ModbusClient:
         retries = 3  # Increased retries
         for attempt in range(retries):
             try:
-                if self.zmq_mode == 'dealer':
+                if self.zmq_mode == 'router':
                     # DEALER sends: [b'', packed_data]
                     await self.req_sock.send_multipart([b'', packed])
                     # DEALER receives: [b'', response_data] from ROUTER

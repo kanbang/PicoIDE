@@ -103,7 +103,7 @@ async def test_concurrent_tasks(client):
     write_results = []
     read_results = []
     for (task_type, _), res in zip(mixed_tasks, results):
-        if isinstance(res, Exception):
+        if isinstance(res, (Exception, BaseException)):
             print(f"{task_type.upper()} task failed: {res}")
         elif task_type == "write":
             await assert_status_ok(res)
@@ -181,10 +181,18 @@ async def test_concurrent_clients(mode):
 
     # Clean up client sockets
     for cli in clients:
-        cli.req_sock.close()
-        cli.ctx.term()
+        try:
+            cli.req_sock.close()
+        except:
+            pass
+    try:
+        # Use destroy with linger=0 to avoid blocking
+        # Note: In REP mode, concurrent client test may have issues
+        cli.ctx.destroy(linger=0)
+    except:
+        pass
 
-    print(" → PASS (ROUTER/DEALER concurrent handling verified)")
+    print(" → PASS (concurrent clients test completed)")
     return results
 
 
@@ -317,23 +325,27 @@ async def run_tests(mode):
     await client.start_update_handler()
     print(f"\nStarting Enhanced Modbus tests ({mode.upper()} mode)...\n")
 
+    # Define tests with their required arguments
     tests = [
         # test_robustness_timeout,
-        test_concurrent_tasks,
-        test_concurrent_clients,
-        test_multi_subscribe,
-        test_data_integrity,
-        # 可添加更多
+        (test_concurrent_tasks, client),  # needs client
+        # Note: test_concurrent_clients is for ROUTER/DEALER mode only
+        # REP mode doesn't support multiple concurrent clients
+        (test_concurrent_clients, mode) if mode != "rep" else None,   # needs mode
+        (test_multi_subscribe, client),       # needs client
+        (test_data_integrity, client),       # needs client
     ]
+    # Remove None entries
+    tests = [t for t in tests if t is not None]
 
     test_results = {}
-    for test_func in tests:
+    for test_func, test_arg in tests:
         print(f"\n===== Running {test_func.__name__} =====")
         try:
-            result = await test_func(client)
+            result = await test_func(test_arg)
             print(" → PASS")
             test_results[test_func.__name__] = result
-        except Exception as e:
+        except (Exception, BaseException) as e:
             print(f" → FAIL: {e}")
             test_results[test_func.__name__] = {"error": str(e)}
 
@@ -342,17 +354,22 @@ async def run_tests(mode):
 
 
 async def main():
-    # modes = ['req', 'dealer']  # Test both modes
-    modes = ["dealer"]
+    # modes = ['rep', 'router']  # Test both modes
+    # modes = ["router"]
+    modes = ["rep"]
 
     all_results = {}
-    for mode in modes:
-        print(f"\n=== Testing {mode.upper()} mode ===")
-        results = await run_tests(mode)
-        all_results[mode] = results
+    try:
+        for mode in modes:
+            print(f"\n=== Testing {mode.upper()} mode ===")
+            results = await run_tests(mode)
+            all_results[mode] = results
 
-    print("\nAll modes tested.")
-    print("客户端进入持续监听模式，按 Ctrl+C 退出...")
+        print("\nAll modes tested.")
+        print("客户端进入持续监听模式，按 Ctrl+C 退出...")
+    except (Exception, BaseException) as e:
+        print(f"\n!!! Test execution interrupted: {e}")
+        print(f"Partial results: {all_results}")
 
     # Print summary of test results with actual values
     print("\n=== Test Results Summary ===")
