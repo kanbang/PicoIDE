@@ -1,6 +1,5 @@
 import asyncio
 import zmq
-import zmq.asyncio
 import time
 import random
 import urllib.parse
@@ -15,14 +14,18 @@ class ConnectionPool:
     """
     Manages a pool of connection instances for multiple hardware devices.
     Ensures efficient reuse of connections with locking for concurrency safety.
+    Supports automatic cleanup of inactive connections to prevent resource leaks.
     """
-    def __init__(self, logger):
+    def __init__(self, logger, cleanup_interval=300, max_idle_time=600):
         self.logger = logger
-        self.clients = {}  # key: (client, lock)
+        self.clients = {}  # key: (client, lock, last_used)
+        self.cleanup_interval = cleanup_interval  # cleanup check interval in seconds
+        self.max_idle_time = max_idle_time  # max idle time before cleanup in seconds
 
     async def get_client(self, cfg):
         """
         Retrieves or creates a client for the given configuration.
+        Updates last_used timestamp on each access.
         """
         ctype = cfg.get("type", "tcp")
         host = cfg.get("host", "127.0.0.1")
@@ -43,9 +46,49 @@ class ConnectionPool:
                     stopbits=cfg.get("stopbits", 1),
                 )
             lock = asyncio.Lock()
-            self.clients[key] = (client, lock)
+            self.clients[key] = (client, lock, time.time())
             self.logger.info(f"Created connection pool entry: {key}")
+        else:
+            # Update last_used timestamp
+            client, lock, _ = self.clients[key]
+            self.clients[key] = (client, lock, time.time())
         return self.clients[key]
+
+    async def cleanup_inactive(self):
+        """
+        Cleanup inactive connections that haven't been used for max_idle_time seconds.
+        This method should be called periodically by a background task.
+        """
+        current_time = time.time()
+        keys_to_remove = []
+
+        for key, (client, lock, last_used) in self.clients.items():
+            idle_time = current_time - last_used
+            if idle_time > self.max_idle_time:
+                keys_to_remove.append(key)
+                try:
+                    await client.close()
+                    self.logger.info(f"Closed inactive connection: {key} (idle for {idle_time:.1f}s)")
+                except Exception as e:
+                    self.logger.error(f"Error closing connection {key}: {e}")
+
+        for key in keys_to_remove:
+            del self.clients[key]
+
+        if keys_to_remove:
+            self.logger.info(f"Cleanup completed: removed {len(keys_to_remove)} inactive connection(s), {len(self.clients)} remaining")
+
+    async def close_all(self):
+        """
+        Close all connections in the pool. Should be called during shutdown.
+        """
+        for key, (client, lock, _) in list(self.clients.items()):
+            try:
+                await client.close()
+                self.logger.info(f"Closed connection: {key}")
+            except Exception as e:
+                self.logger.error(f"Error closing connection {key}: {e}")
+        self.clients.clear()
 
 class PriorityTask:
     """
@@ -97,10 +140,12 @@ class ModbusService(BaseIOService):
         self.max_registers = 125  # Modbus standard limit
         self.gap_threshold = 10  # Gap threshold for batching
         self.send_queue = asyncio.Queue(maxsize=100)  # Limited size for backpressure
+        self.task_put_timeout = config.modbus_config.get("task_put_timeout", 5.0)  # Timeout for queue put
         # Task references
         self.polling_task = None
         self.sender_task = None
         self.processor_task = None
+        self.cleanup_task = None
 
 
     def _get_conn_key(self, cfg):
@@ -146,6 +191,18 @@ class ModbusService(BaseIOService):
                 self.logger.error(f"Unexpected error in {log_msg}: {e}")
                 self.logger.error(traceback.format_exc())
                 raise
+
+    async def put_task_with_timeout(self, task):
+        """
+        Puts a task to the queue with timeout.
+        Returns False if timeout occurs, True otherwise.
+        """
+        try:
+            await asyncio.wait_for(self.task_queue.put(task), timeout=self.task_put_timeout)
+            return True
+        except asyncio.TimeoutError:
+            self.logger.warning(f"Task queue full, task rejected (timeout={self.task_put_timeout}s)")
+            return False
 
     async def reconnect(self, client, log_msg="重连"):
         """
@@ -564,12 +621,28 @@ class ModbusService(BaseIOService):
                         return {"status": "error", "msg": str(e)}
         return {"status": "ok", "vals": results}
 
+    async def cleanup_worker(self):
+        """
+        Background cleanup coroutine for inactive connections.
+        Runs periodically to close connections that haven't been used.
+        """
+        while self.running:
+            try:
+                await asyncio.sleep(self.conn_pool.cleanup_interval)
+                await self.conn_pool.cleanup_inactive()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Cleanup worker error: {e}")
+                self.logger.error(traceback.format_exc())
+
     async def main_loop(self):
         """
         Main request processing loop using ZeroMQ REP socket.
         """
         self.polling_task = asyncio.create_task(self.poll_worker())
         self.processor_task = asyncio.create_task(self.processor_worker())
+        self.cleanup_task = asyncio.create_task(self.cleanup_worker())
         rep_sock = self.ctx.socket(zmq.REP)
         rep_sock.bind(self.get_addr())
         while self.running:
@@ -592,7 +665,9 @@ class ModbusService(BaseIOService):
                         await rep_sock.send(self.pack({"status": "error", "msg": "Invalid slave or addr type"}))
                         continue
                     fut = asyncio.get_running_loop().create_future()
-                    await self.task_queue.put(PriorityTask(priority, fut, self.do_write, (req["config"], slave, addr, val, dtype, register_type)))
+                    if not await self.put_task_with_timeout(PriorityTask(priority, fut, self.do_write, (req["config"], slave, addr, val, dtype, register_type))):
+                        await rep_sock.send(self.pack({"status": "error", "msg": "Service busy, retry later"}))
+                        continue
                     try:
                         res = await asyncio.wait_for(fut, timeout=10.0)
                     except asyncio.TimeoutError:
@@ -611,7 +686,9 @@ class ModbusService(BaseIOService):
                             await rep_sock.send(self.pack({"status": "error", "msg": "Invalid addr in tasks"}))
                             continue
                     fut = asyncio.get_running_loop().create_future()
-                    await self.task_queue.put(PriorityTask(priority, fut, self.do_batch_write, (req["config"], slave, tasks)))
+                    if not await self.put_task_with_timeout(PriorityTask(priority, fut, self.do_batch_write, (req["config"], slave, tasks))):
+                        await rep_sock.send(self.pack({"status": "error", "msg": "Service busy, retry later"}))
+                        continue
                     try:
                         res = await asyncio.wait_for(fut, timeout=10.0)
                     except asyncio.TimeoutError:
@@ -651,7 +728,9 @@ class ModbusService(BaseIOService):
                         await rep_sock.send(self.pack(res))
                     else:
                         fut = asyncio.get_running_loop().create_future()
-                        await self.task_queue.put(PriorityTask(priority, fut, self.do_read, (req["config"], slave, addr, dtype, cache_it, register_type)))
+                        if not await self.put_task_with_timeout(PriorityTask(priority, fut, self.do_read, (req["config"], slave, addr, dtype, cache_it, register_type))):
+                            await rep_sock.send(self.pack({"status": "error", "msg": "Service busy, retry later"}))
+                            continue
                         try:
                             res = await asyncio.wait_for(fut, timeout=10.0)
                         except asyncio.TimeoutError:
@@ -670,7 +749,9 @@ class ModbusService(BaseIOService):
                             continue
                     cache_it = req.get("cache_it", True)
                     fut = asyncio.get_running_loop().create_future()
-                    await self.task_queue.put(PriorityTask(priority, fut, self.do_batch_read, (req["config"], slave, tasks, cache_it)))
+                    if not await self.put_task_with_timeout(PriorityTask(priority, fut, self.do_batch_read, (req["config"], slave, tasks, cache_it))):
+                        await rep_sock.send(self.pack({"status": "error", "msg": "Service busy, retry later"}))
+                        continue
                     try:
                         res = await asyncio.wait_for(fut, timeout=10.0)
                     except asyncio.TimeoutError:
@@ -720,12 +801,17 @@ class ModbusService(BaseIOService):
                 await self.sender_task
             except asyncio.CancelledError:
                 pass
+        if self.cleanup_task:
+            self.cleanup_task.cancel()
+            try:
+                await self.cleanup_task
+            except asyncio.CancelledError:
+                pass
         await self.send_queue.join()
         while not self.task_queue.empty():
             task = await self.task_queue.get()
             if not task.future.done():
                 task.future.set_exception(asyncio.CancelledError("Service shutdown"))
-
             self.task_queue.task_done()
         for task in self.heartbeat_tasks.values():
             task.cancel()
@@ -733,8 +819,7 @@ class ModbusService(BaseIOService):
                 await task
             except asyncio.CancelledError:
                 pass
-        for client, _ in self.conn_pool.clients.values():
-            await client.close()
+        await self.conn_pool.close_all()
         await super().shutdown()
 
 if __name__ == "__main__":
