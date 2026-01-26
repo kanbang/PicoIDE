@@ -103,6 +103,259 @@ class PriorityTask:
     def __lt__(self, other):
         return self.priority < other.priority
 
+# 策略模式: RegisterReader接口
+class RegisterReader:
+    async def read(self, client, addr, count, slave):
+        raise NotImplementedError
+
+class HoldingReader(RegisterReader):
+    async def read(self, client, addr, count, slave):
+        res = await client.read_holding_registers(address=addr, count=count, device_id=slave)
+        if res.isError():
+            raise RuntimeError(f"Modbus read error: {res}")
+        return res.registers
+
+class InputReader(RegisterReader):
+    async def read(self, client, addr, count, slave):
+        res = await client.read_input_registers(address=addr, count=count, device_id=slave)
+        if res.isError():
+            raise RuntimeError(f"Modbus read error: {res}")
+        return res.registers
+
+class CoilReader(RegisterReader):
+    async def read(self, client, addr, count, slave):
+        res = await client.read_coils(address=addr, count=count, device_id=slave)
+        if res.isError():
+            raise RuntimeError(f"Modbus read error: {res}")
+        return res.bits[:count]
+
+class DiscreteReader(RegisterReader):
+    async def read(self, client, addr, count, slave):
+        res = await client.read_discrete_inputs(address=addr, count=count, device_id=slave)
+        if res.isError():
+            raise RuntimeError(f"Modbus read error: {res}")
+        return res.bits[:count]
+
+# 策略模式: RegisterWriter接口
+class RegisterWriter:
+    async def write(self, client, addr, payload, slave):
+        raise NotImplementedError
+
+class HoldingWriter(RegisterWriter):
+    async def write(self, client, addr, payload, slave):
+        if len(payload) > 1:
+            res = await client.write_registers(address=addr, values=payload, device_id=slave)
+        else:
+            res = await client.write_register(address=addr, value=payload[0], device_id=slave)
+        if res.isError():
+            raise RuntimeError(f"Modbus write error: {res}")
+
+class CoilWriter(RegisterWriter):
+    async def write(self, client, addr, payload, slave):
+        if not isinstance(payload, bool):
+            raise ValueError("Coil value must be bool")
+        res = await client.write_coil(address=addr, value=payload, device_id=slave)
+        if res.isError():
+            raise RuntimeError(f"Modbus write error: {res}")
+
+# 命令模式: OpHandler接口
+class OpHandler:
+    async def handle(self, service, req, send_response):
+        raise NotImplementedError
+
+class WriteHandler(OpHandler):
+    async def handle(self, service, req, send_response):
+        register_type = req.get("register_type", "holding")
+        slave = req.get("slave", 1)
+        addr = req["addr"]
+        val = req["val"]
+        dtype = req.get("type", "uint16")
+        priority = req.get("priority", 1)
+        if not isinstance(priority, int):
+            await send_response({"status": "error", "msg": "Invalid priority type"})
+            return
+        if not all(isinstance(x, int) for x in [slave, addr]):
+            await send_response({"status": "error", "msg": "Invalid slave or addr type"})
+            return
+        fut = asyncio.get_running_loop().create_future()
+        if not await service.put_task_with_timeout(PriorityTask(priority, fut, service.do_write, (req["config"], slave, addr, val, dtype, register_type))):
+            await send_response({"status": "error", "msg": "Service busy, retry later"})
+            return
+        try:
+            res = await asyncio.wait_for(fut, timeout=10.0)
+        except asyncio.TimeoutError:
+            if not fut.done():
+                fut.cancel()
+            res = {"status": "error", "msg": "Operation timeout"}
+        await send_response(res)
+
+class BatchWriteHandler(OpHandler):
+    async def handle(self, service, req, send_response):
+        slave = req.get("slave", 1)
+        tasks = req["tasks"]
+        priority = req.get("priority", 1)
+        if not isinstance(priority, int):
+            await send_response({"status": "error", "msg": "Invalid priority type"})
+            return
+        if not isinstance(slave, int):
+            await send_response({"status": "error", "msg": "Invalid slave type"})
+            return
+        for t in tasks:
+            if not isinstance(t["addr"], int):
+                await send_response({"status": "error", "msg": "Invalid addr in tasks"})
+                return
+        fut = asyncio.get_running_loop().create_future()
+        if not await service.put_task_with_timeout(PriorityTask(priority, fut, service.do_batch_write, (req["config"], slave, tasks))):
+            await send_response({"status": "error", "msg": "Service busy, retry later"})
+            return
+        try:
+            res = await asyncio.wait_for(fut, timeout=10.0)
+        except asyncio.TimeoutError:
+            fut.cancel()
+            res = {"status": "error", "msg": "Operation timeout"}
+        await send_response(res)
+
+class SubscribeHandler(OpHandler):
+    async def handle(self, service, req, send_response):
+        ckey = service._get_conn_key(req["config"])
+        slave = req.get("slave", 1)
+        if not isinstance(slave, int):
+            await send_response({"status": "error", "msg": "Invalid slave type"})
+            return
+        for t in req["tasks"]:
+            register_type = t.get("register_type", "holding")
+            addr = t["addr"]
+            if not isinstance(addr, int):
+                await send_response({"status": "error", "msg": "Invalid addr in tasks"})
+                return
+            service.subscriptions[(ckey, slave, addr)] = {"type": t["type"], "last_val": None, "register_type": register_type}
+        await send_response({"status": "ok", "msg": "Subscribed"})
+
+class ReadCacheHandler(OpHandler):
+    async def handle(self, service, req, send_response):
+        cache_str_key = {f"{ckey}:{slave}:{addr}": val for (ckey, slave, addr), val in service.cache.items()}
+        await send_response({"status": "ok", "cache": cache_str_key})
+
+class ReadHandler(OpHandler):
+    async def handle(self, service, req, send_response):
+        ckey = service._get_conn_key(req["config"])
+        slave = req.get("slave", 1)
+        addr = req["addr"]
+        dtype = req.get("type", "uint16")
+        cache_it = req.get("cache_it", True)
+        register_type = req.get("register_type", "holding")
+        priority = req.get("priority", 1)
+        if not isinstance(priority, int):
+            await send_response({"status": "error", "msg": "Invalid priority type"})
+            return
+        if not all(isinstance(x, int) for x in [slave, addr]):
+            await send_response({"status": "error", "msg": "Invalid slave or addr type"})
+            return
+        key = (ckey, slave, addr)
+        if key in service.cache:
+            res = {"status": "ok", "val": service.cache[key]}
+            await send_response(res)
+        else:
+            fut = asyncio.get_running_loop().create_future()
+            if not await service.put_task_with_timeout(PriorityTask(priority, fut, service.do_read, (req["config"], slave, addr, dtype, cache_it, register_type))):
+                await send_response({"status": "error", "msg": "Service busy, retry later"})
+                return
+            try:
+                res = await asyncio.wait_for(fut, timeout=10.0)
+            except asyncio.TimeoutError:
+                fut.cancel()
+                res = {"status": "error", "msg": "Operation timeout"}
+            await send_response(res)
+
+class BatchReadHandler(OpHandler):
+    async def handle(self, service, req, send_response):
+        slave = req.get("slave", 1)
+        tasks = req["tasks"]
+        priority = req.get("priority", 1)
+        if not isinstance(priority, int):
+            await send_response({"status": "error", "msg": "Invalid priority type"})
+            return
+        if not isinstance(slave, int):
+            await send_response({"status": "error", "msg": "Invalid slave type"})
+            return
+        for t in tasks:
+            if not isinstance(t["addr"], int):
+                await send_response({"status": "error", "msg": "Invalid addr in tasks"})
+                return
+        cache_it = req.get("cache_it", True)
+        fut = asyncio.get_running_loop().create_future()
+        if not await service.put_task_with_timeout(PriorityTask(priority, fut, service.do_batch_read, (req["config"], slave, tasks, cache_it))):
+            await send_response({"status": "error", "msg": "Service busy, retry later"})
+            return
+        try:
+            res = await asyncio.wait_for(fut, timeout=10.0)
+        except asyncio.TimeoutError:
+            fut.cancel()
+            res = {"status": "error", "msg": "Operation timeout"}
+        await send_response(res)
+
+class SetHeartbeatHandler(OpHandler):
+    async def handle(self, service, req, send_response):
+        ckey = service._get_conn_key(req["config"])
+        heartbeat_slave = req.get("heartbeat_slave", 1)
+        heartbeat_addr = req.get("heartbeat_addr", service.default_heartbeat_addr)
+        if not all(isinstance(x, int) for x in [heartbeat_slave, heartbeat_addr]):
+            await send_response({"status": "error", "msg": "Invalid heartbeat slave or addr type"})
+            return
+        service.heartbeat_slaves[ckey] = heartbeat_slave
+        service.heartbeat_addrs[ckey] = heartbeat_addr
+        if ckey not in service.heartbeat_tasks:
+            service.heartbeat_tasks[ckey] = asyncio.create_task(service.heartbeat_worker(ckey))
+        await send_response({"status": "ok", "msg": "Heartbeat set"})
+
+# 策略模式: ZmqSendStrategy 接口
+class ZmqSendStrategy:
+    async def send(self, sock, client_id, packed_res):
+        raise NotImplementedError
+
+class RouterSend(ZmqSendStrategy):
+    async def send(self, sock, client_id, packed_res):
+        await sock.send_multipart([client_id, b'', packed_res])
+
+class RepSend(ZmqSendStrategy):
+    async def send(self, sock, client_id, packed_res):
+        await sock.send(packed_res)
+
+# 策略模式: ZmqRecvStrategy 接口
+class ZmqRecvStrategy:
+    async def recv(self, sock):
+        raise NotImplementedError
+
+class RouterRecv(ZmqRecvStrategy):
+    async def recv(self, sock):
+        client_id, _, raw = await sock.recv_multipart()
+        return client_id, raw
+
+class RepRecv(ZmqRecvStrategy):
+    async def recv(self, sock):
+        raw = await sock.recv()
+        return b'', raw
+
+class ZmqServerStrategy:
+    def __init__(self, sock_type, bind_addr, logger):
+        self.sock = zmq.asyncio.Context.instance().socket(sock_type)
+        self.sock.bind(bind_addr)
+        logger.info(f"{sock_type} socket ready: {bind_addr}")
+        self.send_strategy = None
+        self.recv_strategy = None
+
+class RouterStrategy(ZmqServerStrategy):
+    def __init__(self, bind_addr, logger):
+        super().__init__(zmq.ROUTER, bind_addr, logger)
+        self.send_strategy = RouterSend()
+        self.recv_strategy = RouterRecv()
+
+class RepStrategy(ZmqServerStrategy):
+    def __init__(self, bind_addr, logger):
+        super().__init__(zmq.REP, bind_addr, logger)
+        self.send_strategy = RepSend()
+        self.recv_strategy = RepRecv()
+
 class ModbusService(BaseIOService):
     """
     Asynchronous Modbus service for handling device communications.
@@ -111,6 +364,17 @@ class ModbusService(BaseIOService):
     """
     def __init__(self):
         super().__init__("modbus")
+        self.zmq_mode = config.get('zmq_mode', 'router')  # 'router' (default) or 'rep'
+        self.logger.info(f"Using ZeroMQ mode: {self.zmq_mode}")
+        self.zmq_strategies = {
+            'router': RouterStrategy,
+            'rep': RepStrategy
+        }
+        strategy_class = self.zmq_strategies.get(self.zmq_mode)
+        if not strategy_class:
+            raise ValueError(f"Unsupported zmq_mode: {self.zmq_mode}")
+        self.zmq_strategy = strategy_class(self.get_addr(), self.logger)
+
         self.conn_pool = ConnectionPool(self.logger)
         self.task_queue = asyncio.PriorityQueue(maxsize=100)  # Limited size for backpressure
         self.subscriptions = {}  # (conn_key, slave, addr): {"type": dtype, "last_val": None, "register_type": reg_type}
@@ -146,7 +410,30 @@ class ModbusService(BaseIOService):
         self.sender_task = None
         self.processor_task = None
         self.cleanup_task = None
+        self.sock = self.zmq_strategy.sock  # Set from strategy
 
+        # Register readers and writers
+        self.register_readers = {
+            "holding": HoldingReader(),
+            "input": InputReader(),
+            "coil": CoilReader(),
+            "discrete": DiscreteReader()
+        }
+        self.register_writers = {
+            "holding": HoldingWriter(),
+            "coil": CoilWriter()
+        }
+
+        # Op handlers
+        self.op_handlers = {
+            "write": WriteHandler(),
+            "batch_write": BatchWriteHandler(),
+            "subscribe": SubscribeHandler(),
+            "read_cache": ReadCacheHandler(),
+            "read": ReadHandler(),
+            "batch_read": BatchReadHandler(),
+            "set_heartbeat": SetHeartbeatHandler()
+        }
 
     def _get_conn_key(self, cfg):
         """
@@ -224,7 +511,7 @@ class ModbusService(BaseIOService):
         cfg = self._parse_conn_key(ckey)
         if cfg is None:
             return
-        client, lock = await self.conn_pool.get_client(cfg)
+        client, lock, _ = await self.conn_pool.get_client(cfg)
         slave = self.heartbeat_slaves.get(ckey, 1)
         addr = self.heartbeat_addrs.get(ckey, self.default_heartbeat_addr)
         while self.running:
@@ -313,7 +600,7 @@ class ModbusService(BaseIOService):
         cfg = self._parse_conn_key(ckey)
         if cfg is None:
             return
-        client, lock = await self.conn_pool.get_client(cfg)
+        client, lock, _ = await self.conn_pool.get_client(cfg)
         async with lock:
             try:
                 if not client.connected:
@@ -325,20 +612,11 @@ class ModbusService(BaseIOService):
                 for reg_type, reg_items in grouped_by_reg.items():
                     reg_items.sort(key=lambda x: x[0])
                     batches = await self._build_batches(reg_items)
+                    reader = self.register_readers.get(reg_type)
+                    if not reader:
+                        raise ValueError(f"Unsupported register_type: {reg_type}")
                     for start_addr, total_count, batch_items in batches:
-                        if reg_type == "holding":
-                            res = await client.read_holding_registers(address=start_addr, count=total_count, device_id=slave)
-                        elif reg_type == "input":
-                            res = await client.read_input_registers(address=start_addr, count=total_count, device_id=slave)
-                        elif reg_type == "coil":
-                            res = await client.read_coils(address=start_addr, count=total_count, device_id=slave)
-                        elif reg_type == "discrete":
-                            res = await client.read_discrete_inputs(address=start_addr, count=total_count, device_id=slave)
-                        else:
-                            raise ValueError(f"Unsupported register_type: {reg_type}")
-                        if res.isError():
-                            raise RuntimeError(f"Modbus read error: {res}")
-                        registers = res.bits[:total_count] if reg_type in ["coil", "discrete"] else res.registers  # Trim bits to exact count
+                        registers = await reader.read(client, start_addr, total_count, slave)
                         for addr, info in batch_items:
                             rel_offset = addr - start_addr
                             count, data_type = self._get_dtype_params(info["type"])
@@ -428,29 +706,20 @@ class ModbusService(BaseIOService):
         Performs a single write operation to hardware.
         """
         self.logger.debug(f"do_write: slave={slave}, addr={addr}, val={val} (type={type(val)}), dtype={dtype}, register_type={register_type}")
-        client, lock = await self.conn_pool.get_client(cfg)
+        client, lock, _ = await self.conn_pool.get_client(cfg)
         async with lock:
             if not client.connected:
                 await self.reconnect(client, log_msg="Write reconnect")
             async def write_func():
                 count, data_type = self._get_dtype_params(dtype)
-                if register_type == "holding":
-                    converted_val = val
-                    if data_type is not None and "int" in dtype.lower() and not isinstance(converted_val, int):
-                        raise ValueError("Value must be integer for int dtype")
-                    payload = client.convert_to_registers(converted_val, data_type, word_order=self.word_order) if data_type is not None else [val]
-                    if count > 1:
-                        res = await client.write_registers(address=addr, values=payload, device_id=slave)
-                    else:
-                        res = await client.write_register(address=addr, value=payload[0], device_id=slave)
-                elif register_type == "coil":
-                    if not isinstance(val, bool):
-                        raise ValueError("Coil value must be bool")
-                    res = await client.write_coil(address=addr, value=val, device_id=slave)
-                else:
+                writer = self.register_writers.get(register_type)
+                if not writer:
                     raise ValueError(f"Write not supported for {register_type}")
-                if res.isError():
-                    raise RuntimeError(f"Modbus write error: {res}")
+                converted_val = val
+                if data_type is not None and "int" in dtype.lower() and not isinstance(converted_val, int):
+                    raise ValueError("Value must be integer for int dtype")
+                payload = client.convert_to_registers(converted_val, data_type, word_order=self.word_order) if data_type is not None else [val]
+                await writer.write(client, addr, payload, slave)
                 return {"status": "ok"}
             try:
                 return await self.retry_operation(write_func, log_msg="Write register")
@@ -473,38 +742,28 @@ class ModbusService(BaseIOService):
         partial_results = []
         for reg_type, reg_tasks in grouped_by_reg.items():
             sorted_tasks = sorted(reg_tasks, key=lambda t: t["addr"])
-            client, lock = await self.conn_pool.get_client(cfg)
+            client, lock, _ = await self.conn_pool.get_client(cfg)
             async with lock:
                 if not client.connected:
                     await self.reconnect(client, log_msg="Batch write reconnect")
                 batches = await self._build_batches(sorted_tasks, is_write=True)
+                writer = self.register_writers.get(reg_type)
+                if not writer:
+                    partial_results.append({"status": "error", "msg": f"Batch write not supported for {reg_type}"})
+                    continue
                 for start_addr, _, batch_items in batches:
                     try:
-                        if reg_type == "holding":
-                            payload = []
-                            for item in batch_items:
-                                _, data_type = self._get_dtype_params(item["type"])
-                                val = item["val"]
-                                if data_type is not None and "int" in item["type"].lower() and not isinstance(val, int):
-                                    raise ValueError("Value must be integer for int dtype")
-                                vals = client.convert_to_registers(val, data_type, word_order=self.word_order) if data_type is not None else [val]
-                                payload.extend(vals)
-                            async def batch_write_func():
-                                res = await client.write_registers(address=start_addr, values=payload, device_id=slave)
-                                if res.isError():
-                                    raise RuntimeError(f"Modbus batch write error: {res}")
-                                return {"status": "ok"}
-                        elif reg_type == "coil":
-                            payload = [item["val"] for item in batch_items]
-                            if not all(isinstance(v, bool) for v in payload):
-                                raise ValueError("All coil values must be bool")
-                            async def batch_write_func():
-                                res = await client.write_coils(address=start_addr, values=payload, device_id=slave)
-                                if res.isError():
-                                    raise RuntimeError(f"Modbus batch write error: {res}")
-                                return {"status": "ok"}
-                        else:
-                            raise ValueError(f"Batch write not supported for {reg_type}")
+                        payload = []
+                        for item in batch_items:
+                            _, data_type = self._get_dtype_params(item["type"])
+                            val = item["val"]
+                            if data_type is not None and "int" in item["type"].lower() and not isinstance(val, int):
+                                raise ValueError("Value must be integer for int dtype")
+                            vals = client.convert_to_registers(val, data_type, word_order=self.word_order) if data_type is not None else [val]
+                            payload.extend(vals)
+                        async def batch_write_func():
+                            await writer.write(client, start_addr, payload, slave)
+                            return {"status": "ok"}
                         res = await self.retry_operation(batch_write_func, log_msg="Batch write register")
                         partial_results.append(res)
                     except Exception as e:
@@ -521,28 +780,16 @@ class ModbusService(BaseIOService):
         Performs a single read operation from hardware.
         """
         self.logger.debug(f"do_read: slave={slave}, addr={addr}, dtype={dtype}, register_type={register_type}")
-        client, lock = await self.conn_pool.get_client(cfg)
+        client, lock, _ = await self.conn_pool.get_client(cfg)
         async with lock:
             if not client.connected:
                 await self.reconnect(client, log_msg="Read reconnect")
             async def read_func():
                 count, data_type = self._get_dtype_params(dtype)
-                if register_type == "holding":
-                    res = await client.read_holding_registers(address=addr, count=count, device_id=slave)
-                    vals = res.registers
-                elif register_type == "input":
-                    res = await client.read_input_registers(address=addr, count=count, device_id=slave)
-                    vals = res.registers
-                elif register_type == "coil":
-                    res = await client.read_coils(address=addr, count=count, device_id=slave)
-                    vals = res.bits[:count]  # Trim to exact count
-                elif register_type == "discrete":
-                    res = await client.read_discrete_inputs(address=addr, count=count, device_id=slave)
-                    vals = res.bits[:count]  # Trim to exact count
-                else:
+                reader = self.register_readers.get(register_type)
+                if not reader:
                     raise ValueError(f"Unsupported register_type: {register_type}")
-                if res.isError():
-                    raise RuntimeError(f"Modbus read error: {res}")
+                vals = await reader.read(client, addr, count, slave)
                 if len(vals) < count:
                     raise RuntimeError(f"Insufficient data for addr {addr}: expected {count}, got {len(vals)}")
                 if register_type in ["coil", "discrete"] or data_type is None:
@@ -575,30 +822,22 @@ class ModbusService(BaseIOService):
         results = {}
         for reg_type, reg_tasks in grouped_by_reg.items():
             sorted_tasks = sorted(reg_tasks, key=lambda t: t["addr"])
-            client, lock = await self.conn_pool.get_client(cfg)
+            client, lock, _ = await self.conn_pool.get_client(cfg)
             async with lock:
                 if not client.connected:
                     await self.reconnect(client, log_msg="Batch read reconnect")
                 norm_items = [(t["addr"], t) for t in sorted_tasks]
                 batches = await self._build_batches(norm_items, is_write=False)
+                reader = self.register_readers.get(reg_type)
+                if not reader:
+                    return {"status": "error", "msg": f"Unsupported register_type: {reg_type}"}
                 for start_addr, total_count, batch_items in batches:
                     async def batch_read_func():
-                        if reg_type == "holding":
-                            res = await client.read_holding_registers(address=start_addr, count=total_count, device_id=slave)
-                        elif reg_type == "input":
-                            res = await client.read_input_registers(address=start_addr, count=total_count, device_id=slave)
-                        elif reg_type == "coil":
-                            res = await client.read_coils(address=start_addr, count=total_count, device_id=slave)
-                        elif reg_type == "discrete":
-                            res = await client.read_discrete_inputs(address=start_addr, count=total_count, device_id=slave)
-                        else:
-                            raise ValueError(f"Unsupported register_type: {reg_type}")
-                        if res.isError():
-                            raise RuntimeError(f"Modbus batch read error: {res}")
-                        return res.bits[:total_count] if reg_type in ["coil", "discrete"] else res.registers  # Trim bits to exact count
+                        registers = await reader.read(client, start_addr, total_count, slave)
+                        return registers
                     try:
                         registers = await self.retry_operation(batch_read_func, log_msg="Batch read register")
-                        if len(registers) < total_count:  # For bits, after trim; for registers, exact
+                        if len(registers) < total_count:
                             raise RuntimeError(f"Response length mismatch: expected {total_count}, got {len(registers)}")
                         for b_item in batch_items:
                             b_addr, b_info = b_item
@@ -636,152 +875,55 @@ class ModbusService(BaseIOService):
                 self.logger.error(f"Cleanup worker error: {e}")
                 self.logger.error(traceback.format_exc())
 
+    async def _handle_request(self, sock, client_id, req):
+        """
+        Handles a single request from a client.
+        Sends response via the provided sock (ROUTER or REP).
+        """
+        async def send_response(res):
+            packed_res = self.pack(res)
+            await self.zmq_strategy.send_strategy.send(sock, client_id, packed_res)
+
+        op = req.get("op")
+        try:
+            handler = self.op_handlers.get(op)
+            if handler:
+                await handler.handle(self, req, send_response)
+            else:
+                await send_response({"status": "error", "msg": "Unknown operation"})
+        except KeyError as e:
+            await send_response({"status": "error", "msg": f"Missing key: {e}"})
+        except Exception as e:
+            self.logger.error(f"Request handler error: {e}")
+            self.logger.error(traceback.format_exc())
+            await send_response({"status": "error", "msg": str(e)})
+
     async def main_loop(self):
         """
-        Main request processing loop using ZeroMQ REP socket.
+        Main request processing loop using ZeroMQ socket based on mode.
+        Supports 'router' (concurrent) or 'rep' (synchronous).
         """
         self.polling_task = asyncio.create_task(self.poll_worker())
         self.processor_task = asyncio.create_task(self.processor_worker())
         self.cleanup_task = asyncio.create_task(self.cleanup_worker())
-        rep_sock = self.ctx.socket(zmq.REP)
-        rep_sock.bind(self.get_addr())
+
         while self.running:
             try:
-                raw = await rep_sock.recv()
+                client_id, raw = await self.zmq_strategy.recv_strategy.recv(self.sock)
                 req = self.unpack(raw)
                 op = req.get("op")
-                priority = req.get("priority", 1)
-                self.logger.debug(f"Received request: op={op}, req={req}")
-                if not isinstance(priority, int):
-                    await rep_sock.send(self.pack({"status": "error", "msg": "Invalid priority type"}))
-                    continue
-                if op == "write":
-                    register_type = req.get("register_type", "holding")
-                    slave = req.get("slave", 1)
-                    addr = req["addr"]
-                    val = req["val"]
-                    dtype = req.get("type", "uint16")
-                    if not all(isinstance(x, int) for x in [slave, addr]):
-                        await rep_sock.send(self.pack({"status": "error", "msg": "Invalid slave or addr type"}))
-                        continue
-                    fut = asyncio.get_running_loop().create_future()
-                    if not await self.put_task_with_timeout(PriorityTask(priority, fut, self.do_write, (req["config"], slave, addr, val, dtype, register_type))):
-                        await rep_sock.send(self.pack({"status": "error", "msg": "Service busy, retry later"}))
-                        continue
-                    try:
-                        res = await asyncio.wait_for(fut, timeout=10.0)
-                    except asyncio.TimeoutError:
-                        if not fut.done():
-                            fut.cancel()
-                        res = {"status": "error", "msg": "Operation timeout"}
-                    await rep_sock.send(self.pack(res))
-                elif op == "batch_write":
-                    slave = req.get("slave", 1)
-                    tasks = req["tasks"]
-                    if not isinstance(slave, int):
-                        await rep_sock.send(self.pack({"status": "error", "msg": "Invalid slave type"}))
-                        continue
-                    for t in tasks:
-                        if not isinstance(t["addr"], int):
-                            await rep_sock.send(self.pack({"status": "error", "msg": "Invalid addr in tasks"}))
-                            continue
-                    fut = asyncio.get_running_loop().create_future()
-                    if not await self.put_task_with_timeout(PriorityTask(priority, fut, self.do_batch_write, (req["config"], slave, tasks))):
-                        await rep_sock.send(self.pack({"status": "error", "msg": "Service busy, retry later"}))
-                        continue
-                    try:
-                        res = await asyncio.wait_for(fut, timeout=10.0)
-                    except asyncio.TimeoutError:
-                        fut.cancel()
-                        res = {"status": "error", "msg": "Operation timeout"}
-                    await rep_sock.send(self.pack(res))
-                elif op == "subscribe":
-                    ckey = self._get_conn_key(req["config"])
-                    slave = req.get("slave", 1)
-                    if not isinstance(slave, int):
-                        await rep_sock.send(self.pack({"status": "error", "msg": "Invalid slave type"}))
-                        continue
-                    for t in req["tasks"]:
-                        register_type = t.get("register_type", "holding")
-                        addr = t["addr"]
-                        if not isinstance(addr, int):
-                            await rep_sock.send(self.pack({"status": "error", "msg": "Invalid addr in tasks"}))
-                            continue
-                        self.subscriptions[(ckey, slave, addr)] = {"type": t["type"], "last_val": None, "register_type": register_type}
-                    await rep_sock.send(self.pack({"status": "ok", "msg": "Subscribed"}))
-                elif op == "read_cache":
-                    cache_str_key = {f"{ckey}:{slave}:{addr}": val for (ckey, slave, addr), val in self.cache.items()}
-                    await rep_sock.send(self.pack({"status": "ok", "cache": cache_str_key}))
-                elif op == "read":
-                    ckey = self._get_conn_key(req["config"])
-                    slave = req.get("slave", 1)
-                    addr = req["addr"]
-                    dtype = req.get("type", "uint16")
-                    cache_it = req.get("cache_it", True)
-                    register_type = req.get("register_type", "holding")
-                    if not all(isinstance(x, int) for x in [slave, addr]):
-                        await rep_sock.send(self.pack({"status": "error", "msg": "Invalid slave or addr type"}))
-                        continue
-                    key = (ckey, slave, addr)
-                    if key in self.cache:
-                        res = {"status": "ok", "val": self.cache[key]}
-                        await rep_sock.send(self.pack(res))
-                    else:
-                        fut = asyncio.get_running_loop().create_future()
-                        if not await self.put_task_with_timeout(PriorityTask(priority, fut, self.do_read, (req["config"], slave, addr, dtype, cache_it, register_type))):
-                            await rep_sock.send(self.pack({"status": "error", "msg": "Service busy, retry later"}))
-                            continue
-                        try:
-                            res = await asyncio.wait_for(fut, timeout=10.0)
-                        except asyncio.TimeoutError:
-                            fut.cancel()
-                            res = {"status": "error", "msg": "Operation timeout"}
-                        await rep_sock.send(self.pack(res))
-                elif op == "batch_read":
-                    slave = req.get("slave", 1)
-                    tasks = req["tasks"]
-                    if not isinstance(slave, int):
-                        await rep_sock.send(self.pack({"status": "error", "msg": "Invalid slave type"}))
-                        continue
-                    for t in tasks:
-                        if not isinstance(t["addr"], int):
-                            await rep_sock.send(self.pack({"status": "error", "msg": "Invalid addr in tasks"}))
-                            continue
-                    cache_it = req.get("cache_it", True)
-                    fut = asyncio.get_running_loop().create_future()
-                    if not await self.put_task_with_timeout(PriorityTask(priority, fut, self.do_batch_read, (req["config"], slave, tasks, cache_it))):
-                        await rep_sock.send(self.pack({"status": "error", "msg": "Service busy, retry later"}))
-                        continue
-                    try:
-                        res = await asyncio.wait_for(fut, timeout=10.0)
-                    except asyncio.TimeoutError:
-                        fut.cancel()
-                        res = {"status": "error", "msg": "Operation timeout"}
-                    await rep_sock.send(self.pack(res))
-                elif op == "set_heartbeat":
-                    ckey = self._get_conn_key(req["config"])
-                    heartbeat_slave = req.get("heartbeat_slave", 1)
-                    heartbeat_addr = req.get("heartbeat_addr", self.default_heartbeat_addr)
-                    if not all(isinstance(x, int) for x in [heartbeat_slave, heartbeat_addr]):
-                        await rep_sock.send(self.pack({"status": "error", "msg": "Invalid heartbeat slave or addr type"}))
-                        continue
-                    self.heartbeat_slaves[ckey] = heartbeat_slave
-                    self.heartbeat_addrs[ckey] = heartbeat_addr
-                    if ckey not in self.heartbeat_tasks:
-                        self.heartbeat_tasks[ckey] = asyncio.create_task(self.heartbeat_worker(ckey))
-                    await rep_sock.send(self.pack({"status": "ok", "msg": "Heartbeat set"}))
+                self.logger.debug(f"Received request: op={op}")
+                if self.zmq_mode == 'router':
+                    asyncio.create_task(self._handle_request(self.sock, client_id, req))
                 else:
-                    await rep_sock.send(self.pack({"status": "error", "msg": "Unknown operation"}))
-            except KeyError as e:
-                await rep_sock.send(self.pack({"status": "error", "msg": f"Missing key: {e}"}))
+                    await self._handle_request(self.sock, client_id, req)
             except Exception as e:
                 self.logger.error(f"Main loop error: {e}")
                 self.logger.error(traceback.format_exc())
-                await rep_sock.send(self.pack({"status": "error", "msg": str(e)}))
 
     async def shutdown(self):
         """
-        Graceful shutdown: cancels tasks, drains queues, closes clients.
+        Graceful shutdown: cancels tasks, drains queues, closes clients and sock.
         """
         if self.polling_task:
             self.polling_task.cancel()
@@ -820,6 +962,8 @@ class ModbusService(BaseIOService):
             except asyncio.CancelledError:
                 pass
         await self.conn_pool.close_all()
+        if self.sock:
+            self.sock.close()
         await super().shutdown()
 
 if __name__ == "__main__":
