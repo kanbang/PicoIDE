@@ -11,6 +11,8 @@ from utils.singleton import singleton
 from utils.modbus_client import ModbusClient, DataType, RegisterType
 from paho.mqtt import client as mqtt
 
+
+
 # ModbusReadBlock: 专注于Modbus读取操作
 class ModbusReadBlock(BaseBlock):
     NAME = "Modbus Read"
@@ -22,22 +24,25 @@ class ModbusReadBlock(BaseBlock):
         # 输出
         self.add_output("result")  # 读取值或{"error": str}
 
-        # 选项（Modbus配置 + params字段）
+        self.add_text_option("Read Parameters", "- 读取参数")  # 组名，作为label
+        self.add_integer_option("addr", default=0)
+        self.add_select_option("dtype", items=[dt.value for dt in DataType], default="uint16")
+        self.add_select_option("register_type", items=[rt.value for rt in RegisterType], default="holding")
+        self.add_checkbox_option("cache_it", default=True)
+
+        self.add_text_option("Connection Settings", "- 连接设置")  # 组名，作为label
+        self.add_select_option("conn_type", items=["tcp", "serial"], default="tcp")
         self.add_text_input_option("host", default="127.0.0.1")
         self.add_integer_option("port", default=502, min_val=1, max_val=65535)
-        self.add_select_option("conn_type", items=["tcp", "serial"], default="tcp")
+        self.add_integer_option("slave", default=1)
+        self.add_integer_option("timeout", default=5)  # 操作超时秒
+       
+        self.add_text_option("Serial Settings", "- 串口相关")  # 组名，作为label
         self.add_integer_option("baudrate", default=9600)  # serial only
         self.add_text_input_option("parity", default="N")  # serial only
         self.add_integer_option("bytesize", default=8)  # serial only
         self.add_integer_option("stopbits", default=1)  # serial only
-        self.add_integer_option("timeout", default=5)  # 操作超时秒
 
-        # params as options
-        self.add_integer_option("addr", default=0)
-        self.add_select_option("dtype", items=[dt.value for dt in DataType], default="uint16")
-        self.add_select_option("register_type", items=[rt.value for rt in RegisterType], default="holding")
-        self.add_integer_option("slave", default=1)
-        self.add_checkbox_option("cache_it", default=True)
 
         self.client = None
 
@@ -83,26 +88,39 @@ class ModbusWriteBlock(BaseBlock):
         # 输出
         self.add_output("result")  # {"status": "ok"} 或 {"error": str}
 
-        # 选项（Modbus配置 + params字段）
-        self.add_text_input_option("host", default="127.0.0.1")
-        self.add_integer_option("port", default=502, min_val=1, max_val=65535)
-        self.add_select_option("conn_type", items=["tcp", "serial"], default="tcp")
-        self.add_integer_option("baudrate", default=9600)  # serial only
-        self.add_text_input_option("parity", default="N")  # serial only
-        self.add_integer_option("bytesize", default=8)  # serial only
-        self.add_integer_option("stopbits", default=1)  # serial only
-        self.add_integer_option("timeout", default=5)  # 操作超时秒
-
-        # params as options
+        self.add_text_option("Write Parameters", "- 写入参数")  # 组名，作为label
         self.add_integer_option("addr", default=0)
         self.add_text_input_option("val", default="0")  # val as string, parse based on dtype
         self.add_select_option("dtype", items=[dt.value for dt in DataType], default="uint16")
         self.add_select_option("register_type", items=[rt.value for rt in RegisterType], default="holding")
+
+        self.add_text_option("Connection Settings", "- 连接设置")  # 组名，作为label
+        self.add_select_option("conn_type", items=["tcp", "serial"], default="tcp")
+        self.add_text_input_option("host", default="127.0.0.1")
+        self.add_integer_option("port", default=502, min_val=1, max_val=65535)
         self.add_integer_option("slave", default=1)
+        self.add_integer_option("timeout", default=5)  # 操作超时秒
+       
+        self.add_text_option("Serial Settings", "- 串口相关")  # 组名，作为label
+        self.add_integer_option("baudrate", default=9600)  # serial only
+        self.add_text_input_option("parity", default="N")  # serial only
+        self.add_integer_option("bytesize", default=8)  # serial only
+        self.add_integer_option("stopbits", default=1)  # serial only
 
         self.client = None
 
-    # _init_client 同上，省略
+    async def _init_client(self):
+        config = ModbusConfig(
+            type=self.get_option("conn_type"),
+            host=self.get_option("host"),
+            port=self.get_option("port"),
+            baudrate=self.get_option("baudrate"),
+            parity=self.get_option("parity"),
+            bytesize=self.get_option("bytesize"),
+            stopbits=self.get_option("stopbits")
+        )
+        self.client = ModbusClient()  # 假设支持async
+        await self.client.start_update_handler()
 
     async def async_on_compute(self, execution_id: str = None):
         if not self.client:
@@ -145,24 +163,37 @@ class ModbusSubscribeBlock(BaseBlock):
         # 输出
         self.add_output("update")  # 每个更新: {"addr": int, "val": any, "ts": float}
 
-        # 选项（Modbus配置 + params字段）
+        self.add_text_option("Subscribe Parameters", "- 订阅参数")  # 组名，作为label
+        self.add_textarea_input_option("tasks", default="addr:0,dtype:uint16,register_type:holding\naddr:1,dtype:int16")  # 多行输入，每行一个task
+
+        self.add_text_option("Connection Settings", "- 连接设置")  # 组名，作为label
+        self.add_select_option("conn_type", items=["tcp", "serial"], default="tcp")
         self.add_text_input_option("host", default="127.0.0.1")
         self.add_integer_option("port", default=502, min_val=1, max_val=65535)
-        self.add_select_option("conn_type", items=["tcp", "serial"], default="tcp")
+        self.add_integer_option("slave", default=1)
+        self.add_integer_option("timeout", default=5)  # 操作超时秒
+       
+        self.add_text_option("Serial Settings", "- 串口相关")  # 组名，作为label
         self.add_integer_option("baudrate", default=9600)  # serial only
         self.add_text_input_option("parity", default="N")  # serial only
         self.add_integer_option("bytesize", default=8)  # serial only
         self.add_integer_option("stopbits", default=1)  # serial only
-        self.add_integer_option("timeout", default=5)  # 操作超时秒
-
-        # params as options (tasks as textarea, parse as list)
-        self.add_textarea_input_option("tasks", default="addr:0,dtype:uint16,register_type:holding\naddr:1,dtype:int16")  # 多行输入，每行一个task
-        self.add_integer_option("slave", default=1)
 
         self.client = None
         self.update_queue = asyncio.Queue()  # 内部队列缓存更新
 
-    # _init_client 同上
+    async def _init_client(self):
+        config = ModbusConfig(
+            type=self.get_option("conn_type"),
+            host=self.get_option("host"),
+            port=self.get_option("port"),
+            baudrate=self.get_option("baudrate"),
+            parity=self.get_option("parity"),
+            bytesize=self.get_option("bytesize"),
+            stopbits=self.get_option("stopbits")
+        )
+        self.client = ModbusClient()  # 假设支持async
+        await self.client.start_update_handler()
 
     async def async_on_compute(self, execution_id: str = None):
         if not self.client:
