@@ -7,6 +7,7 @@ from pathlib import Path
 from flow.setting import settings
 from flow.log import logger
 from flow.collector import file_collector
+from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
 
 
 # ==================== Option Optimization ====================
@@ -286,3 +287,30 @@ class BaseBlock(Block):
         except Exception as e:
             self._log_error(e, f"文件处理失败: {filename}")
             raise
+
+
+# ==================== DebugBlock (用于流程中收集特定节点信息，并推送事件) ====================
+class DebugBlock(BaseBlock):
+    NAME = "Debug Logger"
+    CATEGORY = "Utilities"
+    STREAMING = False
+
+    def __init__(self):
+        super().__init__()
+        self.add_input("data")  # 任意输入数据，用于触发
+        self.event_bus = RuntimeEventBus()  # 使用单例
+
+    async def async_on_compute(self, execution_id: str = None):
+        data = self.get_interface("data")
+        log_msg = f"Debug: Received data {data} at {time.time()}"
+
+        # 推送事件到队列
+        await self.event_bus.emit(
+            RuntimeEvent(
+                execution_id,
+                RuntimeEventType.DEBUG,
+                self.instance_id,
+                log_msg,
+                payload=data,
+            )
+        )

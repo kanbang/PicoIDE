@@ -5,6 +5,7 @@ import copy
 from enum import Enum, auto
 from typing import Any, Dict, List, Type, Optional, Set, Tuple
 from collections import defaultdict
+from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
 
 class EngineStatus(Enum):
     IDLE = auto()
@@ -13,8 +14,9 @@ class EngineStatus(Enum):
 
 class ComputeEngine:
     def __init__(self, logger: Optional[logging.Logger] = None):
+        self.event_bus = RuntimeEventBus()  # 使用单例
         self.logger = logger or logging.getLogger("ComputeEngine")
-        
+
         # 结构定义
         self.block_registry: Dict[str, Type['Block']] = {}
         self.instances: Dict[str, 'Block'] = {}
@@ -92,12 +94,15 @@ class ComputeEngine:
         try:
             # 执行业务逻辑
             await block.async_on_compute(exec_id)
+            await self.event_bus.emit(RuntimeEvent(exec_id, RuntimeEventType.LOG, n_id, f"Node {n_id} completed"))
             # 成功后触发下游
             await self._trigger_successors(n_id, exec_id)
         except asyncio.CancelledError:
+            await self.event_bus.emit(RuntimeEvent(exec_id, RuntimeEventType.ERROR, n_id, f"Node {n_id} cancelled"))
             raise
         except Exception as e:
             self.logger.error(f"Node {n_id} [{block.NAME}] execution failed: {e}", exc_info=True)
+            await self.event_bus.emit(RuntimeEvent(exec_id, RuntimeEventType.ERROR, n_id, f"Node {n_id} failed: {str(e)}"))
             # 注意：此处可扩展错误传播逻辑，清理 _ready_ports 或通知下游失败
 
     async def _trigger_successors(self, n_id: str, exec_id: str):
@@ -166,6 +171,7 @@ class ComputeEngine:
         """启动引擎"""
         if self.status != EngineStatus.IDLE:
             self.logger.warning("Engine is already running.")
+            await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.STATUS, "engine", "Engine is already running."))
             return
 
         self.status = EngineStatus.RUNNING
@@ -176,6 +182,7 @@ class ComputeEngine:
         if not sources:
             self.logger.error("No source nodes found in flow!")
             self.status = EngineStatus.IDLE
+            await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.STATUS, "engine", "No source nodes found in flow!"))
             return
 
         for n_id in sources:
@@ -192,6 +199,8 @@ class ComputeEngine:
                 await asyncio.sleep(0.1)
         finally:
             await self.stop()
+
+        await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.STATUS, "engine", "Execution completed"))
 
     async def stop(self):
         """安全停止"""

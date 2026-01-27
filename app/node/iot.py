@@ -7,7 +7,7 @@ LastEditors: zhai
 LastEditTime: 2026-01-21 16:32:33
 """
 
-from flow.block import BaseBlock
+from flow.block import BaseBlock, DebugBlock
 from .mqtt_block import MqttPublishBlock, MqttSubscribeBlock
 from .modbus_block import ModbusReadBlock, ModbusWriteBlock, ModbusSubscribeBlock
 
@@ -113,6 +113,7 @@ class CsvRecorderBlock(BaseBlock):
 
 # IoT 业务类型的 Block 列表
 IOT_BLOCKS = [
+    DebugBlock,
     ConstantBlock,
     MqttPublishBlock,
     MqttSubscribeBlock,
