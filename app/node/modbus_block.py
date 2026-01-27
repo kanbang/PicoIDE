@@ -8,7 +8,7 @@ import uuid
 
 from flow.block import BaseBlock
 from utils.singleton import singleton
-from utils.modbus_client import ModbusClient, DataType, RegisterType
+from utils.modbus_client import ModbusClient, DataType, RegisterType, ModbusConfig, ReadRequest
 from paho.mqtt import client as mqtt
 
 
