@@ -71,7 +71,7 @@ class MqttClientEx(ABC):
         if self.is_connected:
             self.mqtt_client.disconnect()
 
-    def publish(self, topic: str, data: str, qos=0) -> bool:
+    def  publish(self, topic: str, data: str, qos=0) -> bool:
         if self.is_connected:
             try:
                 message = self.mqtt_client.publish(topic, data, qos)

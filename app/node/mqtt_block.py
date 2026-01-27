@@ -8,7 +8,7 @@ import uuid
 
 from flow.block import BaseBlock
 from utils.singleton import singleton
-from utils.mqtt import MqttClientEx
+from utils.mqtt_client import MqttClientEx
 from paho.mqtt import client as mqtt
 
 

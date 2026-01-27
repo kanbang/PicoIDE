@@ -1,19 +1,22 @@
-'''
-Descripttion: 
+"""
+Descripttion:
 version: 0.x
 Author: zhai
 Date: 2026-01-20 18:11:17
 LastEditors: zhai
 LastEditTime: 2026-01-21 16:32:33
-'''
+"""
+
 from flow.block import BaseBlock
 from .mqtt_block import MqttPublishBlock, MqttSubscribeBlock
+from .modbus_block import ModbusReadBlock, ModbusWriteBlock, ModbusSubscribeBlock
 
 import os
 import csv
 import asyncio
 from datetime import datetime
 from flow.block import BaseBlock
+
 
 class ConstantBlock(BaseBlock):
     """常量数据源"""
@@ -27,9 +30,7 @@ class ConstantBlock(BaseBlock):
         self.add_output("value")
 
         self.add_select_option(
-            "type",
-            items=["Number", "Integer", "Text"],
-            default="Number"
+            "type", items=["Number", "Integer", "Text"], default="Number"
         )
         self.add_number_option("number", default=1.0)
         self.add_integer_option("integer", default=1)
@@ -48,7 +49,6 @@ class ConstantBlock(BaseBlock):
         self.set_interface("value", value)
 
 
-
 class CsvRecorderBlock(BaseBlock):
     NAME = "CsvRecorder"
     CATEGORY = "Output"
@@ -58,11 +58,11 @@ class CsvRecorderBlock(BaseBlock):
         # 定义配置项
         self.add_text_input_option("file_path", "data_log.csv")
         self.add_checkbox_option("auto_timestamp", True)
-        
+
         # 定义输入接口
-        self.add_input("data") # 接收要保存的字典或字符串
-        
-        self._lock = asyncio.Lock() # 确保写入顺序和文件安全
+        self.add_input("data")  # 接收要保存的字典或字符串
+
+        self._lock = asyncio.Lock()  # 确保写入顺序和文件安全
         self._initialized = False
 
     async def _init_file(self, fieldnames: list):
@@ -74,7 +74,7 @@ class CsvRecorderBlock(BaseBlock):
         self._initialized = True
 
     def _write_header(self, path, fieldnames):
-        with open(path, 'w', newline='', encoding='utf-8') as f:
+        with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
 
@@ -84,7 +84,7 @@ class CsvRecorderBlock(BaseBlock):
             return
 
         path = self.get_option("file_path")
-        
+
         # 统一格式为字典
         if not isinstance(data, dict):
             row = {"value": data}
@@ -105,7 +105,7 @@ class CsvRecorderBlock(BaseBlock):
 
     def _append_row(self, path, row):
         """同步追加逻辑，跑在独立线程中"""
-        with open(path, 'a', newline='', encoding='utf-8') as f:
+        with open(path, "a", newline="", encoding="utf-8") as f:
             # 注意：如果后续数据增加了新字段，DictWriter 会根据 extrasaction 处理
             writer = csv.DictWriter(f, fieldnames=list(row.keys()))
             writer.writerow(row)
@@ -116,7 +116,10 @@ IOT_BLOCKS = [
     ConstantBlock,
     MqttPublishBlock,
     MqttSubscribeBlock,
-    CsvRecorderBlock
+    CsvRecorderBlock,
+    ModbusReadBlock,
+    ModbusWriteBlock,
+    ModbusSubscribeBlock,
 ]
 
 __all__ = ["MqttPublishBlock", "MqttSubscribeBlock", "IOT_BLOCKS"]
