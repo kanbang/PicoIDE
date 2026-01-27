@@ -66,36 +66,41 @@ async function handleRun(flow: any) {
 
   try {
     console.log('开始执行流程...', flow);
-    
+
     // 2. 更新 UI 状态为运行中
     if (outputPanel) {
       outputPanel.setExecutionStatus('running');
     }
-    
+
     // 3. 调用后端执行 API
     const result = await executeBlocks({ scripts: [], flow: flow });
-    
-    // 4. 处理执行结果
+
+    // 4. 设置 SSE 面板的 execution_id（如果返回）
+    if (result.execution_id) {
+      nodeFlowRef.value.setCurrentExecutionId(result.execution_id);
+    }
+
+    // 5. 处理执行结果
     if (outputPanel) {
       outputPanel.setExecutionStatus('completed', result.execution_time);
       outputPanel.setOutputFiles(result.output_files || []);
-      
+
       if (result.output_files?.length > 0) {
         showSuccess(`执行成功，生成 ${result.output_files.length} 个文件`);
       } else {
         showInfo('执行完成，无输出文件');
       }
     }
-    
+
   } catch (error: any) {
     console.error('运行出错:', error);
-    
-    // 5. 更新 UI 状态为失败
+
+    // 6. 更新 UI 状态为失败
     if (outputPanel) {
       outputPanel.setExecutionStatus('failed');
       outputPanel.setErrors([error?.message || String(error)]);
     }
-    
+
     showError('运行失败: ' + (error?.message || '未知错误'));
   }
 }

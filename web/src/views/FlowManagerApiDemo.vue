@@ -144,10 +144,12 @@ async function handleRun(id: string, flow: any) {
     // 5. 调用 API (使用 execute-saved 接口)
     const result = await executeSavedFlow(id);
 
-    // 4. 调用 executeBlocks API
-    // const result = await executeBlocks({ scripts: [], flow: flow });
+    // 6. 设置 SSE 面板的 execution_id（开始接收流式日志）
+    if (result.execution_id) {
+      nodeFlowInstance.setCurrentExecutionId(result.execution_id);
+    }
 
-    // 6. 更新输出面板结果
+    // 7. 更新输出面板结果
     if (outputPanel) {
       outputPanel.setExecutionStatus('completed', result.execution_time);
       outputPanel.setOutputFiles(result.output_files || []);

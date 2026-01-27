@@ -24,8 +24,16 @@ export interface ExecuteResponse {
   ok: boolean;
   result?: any;
   output_files?: OutputFile[];
+  execution_id?: string;
   execution_time?: number;
   timestamp?: string;
+  stats?: {
+    total_nodes: number;
+    executed_nodes: number;
+    failed_nodes: number;
+    total_connections: number;
+    execution_time: number;
+  };
 }
 
 export interface OutputFile {

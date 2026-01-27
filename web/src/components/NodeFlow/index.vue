@@ -1,5 +1,5 @@
 <!--
- * @Descripttion: 
+ * @Descripttion:
  * @version: 0.x
  * @Author: zhai
  * @Date: 2026-01-17 17:01:06
@@ -22,6 +22,9 @@
         </div>
       </template>
     </SplitPane>
+
+    <!-- SSE 底部面板 -->
+    <SSEPanel ref="ssePanelRef" :executionId="currentExecutionId" :isVisible="ssePanelVisible" />
   </div>
 </template>
 
@@ -33,6 +36,7 @@ import RunIcon from '@/components/icons/Run.vue';
 import { BuildBlock } from './BlockBuilder';
 import TestNode from './TestNode';
 import OutputPanel from './OutputPanel.vue';
+import SSEPanel from './SSEPanel.vue';
 import SplitPane from '@/components/common/Splitter.vue';
 import "@baklavajs/themes/dist/syrup-dark.css";
 
@@ -60,7 +64,12 @@ const isLoading = ref(false);
 
 // --- OutputPanel 与 SplitPane 引用 ---
 const outputPanelRef = ref<InstanceType<typeof OutputPanel> | null>(null);
+const ssePanelRef = ref<InstanceType<typeof SSEPanel> | null>(null);
 const splitPaneRef = ref<any>(null); // 引用 SplitPane 组件实例
+
+// --- 执行状态 ---
+const currentExecutionId = ref<string | undefined>(undefined);
+const ssePanelVisible = ref(false);
 
 // --- 外部控制方法 (保持 API 兼容) ---
 
@@ -328,6 +337,27 @@ onUnmounted(() => {
   nodeEvents.forEach(prop => editor.nodeEvents[prop].unsubscribe(updaterToken));
 });
 
+// --- SSE Panel 控制 ---
+function showSSEPanel() {
+  ssePanelVisible.value = true;
+}
+
+function hideSSEPanel() {
+  ssePanelVisible.value = false;
+}
+
+function toggleSSEPanel() {
+  ssePanelVisible.value = !ssePanelVisible.value;
+}
+
+// --- 设置当前执行的ID（供外部调用） ---
+function setCurrentExecutionId(executionId: string | null) {
+  currentExecutionId.value = executionId || undefined;
+  if (executionId) {
+    ssePanelVisible.value = true;
+  }
+}
+
 // --- Expose ---
 defineExpose({
   loadFlow,
@@ -335,9 +365,16 @@ defineExpose({
   hasUnsavedChanges,
   currentFlow,
   outputPanelRef,
+  ssePanelRef,
   toggleOutputPanel,
   showOutputPanel,
   hideOutputPanel,
+  showSSEPanel,
+  hideSSEPanel,
+  toggleSSEPanel,
+  setCurrentExecutionId,
+  ssePanelVisible,
+  currentExecutionId,
 });
 </script>
 

@@ -31,6 +31,8 @@ from uuid import UUID
 from flow.output import output_file_manager
 from flow.collector import file_collector
 from flow.setting import settings
+from flow.runtime_bus import RuntimeEventBus
+from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -965,3 +967,15 @@ async def delete_tag_execution(tag: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"删除 tag 执行记录失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Failed to delete tag execution: {str(e)}")
+
+
+@router.get("/stream/{exec_id}")
+async def stream_events(exec_id: str, request: Request):
+    bus = RuntimeEventBus()
+    async def event_generator():
+        async for event in bus.subscribe(exec_id):
+            yield f"data: {json.dumps(asdict(event))}\n\n"
+            if event.type == RuntimeEventType.STATUS and "completed" in event.message.lower():
+                break
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
