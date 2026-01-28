@@ -2,7 +2,6 @@ from enum import Enum
 from dataclasses import dataclass
 import time
 from typing import Any, Optional
-
 import asyncio
 from collections import defaultdict
 from typing import Dict, AsyncIterator
@@ -13,14 +12,14 @@ class RuntimeEventType(str, Enum):
     DEBUG = "debug"
     INFO = "info"
     ERROR = "error"
-    DATA = "data" # 节点输出数据
+    DATA = "data"  # 节点输出数据
     STATUS = "status" # 引擎/节点状态
- 
+
 @dataclass
 class RuntimeEvent:
     execution_id: str
     type: RuntimeEventType
-    source: str # engine / block_id
+    source: str  # engine / block_id
     message: str
     payload: Optional[Any] = None
     ts: float = time.time()
@@ -28,14 +27,39 @@ class RuntimeEvent:
 @singleton
 class RuntimeEventBus:
     def __init__(self):
-        # execution_id → Queue
+        # execution_id → 共享队列（所有订阅者共享同一个队列）
         self._queues: Dict[str, asyncio.Queue] = defaultdict(asyncio.Queue)
 
     async def emit(self, event: RuntimeEvent):
+        """发送事件到指定execution_id的队列"""
         await self._queues[event.execution_id].put(event)
 
     async def subscribe(self, execution_id: str) -> AsyncIterator[RuntimeEvent]:
+        """订阅指定execution_id的事件（支持多个订阅者）"""
         queue = self._queues[execution_id]
+
         while True:
             event = await queue.get()
             yield event
+
+    def cleanup(self, execution_id: str):
+        """清理指定execution_id的队列（当所有订阅者断开时调用）"""
+        if execution_id in self._queues:
+            # 标记队列为已清理
+            queue = self._queues[execution_id]
+            # 创建一个新队列，后续的事件不会被旧订阅者接收
+            self._queues[execution_id] = asyncio.Queue()
+            # 发送结束事件给旧订阅者
+            asyncio.create_task(self._send_end_event(queue))
+
+    async def _send_end_event(self, old_queue: asyncio.Queue):
+        """发送结束事件给旧队列的等待者"""
+        try:
+            await asyncio.wait_for(old_queue.put(RuntimeEvent(
+                execution_id="",
+                type=RuntimeEventType.STATUS,
+                source="event_bus",
+                message="Connection closed"
+            )), timeout=1.0)
+        except asyncio.TimeoutError:
+            pass

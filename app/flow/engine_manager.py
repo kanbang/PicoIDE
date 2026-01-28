@@ -83,8 +83,19 @@ class EngineManager:
             pool = self._instance_pools[s_hash]
             if pool:
                 return pool.popleft()
-            # 池空时执行克隆，此操作依然在锁内以保证蓝图对象不被竞争访问
-            return copy.deepcopy(self._blueprints[s_hash])
+            # 池空时创建新实例（不能deepcopy因为包含asyncio队列）
+            blueprint = self._blueprints[s_hash]
+            new_engine = ComputeEngine(logger=blueprint.logger)
+            new_engine.event_bus = blueprint.event_bus
+            new_engine.status = blueprint.status
+            new_engine.block_registry = blueprint.block_registry.copy()
+            new_engine.instances = blueprint.instances.copy()
+            new_engine._graph = blueprint._graph.copy()
+            new_engine._node_locks = blueprint._node_locks.copy()
+            new_engine._ready_ports = blueprint._ready_ports.copy()
+            new_engine._running_tasks = blueprint._running_tasks.copy()
+            new_engine._shutdown_event = blueprint._shutdown_event
+            return new_engine
 
     def _return_instance(self, s_hash: str, engine: "ComputeEngine"):
         """归还实例前重置数据，并入池"""

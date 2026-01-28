@@ -17,6 +17,7 @@ from pathlib import Path
 import logging
 import time
 from datetime import datetime
+from dataclasses import asdict
 
 from node.daq import DAQ_BLOCKS
 from flow.demo_blocks import DEMO_BLOCKS
@@ -31,8 +32,9 @@ from uuid import UUID
 from flow.output import output_file_manager
 from flow.collector import file_collector
 from flow.setting import settings
-from flow.runtime_bus import RuntimeEventBus
+from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
 from fastapi.responses import StreamingResponse
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -973,9 +975,18 @@ async def delete_tag_execution(tag: str) -> Dict[str, Any]:
 async def stream_events(exec_id: str, request: Request):
     bus = RuntimeEventBus()
     async def event_generator():
-        async for event in bus.subscribe(exec_id):
-            yield f"data: {json.dumps(asdict(event))}\n\n"
-            if event.type == RuntimeEventType.STATUS and "completed" in event.message.lower():
-                break
+        try:
+            async for event in bus.subscribe(exec_id):
+                yield f"data: {json.dumps(asdict(event))}\n\n"
+                # 发送完成消息后，发送结束标识
+                if event.type == RuntimeEventType.STATUS and "completed" in event.message.lower():
+                    yield "event: end\ndata: {}\n\n"
+                    break
+                if event.type == RuntimeEventType.STATUS and "failed" in event.message.lower():
+                    yield "event: end\ndata: {}\n\n"
+                    break
+        except Exception as e:
+            logger.error(f"SSE stream error for {exec_id}: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

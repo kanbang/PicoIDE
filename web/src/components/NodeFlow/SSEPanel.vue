@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, watch, onUnmounted, nextTick } from 'vue';
 
 // SSE Event Type
 export interface SSEEvent {
   type: string;
+  source?: string;  // 添加 source 属性
   node_id?: string;
   message?: string;
   timestamp?: string;
@@ -36,7 +37,8 @@ watch(() => props.executionId, (newId, oldId) => {
     disconnectSSE();
   }
   if (newId) {
-    connectSSE(newId);
+    // 延迟连接，确保后端执行已开始
+    setTimeout(() => connectSSE(newId), 500);
   }
 });
 
@@ -77,32 +79,70 @@ function connectSSE(executionId: string) {
       console.log('SSE connection established');
     };
 
+    // 监听自定义的 end 事件（服务端发送的结束标识）
+    eventSource.addEventListener('end', () => {
+      console.log('Received end event, closing SSE connection');
+      eventSource.close();
+      isConnected.value = false;
+      isConnecting.value = false;
+    });
+
     eventSource.onmessage = (event) => {
       try {
-        // SSE消息格式: data: {...}
-        if (event.data.startsWith('data: ')) {
-          const eventData = JSON.parse(event.data.slice(6));
+        // EventSource API 已经自动解析了 SSE 格式，event.data 直接就是 JSON 字符串
+        // 数据格式示例: {"execution_id": "...", "type": "debug", "source": "...", "message": "...", "payload": ..., "ts": ...}
+        console.log('SSE received:', event.data);
+        const eventData = JSON.parse(event.data);
+
+        // 处理错误事件
+        if (eventData.error) {
+          console.error('SSE error event:', eventData.error);
           events.value.push({
-            ...eventData,
-            timestamp: eventData.timestamp || new Date().toISOString()
+            type: 'error',
+            source: 'sse',
+            message: eventData.error,
+            timestamp: new Date().toISOString()
           });
-          nextTick(() => scrollToBottom());
+        } else {
+          // 根据后端返回的数据结构映射字段
+          const sseEvent: SSEEvent = {
+            type: eventData.type || 'info',
+            source: eventData.source,
+            node_id: eventData.source, // source 可能是 node_id
+            message: eventData.message,
+            timestamp: eventData.ts ? new Date(eventData.ts * 1000).toISOString() : new Date().toISOString(),
+            data: eventData.payload !== undefined ? eventData.payload : eventData.data
+          };
+          events.value.push(sseEvent);
         }
+        nextTick(() => scrollToBottom());
       } catch (error) {
-        console.error('Failed to parse SSE message:', error);
+        console.error('Failed to parse SSE message:', error, event.data);
+        events.value.push({
+          type: 'error',
+          source: 'sse',
+          message: `解析错误: ${error}`,
+          timestamp: new Date().toISOString()
+        });
       }
     };
 
     eventSource.onerror = (error) => {
-      console.error('SSE connection error:', error);
+      // SSE 的 error 事件在以下情况触发：
+      // 1. 真正的连接错误
+      // 2. 服务端正常关闭连接（包括执行完成后）
+      // 检查 EventSource.readyState 来区分
+      if (eventSource.readyState === EventSource.CLOSED) {
+        // 连接已关闭（可能是正常结束），不做额外处理
+        console.log('SSE connection closed');
+        isConnecting.value = false;
+        isConnected.value = false;
+        return;
+      }
+      // 其他状态表示连接出错
+      console.error('SSE connection error:', error, 'readyState:', eventSource.readyState);
       isConnecting.value = false;
       isConnected.value = false;
-      // 自动重连
-      setTimeout(() => {
-        if (props.executionId && !eventSourceRef.value) {
-          connectSSE(props.executionId);
-        }
-      }, 3000);
     };
 
   } catch (error) {
@@ -183,6 +223,7 @@ function getEventIcon(event: SSEEvent) {
         color: '#4caf50'
       };
     case 'node_error':
+    case 'error':
       return {
         svg: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/>
@@ -217,12 +258,17 @@ onUnmounted(() => {
   disconnectSSE();
 });
 
-// 暴露方法供父组件调用
+// 调试方法：强制显示面板（用于调试）
+function forceShow() {
+  visible.value = true;
+}
+
+// 暴露调试方法
 defineExpose({
   connect: connectSSE,
   disconnect: disconnectSSE,
   clear: clearEvents,
-  show,
+  show: forceShow,
   hide,
   toggle,
   visible,
@@ -270,7 +316,7 @@ defineExpose({
     <!-- 事件列表 -->
     <div class="panel-body" ref="containerRef">
       <!-- 空状态 -->
-      <div v-if="events.length === 0 && !isConnecting && !isConnected" class="empty-state">
+      <div v-if="events.length === 0" class="empty-state">
         <div class="empty-icon">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
             <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
@@ -302,6 +348,7 @@ defineExpose({
           <div class="event-content">
             <div class="event-header">
               <span class="event-type">{{ event.type || 'INFO' }}</span>
+              <span v-if="event.source" class="event-source">{{ event.source }}</span>
               <span v-if="event.node_id" class="event-node">{{ event.node_id }}</span>
               <span class="event-time">{{ formatTime(event.timestamp || '') }}</span>
             </div>
@@ -555,6 +602,11 @@ defineExpose({
   border-color: rgba(244, 67, 54, 0.3);
 }
 
+.event-item.error {
+  background: rgba(244, 67, 54, 0.1);
+  border-color: rgba(244, 67, 54, 0.3);
+}
+
 .event-icon {
   flex-shrink: 0;
   width: 20px;
@@ -589,6 +641,14 @@ defineExpose({
   font-size: 10px;
   color: #007acc;
   background: rgba(0, 122, 204, 0.15);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.event-source {
+  font-size: 10px;
+  color: #666;
+  background: #333;
   padding: 1px 6px;
   border-radius: 3px;
 }
