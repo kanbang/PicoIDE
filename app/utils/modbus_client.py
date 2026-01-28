@@ -7,10 +7,6 @@ from dataclasses import dataclass, asdict, field
 from enum import Enum
 
 
-# Windows 下必须使用 SelectorEventLoop
-if platform.system() == "Windows":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 class DataType(Enum):
     """数据类型枚举，防止拼写错误"""
     UINT16 = "uint16"
@@ -122,6 +118,10 @@ class ModbusClient:
     Modbus client supporting both REQ/REP (synchronous) and DEALER/ROUTER (asynchronous concurrent) modes.
     """
     def __init__(self, req_addr="tcp://127.0.0.1:5556", pub_addr="tcp://127.0.0.1:5558", zmq_mode='router'):
+      
+        if platform.system() == "Windows":
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        
         self.ctx = zmq.asyncio.Context()
         self.req_addr = req_addr
         self.pub_addr = pub_addr

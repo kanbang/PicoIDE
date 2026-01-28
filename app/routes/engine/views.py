@@ -16,6 +16,7 @@ from typing import List, Optional, Dict, Any, Annotated
 from pathlib import Path
 import logging
 import time
+import asyncio
 from datetime import datetime
 from dataclasses import asdict
 
@@ -220,7 +221,8 @@ async def execute(
         raise HTTPException(500, f"Execution failed: {str(e)}")
 
 
-@router.post("/execute-saved", response_model=ExecuteResponse)
+
+@router.post("/sync-execute-saved", response_model=ExecuteResponse)
 async def execute_saved(
     request: ExecuteSavedRequest,
     business: Annotated[str, Depends(get_business)]
@@ -358,6 +360,152 @@ async def execute_saved(
                 execution.result = f"Error: {str(e)}"[:1000]
                 await execution.save()
             raise
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"从数据库执行失败: {str(e)}", exc_info=True)
+        raise HTTPException(500, f"Execution from DB failed: {str(e)}")
+
+
+
+@router.post("/execute-saved", response_model=ExecuteResponse)
+async def execute_saved(
+    request: ExecuteSavedRequest,
+    business: Annotated[str, Depends(get_business)]
+):
+    """
+    执行已保存的图（异步模式）
+
+    支持两种模式：
+    1. 默认模式：每次生成新的 execution_id（不提供 tag）
+    2. Tag 模式：使用 tag 覆盖旧数据（提供 tag）
+
+    执行流程：
+    1. 从存储加载 graph
+    2. 从存储加载脚本
+    3. 如果是 tag 模式，清理旧数据
+    4. 创建执行记录
+    5. 生成 execution_id 并立即返回
+    6. 后台异步执行计算
+    7. 通过 SSE 推送实时事件
+    """
+    try:
+        logger.info(f"Execute From DB Request - Flow ID: {request.flow_id}, Scripts Path: {request.scripts_path}, Tag: {request.tag}, Business: {business}")
+
+        # 1. 从数据库加载 graph
+        flow_db = await get_flow(USER_ID, business, UUID(request.flow_id))
+        if not flow_db:
+            raise HTTPException(404, f"Flow not found: {request.flow_id}")
+
+        # 获取 flow 数据
+        flow_data = flow_db.flow
+        if not flow_data or "graph" not in flow_data:
+            raise HTTPException(400, "Flow data is invalid or missing graph")
+
+        graph = flow_data["graph"]
+
+        ###################################################################################
+        # 临时处理，可优化掉
+        # 2. 从数据库加载脚本
+        scripts = await load_scripts_from_db(request.scripts_path, business)
+        logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
+
+        # 4. 注册业务对应的 Block 模板（包含静态和动态 blocks）
+        register_engine(business.upper(), scripts)
+
+        # 5. 计算脚本哈希
+        from utils.helpers import calculate_scripts_hash
+        scripts_hash = calculate_scripts_hash(scripts)
+        ###################################################################################
+
+        # 6. 确定 execution_id 和清理策略
+        if request.tag:
+            # Tag 模式：清理旧数据
+            if settings.ENABLE_DB_WRITE:
+                await cleanup_tag_execution(USER_ID, request.tag)
+            execution_id = f"{request.tag}_{int(time.time())}"
+            source = "tag"
+        else:
+            # 默认模式：生成新 ID
+            execution_id = create_execution_id()
+            source = "saved"
+
+        # 7. 根据配置决定是否创建 Execution 记录
+        execution = None
+        if settings.ENABLE_DB_WRITE:
+            from db import Execution
+            execution = await Execution.create(
+                execution_id=execution_id,
+                user_id=USER_ID,
+                source=source,
+                flow_id=UUID(request.flow_id),
+                tag=request.tag,
+                scripts_path=request.scripts_path,
+                scripts_hash=scripts_hash,
+                status="running",
+                start_time=datetime.now(),
+                total_nodes=len(graph.get("nodes", [])),
+            )
+
+        # 8. 后台异步执行 flow
+        async def _execute_background():
+            """后台执行任务"""
+            start_time = time.time()
+            try:
+                # 执行 flow（传递 execution_id 和 business）
+                result = await run_business(business.upper(), graph, execution_id)
+
+                # 收集输出文件
+                # 根据配置决定从数据库还是收集器获取
+                if settings.ENABLE_DB_WRITE:
+                    output_files = await output_file_manager.get_execution_files(execution_id)
+                else:
+                    # 从文件收集器获取（轻量化模式）
+                    output_files = file_collector.get_files(execution_id)
+
+                # 更新 Execution 状态为完成
+                if execution:
+                    execution.status = "completed"
+                    execution.end_time = datetime.now()
+                    execution.execution_time = time.time() - start_time
+                    execution.executed_nodes = execution.total_nodes
+                    execution.result = str(result)[:1000] if result else None
+                    await execution.save()
+
+                logger.info(
+                    f"从数据库执行完成，耗时: {time.time() - start_time:.3f}s，输出文件: {len(output_files)}"
+                )
+
+            except Exception as e:
+                # 更新 Execution 状态为失败
+                if execution:
+                    execution.status = "failed"
+                    execution.end_time = datetime.now()
+                    execution.execution_time = time.time() - start_time
+                    execution.result = f"Error: {str(e)}"[:1000]
+                    await execution.save()
+                logger.error(f"后台执行失败: {str(e)}", exc_info=True)
+
+        # 立即启动后台任务，不等待完成
+        asyncio.create_task(_execute_background())
+
+        # 9. 立即返回 execution_id，让前端可以立即订阅 SSE
+        return {
+            "ok": True,
+            "result": "",  # 异步模式下结果为空
+            "output_files": [],  # 异步模式下输出文件列表为空
+            "execution_id": execution_id,
+            "execution_time": 0.0,  # 异步模式下执行时间为 0
+            "timestamp": execution.start_time.isoformat() if execution else datetime.now().isoformat(),
+            "stats": {
+                "total_nodes": len(graph.get("nodes", [])),
+                "executed_nodes": 0,  # 执行中
+                "failed_nodes": 0,
+                "total_connections": len(graph.get("connections", [])),
+                "execution_time": 0.0,
+            }
+        }
 
     except HTTPException:
         raise
@@ -978,11 +1126,8 @@ async def stream_events(exec_id: str, request: Request):
         try:
             async for event in bus.subscribe(exec_id):
                 yield f"data: {json.dumps(asdict(event))}\n\n"
-                # 发送完成消息后，发送结束标识
-                if event.type == RuntimeEventType.STATUS and "completed" in event.message.lower():
-                    yield "event: end\ndata: {}\n\n"
-                    break
-                if event.type == RuntimeEventType.STATUS and "failed" in event.message.lower():
+                # 执行完成或失败时，发送结束标识并结束流
+                if event.type in (RuntimeEventType.EXECUTION_COMPLETED, RuntimeEventType.EXECUTION_FAILED):
                     yield "event: end\ndata: {}\n\n"
                     break
         except Exception as e:

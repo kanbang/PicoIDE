@@ -1,11 +1,12 @@
-'''
-Descripttion: 
+"""
+Descripttion:
 version: 0.x
 Author: zhai
 Date: 2026-01-21 09:59:22
 LastEditors: zhai
 LastEditTime: 2026-01-21 16:15:39
-'''
+"""
+
 """
 Descripttion:
 version: 0.x
@@ -26,6 +27,14 @@ LastEditTime: 2026-01-12 19:40:30
 """
 主应用程序
 """
+import sys
+import asyncio
+import platform
+
+# Windows 上使用 SelectorEventLoop 避免 zmq 警告（必须在任何 zmq 操作之前设置）
+if platform.system() == "Windows":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

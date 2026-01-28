@@ -171,18 +171,18 @@ class ComputeEngine:
         """启动引擎"""
         if self.status != EngineStatus.IDLE:
             self.logger.warning("Engine is already running.")
-            await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.STATUS, "engine", "Engine is already running."))
+            await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.EXECUTION_FAILED, "engine", "Engine is already running."))
             return
 
         self.status = EngineStatus.RUNNING
         self._shutdown_event.clear()
-        
+
         # 识别入度为 0 的源节点
         sources = [n for n, d in self._graph.in_degree() if d == 0]
         if not sources:
             self.logger.error("No source nodes found in flow!")
             self.status = EngineStatus.IDLE
-            await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.STATUS, "engine", "No source nodes found in flow!"))
+            await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.EXECUTION_FAILED, "engine", "No source nodes found in flow!"))
             return
 
         for n_id in sources:
@@ -200,7 +200,7 @@ class ComputeEngine:
         finally:
             await self.stop()
 
-        await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.STATUS, "engine", "Execution completed"))
+        await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.EXECUTION_COMPLETED, "engine", "Execution completed"))
 
     async def stop(self):
         """安全停止"""

@@ -13,7 +13,10 @@ class RuntimeEventType(str, Enum):
     INFO = "info"
     ERROR = "error"
     DATA = "data"  # 节点输出数据
-    STATUS = "status" # 引擎/节点状态
+    STATUS = "status"  # 引擎/节点状态
+    # 引擎状态
+    EXECUTION_COMPLETED = "execution_completed"
+    EXECUTION_FAILED = "execution_failed"
 
 @dataclass
 class RuntimeEvent:
