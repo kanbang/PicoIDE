@@ -61,20 +61,17 @@ class CsvRecorderBlock(BaseBlock):
 
         # 定义输入接口
         self.add_input("data")  # 接收要保存的字典或字符串
-
-        self._lock = asyncio.Lock()  # 确保写入顺序和文件安全
         self._initialized = False
 
-    async def _init_file(self, fieldnames: list):
+    async def _init_file(self, file_path: str, fieldnames: list):
         """如果文件不存在，初始化并写入表头"""
-        path = self.get_option("file_path")
-        if not os.path.exists(path):
+        if not os.path.exists(file_path):
             # 使用 to_thread 避免同步 IO 阻塞 loop
-            await asyncio.to_thread(self._write_header, path, fieldnames)
+            await asyncio.to_thread(self._write_header, file_path, fieldnames)
         self._initialized = True
 
-    def _write_header(self, path, fieldnames):
-        with open(path, "w", newline="", encoding="utf-8") as f:
+    def _write_header(self, file_path, fieldnames):
+        with open(file_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
 
@@ -83,10 +80,10 @@ class CsvRecorderBlock(BaseBlock):
         if data is None:
             return
 
-        path = self.get_option("file_path")
+        file_path = self.get_option("file_path")
 
         # 统一格式为字典
-        if not isinstance(data, dict):
+        if not isinstance(data,  dict):
             row = {"value": data}
         else:
             row = data.copy()
@@ -95,20 +92,22 @@ class CsvRecorderBlock(BaseBlock):
         if self.get_option("auto_timestamp"):
             row["_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
-        async with self._lock:
-            # 延迟初始化表头（根据第一次收到的数据结构）
-            if not self._initialized:
-                await self._init_file(list(row.keys()))
+        if not self._initialized:
+            await self._init_file(file_path, list(row.keys()))
 
-            # 写入一行数据
-            await asyncio.to_thread(self._append_row, path, row)
+        # 使用通用文件写入方法
+        def write_csv(full_path):
+            with open(full_path, "a", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=list(row.keys()))
+                writer.writerow(row)
 
-    def _append_row(self, path, row):
-        """同步追加逻辑，跑在独立线程中"""
-        with open(path, "a", newline="", encoding="utf-8") as f:
-            # 注意：如果后续数据增加了新字段，DictWriter 会根据 extrasaction 处理
-            writer = csv.DictWriter(f, fieldnames=list(row.keys()))
-            writer.writerow(row)
+        self._write_file(
+            filename=file_path,
+            write_func=write_csv,
+            execution_id=execution_id,
+            description="CSV数据文件",
+        )
+
 
 
 # IoT 业务类型的 Block 列表

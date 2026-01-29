@@ -6,11 +6,14 @@ from enum import Enum, auto
 from typing import Any, Dict, List, Type, Optional, Set, Tuple
 from collections import defaultdict
 from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
+from flow.collector import file_collector
+
 
 class EngineStatus(Enum):
     IDLE = auto()
     RUNNING = auto()
     STOPPING = auto()
+
 
 class ComputeEngine:
     def __init__(self, logger: Optional[logging.Logger] = None):
@@ -18,10 +21,10 @@ class ComputeEngine:
         self.logger = logger or logging.getLogger("ComputeEngine")
 
         # 结构定义
-        self.block_registry: Dict[str, Type['Block']] = {}
-        self.instances: Dict[str, 'Block'] = {}
+        self.block_registry: Dict[str, Type["Block"]] = {}
+        self.instances: Dict[str, "Block"] = {}
         self._graph = nx.MultiDiGraph()
-        
+
         # 运行时状态管理
         self.status = EngineStatus.IDLE
         self._node_locks: Dict[str, asyncio.Lock] = {}
@@ -32,7 +35,7 @@ class ComputeEngine:
 
     # --- 1. 配置与编译阶段 ---
 
-    def set_blocks(self, block_classes: List[Type['Block']]):
+    def set_blocks(self, block_classes: List[Type["Block"]]):
         """注册可用的 Block 类"""
         for cls in block_classes:
             if hasattr(cls, "NAME"):
@@ -48,8 +51,8 @@ class ComputeEngine:
         self.instances = {}
         self._node_locks = {}
         self._ready_ports.clear()
-        
-        port_map = {} 
+
+        port_map = {}
 
         # 1. 实例化节点
         for n_data in flow["nodes"]:
@@ -57,7 +60,7 @@ class ComputeEngine:
             cls = self.block_registry.get(n_data["type"])
             if not cls:
                 raise ValueError(f"Unknown block type: {n_data['type']}")
-            
+
             inst = cls()
             inst.instance_id = n_id
             self.instances[n_id] = inst
@@ -82,8 +85,10 @@ class ComputeEngine:
 
         # 3. 拓扑合法性检查
         if not nx.is_directed_acyclic_graph(self._graph):
-            self.logger.warning("Graph contains cycles. Ensure blocks handle feedback loops properly.")
-        
+            self.logger.warning(
+                "Graph contains cycles. Ensure blocks handle feedback loops properly."
+            )
+
         self.logger.info(f"Flow compiled: {len(self.instances)} nodes.")
 
     # --- 2. 核心调度逻辑 ---
@@ -94,15 +99,32 @@ class ComputeEngine:
         try:
             # 执行业务逻辑
             await block.async_on_compute(exec_id)
-            await self.event_bus.emit(RuntimeEvent(exec_id, RuntimeEventType.LOG, n_id, f"Node {n_id} completed"))
+            await self.event_bus.emit(
+                RuntimeEvent(
+                    exec_id, RuntimeEventType.LOG, n_id, f"Node {n_id} completed"
+                )
+            )
             # 成功后触发下游
             await self._trigger_successors(n_id, exec_id)
         except asyncio.CancelledError:
-            await self.event_bus.emit(RuntimeEvent(exec_id, RuntimeEventType.ERROR, n_id, f"Node {n_id} cancelled"))
+            await self.event_bus.emit(
+                RuntimeEvent(
+                    exec_id, RuntimeEventType.ERROR, n_id, f"Node {n_id} cancelled"
+                )
+            )
             raise
         except Exception as e:
-            self.logger.error(f"Node {n_id} [{block.NAME}] execution failed: {e}", exc_info=True)
-            await self.event_bus.emit(RuntimeEvent(exec_id, RuntimeEventType.ERROR, n_id, f"Node {n_id} failed: {str(e)}"))
+            self.logger.error(
+                f"Node {n_id} [{block.NAME}] execution failed: {e}", exc_info=True
+            )
+            await self.event_bus.emit(
+                RuntimeEvent(
+                    exec_id,
+                    RuntimeEventType.ERROR,
+                    n_id,
+                    f"Node {n_id} failed: {str(e)}",
+                )
+            )
             # 注意：此处可扩展错误传播逻辑，清理 _ready_ports 或通知下游失败
 
     async def _trigger_successors(self, n_id: str, exec_id: str):
@@ -110,21 +132,21 @@ class ComputeEngine:
         block = self.instances[n_id]
         # 关键：获取输出快照，实现数据隔离
         output_snapshot = {k: copy.copy(v) for k, v in block._outputs.items()}
-        
+
         for succ_id in list(self._graph.successors(n_id)):
             succ_block = self.instances[succ_id]
-            
+
             async with self._node_locks[succ_id]:
-                
+
                 # 记录是哪个“来源节点”送达了数据
                 slot_key = (succ_id, exec_id)
-                
+
                 # 1. 物理搬运数据
                 edges = self._graph.get_edge_data(n_id, succ_id)
                 for edge in edges.values():
                     in_port = edge["in_p"]
                     out_port = edge["out_p"]
-                    
+
                     # 物理搬运数据
                     succ_block._inputs[in_port] = output_snapshot.get(out_port)
                     self._ready_ports[slot_key].add(in_port)
@@ -143,27 +165,29 @@ class ComputeEngine:
         """源节点驱动器"""
         block = self.instances[n_id]
         is_streaming = getattr(block, "STREAMING", False)
-        
+
         while not self._shutdown_event.is_set():
             try:
                 # 生产数据
                 await block.async_on_compute(exec_id)
-                
+
                 # 触发下游（不等待下游执行完，实现流水线并行）
-                trigger_task = asyncio.create_task(self._trigger_successors(n_id, exec_id))
+                trigger_task = asyncio.create_task(
+                    self._trigger_successors(n_id, exec_id)
+                )
                 self._running_tasks.add(trigger_task)
                 trigger_task.add_done_callback(self._running_tasks.discard)
 
                 if not is_streaming:
                     break
-                
+
                 # 这里的频率控制应由 Block 内部的 async_on_compute 实现（如 await sleep）
-                await asyncio.sleep(0) 
+                await asyncio.sleep(0)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 self.logger.error(f"Source {n_id} error: {e}")
-                await asyncio.sleep(1) # 故障退避
+                await asyncio.sleep(1)  # 故障退避
 
     # --- 3. 运行控制 ---
 
@@ -171,7 +195,14 @@ class ComputeEngine:
         """启动引擎"""
         if self.status != EngineStatus.IDLE:
             self.logger.warning("Engine is already running.")
-            await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.EXECUTION_FAILED, "engine", "Engine is already running."))
+            await self.event_bus.emit(
+                RuntimeEvent(
+                    execution_id,
+                    RuntimeEventType.EXECUTION_FAILED,
+                    "engine",
+                    "Engine is already running.",
+                )
+            )
             return
 
         self.status = EngineStatus.RUNNING
@@ -182,7 +213,14 @@ class ComputeEngine:
         if not sources:
             self.logger.error("No source nodes found in flow!")
             self.status = EngineStatus.IDLE
-            await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.EXECUTION_FAILED, "engine", "No source nodes found in flow!"))
+            await self.event_bus.emit(
+                RuntimeEvent(
+                    execution_id,
+                    RuntimeEventType.EXECUTION_FAILED,
+                    "engine",
+                    "No source nodes found in flow!",
+                )
+            )
             return
 
         for n_id in sources:
@@ -200,21 +238,43 @@ class ComputeEngine:
         finally:
             await self.stop()
 
-        await self.event_bus.emit(RuntimeEvent(execution_id, RuntimeEventType.EXECUTION_COMPLETED, "engine", "Execution completed"))
+        # 从文件收集器获取（轻量化模式）
+        output_files = file_collector.get_files(execution_id)
+
+        # 通过 SSE 发送输出文件列表给前端
+        if output_files:
+            await self.event_bus.emit(
+                RuntimeEvent(
+                    execution_id=execution_id,
+                    type=RuntimeEventType.DATA,
+                    source="output_files",
+                    message=f"Generated {len(output_files)} output file(s)",
+                    payload={"files": output_files},
+                )
+            )
+
+        await self.event_bus.emit(
+            RuntimeEvent(
+                execution_id,
+                RuntimeEventType.EXECUTION_COMPLETED,
+                "engine",
+                "Execution completed",
+            )
+        )
 
     async def stop(self):
         """安全停止"""
         if self.status != EngineStatus.RUNNING:
             return
-            
+
         self.status = EngineStatus.STOPPING
         self._shutdown_event.set()
-        
+
         if self._running_tasks:
             self.logger.info(f"Cancelling {len(self._running_tasks)} tasks...")
             for task in list(self._running_tasks):
                 task.cancel()
-            
+
             # 等待所有任务收尾
             await asyncio.gather(*self._running_tasks, return_exceptions=True)
             self._running_tasks.clear()

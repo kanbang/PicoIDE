@@ -113,7 +113,13 @@ function connectSSE(executionId: string) {
             timestamp: eventData.ts ? new Date(eventData.ts * 1000).toISOString() : new Date().toISOString(),
             data: eventData.payload !== undefined ? eventData.payload : eventData.data
           };
+
           events.value.push(sseEvent);
+          
+          // 如果是 DATA 类型事件（输出文件），emit 给父组件
+          if (eventData.type === 'data' && eventData.payload?.files) {
+            emit('output-files', eventData.payload.files);
+          }
         }
         nextTick(() => scrollToBottom());
       } catch (error) {
