@@ -20,6 +20,9 @@ class ComputeEngine:
         self.event_bus = RuntimeEventBus()  # 使用单例
         self.logger = logger or logging.getLogger("ComputeEngine")
 
+        # 设置文件收集器的即时推送回调
+        file_collector.set_event_callback(self._on_file_generated)
+
         # 结构定义
         self.block_registry: Dict[str, Type["Block"]] = {}
         self.instances: Dict[str, "Block"] = {}
@@ -189,6 +192,48 @@ class ComputeEngine:
                 self.logger.error(f"Source {n_id} error: {e}")
                 await asyncio.sleep(1)  # 故障退避
 
+    def _on_file_generated(self, execution_id: str, file_info: Dict[str, Any]):
+        """
+        文件生成时的回调函数，立即通过 SSE 发送给前端
+
+        Args:
+            execution_id: 执行ID
+            file_info: 文件信息字典
+        """
+        # 由于这是同步回调，需要在事件循环中调度异步任务
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            # 使用 ensure_future 在当前运行的事件循环中调度
+            loop.create_task(
+                self.event_bus.emit(
+                    RuntimeEvent(
+                        execution_id=execution_id,
+                        type=RuntimeEventType.DATA,
+                        source="output_file",
+                        message=f"Generated file: {file_info['filename']}",
+                        payload={"files": [file_info]},
+                    )
+                )
+            )
+        else:
+            # 如果没有运行中的事件循环，使用 asyncio.run_until_complete
+            loop.run_until_complete(
+                self.event_bus.emit(
+                    RuntimeEvent(
+                        execution_id=execution_id,
+                        type=RuntimeEventType.DATA,
+                        source="output_file",
+                        message=f"Generated file: {file_info['filename']}",
+                        payload={"file": file_info},
+                    )
+                )
+            )
+
     # --- 3. 运行控制 ---
 
     async def run(self, execution_id: str = "exec_001"):
@@ -238,21 +283,23 @@ class ComputeEngine:
         finally:
             await self.stop()
 
-        # 从文件收集器获取（轻量化模式）
-        output_files = file_collector.get_files(execution_id)
+          
+        # # 从文件收集器获取
+        # output_files = file_collector.get_files(execution_id)
 
-        # 通过 SSE 发送输出文件列表给前端
-        if output_files:
-            await self.event_bus.emit(
-                RuntimeEvent(
-                    execution_id=execution_id,
-                    type=RuntimeEventType.DATA,
-                    source="output_files",
-                    message=f"Generated {len(output_files)} output file(s)",
-                    payload={"files": output_files},
-                )
-            )
+        # # 通过 SSE 发送输出文件列表给前端
+        # if output_files:
+        #     await self.event_bus.emit(
+        #         RuntimeEvent(
+        #             execution_id=execution_id,
+        #             type=RuntimeEventType.DATA,
+        #             source="output_files",
+        #             message=f"Generated {len(output_files)} output file(s)",
+        #             payload={"files": output_files},
+        #         )
+        #     )       
 
+               
         await self.event_bus.emit(
             RuntimeEvent(
                 execution_id,
