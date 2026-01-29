@@ -23,8 +23,8 @@
       </template>
     </SplitPane>
 
-    <!-- SSE 底部面板 -->
-    <SSEPanel ref="ssePanelRef" :executionId="currentExecutionId" :isVisible="ssePanelVisible" />
+    <!-- Console 底部面板 -->
+    <ConsolePanel ref="consolePanelRef" :isVisible="consolePanelVisible" :isConnecting="isSSEConnecting" :isConnected="isSSEConnected" />
   </div>
 </template>
 
@@ -36,7 +36,8 @@ import RunIcon from '@/components/icons/Run.vue';
 import { BuildBlock } from './BlockBuilder';
 import TestNode from './TestNode';
 import OutputPanel from './OutputPanel.vue';
-import SSEPanel from './SSEPanel.vue';
+import ConsolePanel from './ConsolePanel.vue';
+import type { SSEEvent } from './ConsolePanel.vue';
 import SplitPane from '@/components/common/Splitter.vue';
 import "@baklavajs/themes/dist/syrup-dark.css";
 
@@ -64,12 +65,17 @@ const isLoading = ref(false);
 
 // --- OutputPanel 与 SplitPane 引用 ---
 const outputPanelRef = ref<InstanceType<typeof OutputPanel> | null>(null);
-const ssePanelRef = ref<InstanceType<typeof SSEPanel> | null>(null);
+const consolePanelRef = ref<InstanceType<typeof ConsolePanel> | null>(null);
 const splitPaneRef = ref<any>(null); // 引用 SplitPane 组件实例
 
 // --- 执行状态 ---
 const currentExecutionId = ref<string | undefined>(undefined);
-const ssePanelVisible = ref(false);
+const consolePanelVisible = ref(false);
+
+// --- SSE 连接管理 ---
+const isSSEConnecting = ref(false);
+const isSSEConnected = ref(false);
+const eventSourceRef = ref<EventSource | null>(null);
 
 // --- 外部控制方法 (保持 API 兼容) ---
 
@@ -335,26 +341,155 @@ onMounted(() => {
 onUnmounted(() => {
   graphEvents.forEach(prop => editor.graphEvents[prop].unsubscribe(updaterToken));
   nodeEvents.forEach(prop => editor.nodeEvents[prop].unsubscribe(updaterToken));
+  disconnectSSE();
 });
 
-// --- SSE Panel 控制 ---
-function showSSEPanel() {
-  ssePanelVisible.value = true;
+// --- SSE 连接管理 ---
+
+// 连接 SSE
+function connectSSE(executionId: string) {
+  if (!executionId) return;
+
+  disconnectSSE(); // 断开旧连接
+
+  isSSEConnecting.value = true;
+  isSSEConnected.value = false;
+
+  // 清空之前的事件
+  if (consolePanelRef.value) {
+    consolePanelRef.value.setEvents([]);
+  }
+
+  // 构建SSE URL
+  const baseUrl = window.location.origin;
+  const url = `${baseUrl}/api/engine/stream/${executionId}`;
+
+  try {
+    const eventSource = new EventSource(url);
+    eventSourceRef.value = eventSource;
+
+    eventSource.onopen = () => {
+      isSSEConnecting.value = false;
+      isSSEConnected.value = true;
+      console.log('SSE connection established');
+    };
+
+    // 监听自定义的 end 事件（服务端发送的结束标识）
+    eventSource.addEventListener('end', () => {
+      console.log('Received end event, closing SSE connection');
+      eventSource.close();
+      isSSEConnected.value = false;
+      isSSEConnecting.value = false;
+    });
+
+    eventSource.onmessage = (event) => {
+      try {
+        console.log('SSE received:', event.data);
+        const eventData = JSON.parse(event.data);
+
+        // 处理错误事件
+        if (eventData.error) {
+          console.error('SSE error event:', eventData.error);
+          // 添加到 ConsolePanel
+          if (consolePanelRef.value) {
+            consolePanelRef.value.addEvent({
+              type: 'error',
+              source: 'sse',
+              message: eventData.error,
+              timestamp: new Date().toISOString()
+            });
+          }
+          // 添加到 OutputPanel
+          if (outputPanelRef.value) {
+            outputPanelRef.value.handleSSEEvent({
+              type: 'error',
+              message: eventData.error
+            });
+          }
+        } else {
+          // 构造 SSEEvent 对象
+          const sseEvent: SSEEvent = {
+            type: eventData.type || 'info',
+            source: eventData.source,
+            node_id: eventData.source,
+            message: eventData.message,
+            timestamp: eventData.ts ? new Date(eventData.ts * 1000).toISOString() : new Date().toISOString(),
+            data: eventData.payload !== undefined ? eventData.payload : eventData.data
+          };
+
+          // 添加到 ConsolePanel
+          if (consolePanelRef.value) {
+            consolePanelRef.value.addEvent(sseEvent);
+          }
+
+          // 同时分发到 OutputPanel
+          if (outputPanelRef.value) {
+            outputPanelRef.value.handleSSEEvent(eventData);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to parse SSE message:', error, event.data);
+        if (consolePanelRef.value) {
+          consolePanelRef.value.addEvent({
+            type: 'error',
+            source: 'sse',
+            message: `解析错误: ${error}`,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      if (eventSource.readyState === EventSource.CLOSED) {
+        console.log('SSE connection closed');
+        isSSEConnecting.value = false;
+        isSSEConnected.value = false;
+        return;
+      }
+      console.error('SSE connection error:', error, 'readyState:', eventSource.readyState);
+      isSSEConnecting.value = false;
+      isSSEConnected.value = false;
+    };
+
+  } catch (error) {
+    console.error('Failed to create SSE connection:', error);
+    isSSEConnecting.value = false;
+    isSSEConnected.value = false;
+  }
 }
 
-function hideSSEPanel() {
-  ssePanelVisible.value = false;
+function disconnectSSE() {
+  if (eventSourceRef.value) {
+    eventSourceRef.value.close();
+    eventSourceRef.value = null;
+  }
+  isSSEConnected.value = false;
+  isSSEConnecting.value = false;
 }
 
-function toggleSSEPanel() {
-  ssePanelVisible.value = !ssePanelVisible.value;
+// --- Console Panel 控制 ---
+function showConsolePanel() {
+  consolePanelVisible.value = true;
+}
+
+function hideConsolePanel() {
+  consolePanelVisible.value = false;
+}
+
+function toggleConsolePanel() {
+  consolePanelVisible.value = !consolePanelVisible.value;
 }
 
 // --- 设置当前执行的ID（供外部调用） ---
 function setCurrentExecutionId(executionId: string | null) {
   currentExecutionId.value = executionId || undefined;
   if (executionId) {
-    ssePanelVisible.value = true;
+    // 延迟连接，确保后端执行已开始
+    consolePanelVisible.value = true;
+    setTimeout(() => connectSSE(executionId), 500);
+  } else {
+    disconnectSSE();
   }
 }
 
@@ -365,16 +500,22 @@ defineExpose({
   hasUnsavedChanges,
   currentFlow,
   outputPanelRef,
-  ssePanelRef,
+  consolePanelRef,
+  ssePanelRef: consolePanelRef, // 保持向后兼容
   toggleOutputPanel,
   showOutputPanel,
   hideOutputPanel,
-  showSSEPanel,
-  hideSSEPanel,
-  toggleSSEPanel,
+  showSSEPanel: showConsolePanel,
+  hideSSEPanel: hideConsolePanel,
+  toggleSSEPanel: toggleConsolePanel,
+  showConsolePanel,
+  hideConsolePanel,
+  toggleConsolePanel,
   setCurrentExecutionId,
-  ssePanelVisible,
+  consolePanelVisible,
+  ssePanelVisible: consolePanelVisible, // 保持向后兼容
   currentExecutionId,
+  isSSEConnected,
 });
 </script>
 

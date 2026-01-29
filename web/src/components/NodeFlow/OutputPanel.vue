@@ -248,6 +248,42 @@ defineExpose({
   setWarnings: (warningList: string[]) => {
     warnings.value = warningList;
   },
+  // 处理 SSE 事件
+  handleSSEEvent: (eventData: any) => {
+    // 根据后端返回的数据类型处理
+    if (eventData.type === 'data' && eventData.payload?.files) {
+      // 更新输出文件列表
+      outputFiles.value = eventData.payload.files;
+      if (eventData.payload.files.length > 0) {
+        show();
+      }
+    } else if (eventData.type === 'error' || eventData.type === 'node_error') {
+      // 添加到错误列表
+      const errorMsg = eventData.message || '执行出错';
+      errors.value = [...errors.value, errorMsg];
+      show();
+    } else if (eventData.type === 'warning') {
+      // 添加到警告列表
+      const warningMsg = eventData.message || '警告';
+      warnings.value = [...warnings.value, warningMsg];
+    } else if (eventData.type === 'status') {
+      // 更新执行状态
+      const status = eventData.payload?.status;
+      if (status === 'running') {
+        executionStatus.value = 'running';
+        errors.value = [];
+        warnings.value = [];
+        show();
+      } else if (status === 'completed') {
+        executionStatus.value = 'completed';
+        if (eventData.payload?.duration) {
+          executionDuration.value = eventData.payload.duration;
+        }
+      } else if (status === 'failed') {
+        executionStatus.value = 'failed';
+      }
+    }
+  },
   refreshFiles,
   toggle,
   show,
