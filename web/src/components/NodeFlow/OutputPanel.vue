@@ -37,6 +37,9 @@ const errors = ref<string[]>([]);
 const warnings = ref<string[]>([]);
 const visible = ref(props.isVisible || false);
 
+// 记录执行开始时间，用于计算耗时
+let executionStartTime: number | null = null;
+
 // 历史记录状态
 const selectedExecution = ref<ExecutionRecord | null>(null);
 const executionListRef = ref<InstanceType<typeof ExecutionList> | null>(null);
@@ -227,6 +230,8 @@ defineExpose({
       executionDuration.value = duration;
     }
     if (status === 'running') {
+      // 记录执行开始时间
+      executionStartTime = Date.now();
       // 清空之前的错误和警告
       errors.value = [];
       warnings.value = [];
@@ -250,12 +255,48 @@ defineExpose({
   },
   // 处理 SSE 事件
   handleSSEEvent: (eventData: any) => {
+    // 处理执行完成事件
+    if (eventData.type === 'execution_completed') {
+      executionStatus.value = 'completed';
+      // 计算执行耗时
+      if (eventData.ts && executionStartTime) {
+        executionDuration.value = (eventData.ts * 1000 - executionStartTime) / 1000;
+      }
+      executionStartTime = null;
+      return;
+    }
+
+    // 处理执行失败事件
+    if (eventData.type === 'execution_failed') {
+      executionStatus.value = 'failed';
+      executionStartTime = null;
+      errors.value = [...errors.value, eventData.message || '执行失败'];
+      show();
+      return;
+    }
+
     // 根据后端返回的数据类型处理
-    if (eventData.type === 'data' && eventData.payload?.files) {
-      // 更新输出文件列表
-      outputFiles.value = eventData.payload.files;
-      if (eventData.payload.files.length > 0) {
-        show();
+    if (eventData.type === 'data') {
+      // 处理文件事件
+      if (eventData.payload?.file) {
+        // 单个文件 - 追加到列表
+        const newFile = eventData.payload.file;
+        // 避免重复添加相同文件（通过 file_id 判断）
+        if (!outputFiles.value.some(f => f.file_id === newFile.file_id)) {
+          outputFiles.value = [...outputFiles.value, newFile];
+          show();
+        }
+      } else if (eventData.payload?.files) {
+        // 多个文件（兼容旧格式）- 追加到列表
+        const newFiles = eventData.payload.files;
+        newFiles.forEach((newFile: OutputFile) => {
+          if (!outputFiles.value.some(f => f.file_id === newFile.file_id)) {
+            outputFiles.value = [...outputFiles.value, newFile];
+          }
+        });
+        if (newFiles.length > 0) {
+          show();
+        }
       }
     } else if (eventData.type === 'error' || eventData.type === 'node_error') {
       // 添加到错误列表
