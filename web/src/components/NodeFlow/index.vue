@@ -11,8 +11,20 @@
     <SplitPane ref="splitPaneRef" direction="horizontal" :min="250" :max="800" :initial-size="350" button-side="right"
       :visible="false">
       <template #1>
-        <div class="editor-wrapper">
-          <BaklavaEditor :view-model="baklava" :blocks="blocks" />
+        <div class="main-content">
+          <!-- 垂直分割：上方是编辑器，下方是 Console -->
+          <SplitterVertical ref="consoleSplitterRef" :min="150" :max="0.7" :initial-size="350" button-side="bottom"
+            v-model:visible="consolePanelVisible">
+            <template #1>
+              <div class="editor-wrapper">
+                <BaklavaEditor :view-model="baklava" :blocks="blocks" />
+              </div>
+            </template>
+
+            <template #2>
+              <ConsolePanel ref="consolePanelRef" :isVisible="consolePanelVisible" :isConnecting="isSSEConnecting" :isConnected="isSSEConnected" />
+            </template>
+          </SplitterVertical>
         </div>
       </template>
 
@@ -22,9 +34,6 @@
         </div>
       </template>
     </SplitPane>
-
-    <!-- Console 底部面板 -->
-    <ConsolePanel ref="consolePanelRef" :isVisible="consolePanelVisible" :isConnecting="isSSEConnecting" :isConnected="isSSEConnected" />
   </div>
 </template>
 
@@ -39,6 +48,7 @@ import OutputPanel from './OutputPanel.vue';
 import ConsolePanel from './ConsolePanel.vue';
 import type { SSEEvent } from './ConsolePanel.vue';
 import SplitPane from '@/components/common/Splitter.vue';
+import SplitterVertical from '@/components/common/SplitterVertical.vue';
 import "@baklavajs/themes/dist/syrup-dark.css";
 
 // --- 常量与 Emits ---
@@ -66,7 +76,8 @@ const isLoading = ref(false);
 // --- OutputPanel 与 SplitPane 引用 ---
 const outputPanelRef = ref<InstanceType<typeof OutputPanel> | null>(null);
 const consolePanelRef = ref<InstanceType<typeof ConsolePanel> | null>(null);
-const splitPaneRef = ref<any>(null); // 引用 SplitPane 组件实例
+const consoleSplitterRef = ref<any>(null); // 引用垂直分割组件
+const splitPaneRef = ref<any>(null); // 引用水平分割组件
 
 // --- 执行状态 ---
 const currentExecutionId = ref<string | undefined>(undefined);
@@ -471,6 +482,9 @@ function disconnectSSE() {
 // --- Console Panel 控制 ---
 function showConsolePanel() {
   consolePanelVisible.value = true;
+  if (consoleSplitterRef.value?.resetSize) {
+    consoleSplitterRef.value.resetSize();
+  }
 }
 
 function hideConsolePanel() {
@@ -479,6 +493,9 @@ function hideConsolePanel() {
 
 function toggleConsolePanel() {
   consolePanelVisible.value = !consolePanelVisible.value;
+  if (consolePanelVisible.value && consoleSplitterRef.value?.resetSize) {
+    consoleSplitterRef.value.resetSize();
+  }
 }
 
 // --- 设置当前执行的ID（供外部调用） ---
@@ -501,6 +518,7 @@ defineExpose({
   currentFlow,
   outputPanelRef,
   consolePanelRef,
+  consoleSplitterRef,
   ssePanelRef: consolePanelRef, // 保持向后兼容
   toggleOutputPanel,
   showOutputPanel,
@@ -531,15 +549,18 @@ defineExpose({
   width: 100%;
   position: relative;
   overflow: hidden;
+  min-height: 0;
 }
 
 /* 确保内部容器填满 */
+.main-content,
 .editor-wrapper,
 .output-panel-wrapper {
   width: 100%;
   height: 100%;
   position: relative;
   overflow: hidden;
+  min-height: 0;
 }
 
 /* 适配 Baklava 在新容器中的尺寸 */

@@ -256,22 +256,13 @@ defineExpose({
 
 <style scoped>
 .console-panel {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 0;
+  width: 100%;
+  height: 100%;
   background: #1e1e1e;
   border-top: 1px solid #333;
-  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  z-index: 100;
-}
-
-.console-panel.visible {
-  height: 350px;
 }
 
 /* 面板头部 */

@@ -31,7 +31,7 @@ const iframeSrc = computed(() => {
 <style scoped>
 .tiny-code-iframe {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   border: none;
   display: block;
 }

@@ -2,19 +2,17 @@
 import { ref, onMounted, computed } from 'vue';
 
 interface Props {
-  direction?: 'horizontal' | 'vertical';
   min?: number;
   max?: number;
   initialSize?: number | string;
-  buttonSide?: 'left' | 'right';
+  buttonSide?: 'top' | 'bottom';
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  direction: 'horizontal',
   min: 100,
   max: 0.9,
-  initialSize: 300,
-  buttonSide: 'left'
+  initialSize: 250,
+  buttonSide: 'bottom'
 });
 
 // 使用 defineModel 处理双向绑定
@@ -24,21 +22,21 @@ const isSidebarVisible = defineModel('visible', {
 });
 
 const containerRef = ref<HTMLElement | null>(null);
-const currentSize = ref(300);
+const currentSize = ref(250);
 const isDragging = ref(false);
 
-const isRightSidebar = computed(() => props.buttonSide === 'right');
+const isBottomSidebar = computed(() => props.buttonSide === 'bottom');
 
 // 计算初始像素值，用于双击恢复
 const getInitialPixelSize = () => {
-  if (!containerRef.value) return 300;
+  if (!containerRef.value) return 250;
   if (typeof props.initialSize === 'number') {
     return props.initialSize;
   } else if (typeof props.initialSize === 'string' && props.initialSize.endsWith('%')) {
     const percent = parseFloat(props.initialSize) / 100;
-    return containerRef.value.clientWidth * percent;
+    return containerRef.value.clientHeight * percent;
   }
-  return 300;
+  return 250;
 };
 
 // 限制范围逻辑
@@ -52,7 +50,7 @@ function startDrag(e: MouseEvent) {
   isDragging.value = true;
   document.addEventListener('mousemove', onDrag);
   document.addEventListener('mouseup', stopDrag);
-  document.body.style.cursor = 'col-resize';
+  document.body.style.cursor = 'row-resize';
   document.body.style.userSelect = 'none';
 }
 
@@ -60,13 +58,13 @@ function onDrag(e: MouseEvent) {
   if (!isDragging.value || !containerRef.value) return;
 
   const containerRect = containerRef.value.getBoundingClientRect();
-  const totalWidth = containerRect.width;
-  const mouseX = e.clientX - containerRect.left;
+  const totalHeight = containerRect.height;
+  const mouseY = e.clientY - containerRect.top;
 
-  let newSize = isRightSidebar.value ? totalWidth - mouseX : mouseX;
+  let newSize = isBottomSidebar.value ? totalHeight - mouseY : mouseY;
 
-  const minPixel = getLimit(props.min, totalWidth);
-  const maxPixel = getLimit(props.max, totalWidth);
+  const minPixel = getLimit(props.min, totalHeight);
+  const maxPixel = getLimit(props.max, totalHeight);
 
   if (newSize < minPixel) newSize = minPixel;
   if (newSize > maxPixel) newSize = maxPixel;
@@ -95,20 +93,20 @@ defineExpose({ togglePane, resetSize, isSidebarVisible });
 
 // --- 样式计算 ---
 const pane1Style = computed(() => {
-  if (isRightSidebar.value) return { flex: 1, minWidth: 0, overflow: 'hidden' };
-  if (!isSidebarVisible.value) return { width: '0px', minWidth: '0', overflow: 'hidden' };
-  return { width: `${currentSize.value}px`, minWidth: 0, overflow: 'hidden' };
+  if (isBottomSidebar.value) return { flex: 1, minHeight: 0, overflow: 'hidden' };
+  if (!isSidebarVisible.value) return { height: '0px', minHeight: '0', overflow: 'hidden' };
+  return { height: `${currentSize.value}px`, minHeight: 0, overflow: 'hidden' };
 });
 
 const pane2Style = computed(() => {
-  if (!isRightSidebar.value) return { flex: 1, minWidth: 0, overflow: 'hidden' };
-  if (!isSidebarVisible.value) return { width: '0px', minWidth: '0', overflow: 'hidden' };
-  return { width: `${currentSize.value}px`, minWidth: 0, overflow: 'hidden' };
+  if (!isBottomSidebar.value) return { flex: 1, minHeight: 0, overflow: 'hidden' };
+  if (!isSidebarVisible.value) return { height: '0px', minHeight: '0', overflow: 'hidden' };
+  return { height: `${currentSize.value}px`, minHeight: 0, overflow: 'hidden' };
 });
 
 const arrowDirection = computed(() => {
-  if (isSidebarVisible.value) return isRightSidebar.value ? 'right' : 'left';
-  return isRightSidebar.value ? 'left' : 'right';
+  if (isSidebarVisible.value) return isBottomSidebar.value ? 'down' : 'up';
+  return isBottomSidebar.value ? 'up' : 'down';
 });
 
 onMounted(() => {
@@ -117,7 +115,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="split-container" ref="containerRef" :class="[direction, { 'is-resizing': isDragging }]">
+  <div class="split-container" ref="containerRef" :class="{ 'is-resizing': isDragging }">
 
     <div class="split-pane pane-1" :style="pane1Style">
       <slot name="1"></slot>
@@ -126,22 +124,22 @@ onMounted(() => {
     <div class="split-trigger" :class="{ dragging: isDragging }" v-show="isSidebarVisible" @mousedown="startDrag"
       @dblclick="resetSize" title="拖拽调整大小，双击恢复默认">
       <button @click.stop="togglePane" class="btn-toggle-overlay" :class="buttonSide" @mousedown.stop @dblclick.stop>
-        <svg v-if="arrowDirection === 'left'" viewBox="0 0 10 10">
-          <path d="M6 1L2 5L6 9" />
+        <svg v-if="arrowDirection === 'up'" viewBox="0 0 10 10">
+          <path d="M1 6L5 2L9 6" />
         </svg>
         <svg v-else viewBox="0 0 10 10">
-          <path d="M4 1L8 5L4 9" />
+          <path d="M1 4L5 8L9 4" />
         </svg>
       </button>
     </div>
 
     <div v-show="!isSidebarVisible" class="split-trigger-placeholder">
       <button @click.stop="togglePane" class="btn-toggle-overlay" :class="buttonSide" @mousedown.stop @dblclick.stop>
-        <svg v-if="arrowDirection === 'left'" viewBox="0 0 10 10">
-          <path d="M6 1L2 5L6 9" />
+        <svg v-if="arrowDirection === 'up'" viewBox="0 0 10 10">
+          <path d="M1 6L5 2L9 6" />
         </svg>
         <svg v-else viewBox="0 0 10 10">
-          <path d="M4 1L8 5L4 9" />
+          <path d="M1 4L5 8L9 4" />
         </svg>
       </button>
     </div>
@@ -155,6 +153,7 @@ onMounted(() => {
 <style scoped>
 .split-container {
   display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -164,7 +163,7 @@ onMounted(() => {
 .split-pane {
   overflow: hidden;
   /* 双击恢复或折叠时使用动画 */
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* 拖拽时立即响应，禁用动画 */
@@ -173,12 +172,13 @@ onMounted(() => {
 }
 
 .split-trigger {
-  width: 4px;
+  height: 4px;
   background: #333;
-  cursor: col-resize;
+  cursor: row-resize;
   position: relative;
   z-index: 10;
   transition: background 0.2s;
+  flex-shrink: 0;
 }
 
 .split-trigger:hover,
@@ -190,24 +190,25 @@ onMounted(() => {
 .split-trigger::after {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -4px;
-  right: -4px;
+  left: 0;
+  right: 0;
+  top: -4px;
+  bottom: -4px;
 }
 
 .split-trigger-placeholder {
-  width: 0;
+  height: 0;
   position: relative;
   z-index: 10;
+  flex-shrink: 0;
 }
 
 .btn-toggle-overlay {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 16px;
-  height: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 16px;
   background: #2d2d2d;
   border: none;
   color: #aaa;
@@ -225,14 +226,14 @@ onMounted(() => {
   color: white;
 }
 
-.btn-toggle-overlay.left {
-  left: 100%;
-  border-radius: 0 4px 4px 0;
+.btn-toggle-overlay.top {
+  top: 100%;
+  border-radius: 0 0 4px 4px;
 }
 
-.btn-toggle-overlay.right {
-  right: 100%;
-  border-radius: 4px 0 0 4px;
+.btn-toggle-overlay.bottom {
+  bottom: 100%;
+  border-radius: 4px 4px 0 0;
 }
 
 svg {
