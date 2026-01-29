@@ -258,9 +258,12 @@ defineExpose({
     // 处理执行完成事件
     if (eventData.type === 'execution_completed') {
       executionStatus.value = 'completed';
-      // 计算执行耗时
-      if (eventData.ts && executionStartTime) {
-        executionDuration.value = (eventData.ts * 1000 - executionStartTime) / 1000;
+      // 使用后端的 ts 计算耗时，避免前后端时间不一致
+      if (eventData.payload?.duration !== undefined) {
+        executionDuration.value = eventData.payload.duration;
+      } else if (eventData.ts && executionStartTime !== null) {
+        // 如果没有 payload.duration，使用后端 ts 计算（ts 是秒，startTime 也是秒）
+        executionDuration.value = eventData.ts - executionStartTime;
       }
       executionStartTime = null;
       return;
@@ -269,17 +272,43 @@ defineExpose({
     // 处理执行失败事件
     if (eventData.type === 'execution_failed') {
       executionStatus.value = 'failed';
+      // 使用后端的 ts 计算耗时
+      if (eventData.payload?.duration !== undefined) {
+        executionDuration.value = eventData.payload.duration;
+      } else if (eventData.ts && executionStartTime !== null) {
+        executionDuration.value = eventData.ts - executionStartTime;
+      }
       executionStartTime = null;
       errors.value = [...errors.value, eventData.message || '执行失败'];
       show();
       return;
     }
 
-    // 根据后端返回的数据类型处理
+    // 处理状态事件
+    if (eventData.type === 'status') {
+      const status = eventData.payload?.status;
+      if (status === 'running') {
+        executionStatus.value = 'running';
+        // 使用后端的 ts 作为开始时间（秒）
+        executionStartTime = eventData.ts || Date.now() / 1000;
+        errors.value = [];
+        warnings.value = [];
+        show();
+      } else if (status === 'completed') {
+        executionStatus.value = 'completed';
+        if (eventData.payload?.duration !== undefined) {
+          executionDuration.value = eventData.payload.duration;
+        }
+      } else if (status === 'failed') {
+        executionStatus.value = 'failed';
+      }
+      return;
+    }
+
+    // 处理数据事件（主要是文件）
     if (eventData.type === 'data') {
-      // 处理文件事件
+      // 处理单个文件事件（新格式）
       if (eventData.payload?.file) {
-        // 单个文件 - 追加到列表
         const newFile = eventData.payload.file;
         // 避免重复添加相同文件（通过 file_id 判断）
         if (!outputFiles.value.some(f => f.file_id === newFile.file_id)) {
@@ -287,7 +316,7 @@ defineExpose({
           show();
         }
       } else if (eventData.payload?.files) {
-        // 多个文件（兼容旧格式）- 追加到列表
+        // 处理多个文件事件（兼容旧格式）
         const newFiles = eventData.payload.files;
         newFiles.forEach((newFile: OutputFile) => {
           if (!outputFiles.value.some(f => f.file_id === newFile.file_id)) {
@@ -298,31 +327,15 @@ defineExpose({
           show();
         }
       }
-    } else if (eventData.type === 'error' || eventData.type === 'node_error') {
-      // 添加到错误列表
+      return;
+    }
+
+    // 处理错误事件
+    if (eventData.type === 'error') {
       const errorMsg = eventData.message || '执行出错';
       errors.value = [...errors.value, errorMsg];
       show();
-    } else if (eventData.type === 'warning') {
-      // 添加到警告列表
-      const warningMsg = eventData.message || '警告';
-      warnings.value = [...warnings.value, warningMsg];
-    } else if (eventData.type === 'status') {
-      // 更新执行状态
-      const status = eventData.payload?.status;
-      if (status === 'running') {
-        executionStatus.value = 'running';
-        errors.value = [];
-        warnings.value = [];
-        show();
-      } else if (status === 'completed') {
-        executionStatus.value = 'completed';
-        if (eventData.payload?.duration) {
-          executionDuration.value = eventData.payload.duration;
-        }
-      } else if (status === 'failed') {
-        executionStatus.value = 'failed';
-      }
+      return;
     }
   },
   refreshFiles,

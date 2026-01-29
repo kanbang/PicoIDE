@@ -2,6 +2,7 @@ import asyncio
 import networkx as nx
 import logging
 import copy
+import time
 from enum import Enum, auto
 from typing import Any, Dict, List, Type, Optional, Set, Tuple
 from collections import defaultdict
@@ -35,6 +36,8 @@ class ComputeEngine:
         self._ready_ports = defaultdict(set)
         self._running_tasks: Set[asyncio.Task] = set()
         self._shutdown_event = asyncio.Event()
+        # 记录执行开始时间，用于计算 duration
+        self._execution_start_time: Optional[float] = None
 
     # --- 1. 配置与编译阶段 ---
 
@@ -141,7 +144,7 @@ class ComputeEngine:
 
             async with self._node_locks[succ_id]:
 
-                # 记录是哪个“来源节点”送达了数据
+                # 记录是哪个"来源节点"送达了数据
                 slot_key = (succ_id, exec_id)
 
                 # 1. 物理搬运数据
@@ -207,32 +210,22 @@ class ComputeEngine:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
+        # 统一使用 "file" 格式，与前端处理逻辑一致
+        file_event = RuntimeEvent(
+            execution_id=execution_id,
+            type=RuntimeEventType.DATA,
+            source="output_file",
+            message=f"Generated file: {file_info['filename']}",
+            payload={"file": file_info},
+            ts=time.time()
+        )
+
         if loop.is_running():
             # 使用 ensure_future 在当前运行的事件循环中调度
-            loop.create_task(
-                self.event_bus.emit(
-                    RuntimeEvent(
-                        execution_id=execution_id,
-                        type=RuntimeEventType.DATA,
-                        source="output_file",
-                        message=f"Generated file: {file_info['filename']}",
-                        payload={"files": [file_info]},
-                    )
-                )
-            )
+            loop.create_task(self.event_bus.emit(file_event))
         else:
             # 如果没有运行中的事件循环，使用 asyncio.run_until_complete
-            loop.run_until_complete(
-                self.event_bus.emit(
-                    RuntimeEvent(
-                        execution_id=execution_id,
-                        type=RuntimeEventType.DATA,
-                        source="output_file",
-                        message=f"Generated file: {file_info['filename']}",
-                        payload={"file": file_info},
-                    )
-                )
-            )
+            loop.run_until_complete(self.event_bus.emit(file_event))
 
     # --- 3. 运行控制 ---
 
@@ -251,13 +244,26 @@ class ComputeEngine:
             return
 
         self.status = EngineStatus.RUNNING
+        self._execution_start_time = time.time()
         self._shutdown_event.clear()
+
+        # 发送 running 状态事件
+        await self.event_bus.emit(
+            RuntimeEvent(
+                execution_id,
+                RuntimeEventType.STATUS,
+                "engine",
+                "Execution started",
+                payload={"status": "running"},
+            )
+        )
 
         # 识别入度为 0 的源节点
         sources = [n for n, d in self._graph.in_degree() if d == 0]
         if not sources:
             self.logger.error("No source nodes found in flow!")
             self.status = EngineStatus.IDLE
+            self._execution_start_time = None
             await self.event_bus.emit(
                 RuntimeEvent(
                     execution_id,
@@ -283,8 +289,9 @@ class ComputeEngine:
         finally:
             await self.stop()
 
+
           
-        # # 从文件收集器获取
+        # # 从文件收集器获取，备份
         # output_files = file_collector.get_files(execution_id)
 
         # # 通过 SSE 发送输出文件列表给前端
@@ -299,13 +306,18 @@ class ComputeEngine:
         #         )
         #     )       
 
-               
+
+        # 计算执行耗时
+        duration = time.time() - self._execution_start_time if self._execution_start_time else 0
+        self._execution_start_time = None
+
         await self.event_bus.emit(
             RuntimeEvent(
                 execution_id,
                 RuntimeEventType.EXECUTION_COMPLETED,
                 "engine",
                 "Execution completed",
+                payload={"duration": duration},
             )
         )
 
