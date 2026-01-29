@@ -80,7 +80,7 @@ export async function getOutputFiles(): Promise<OutputFile[]> {
  * 获取输出文件内容
  */
 export async function getOutputFile(fileId: string): Promise<Blob> {
-  const url = `/engine/output-files/${fileId}`;
+  const url = `/api/engine/output-files/${fileId}`;
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`获取文件失败: ${response.status}`);
