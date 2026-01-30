@@ -26,7 +26,12 @@ from flow.demo_blocks import DEMO_BLOCKS
 from .schema import ExecuteRequest, ExecuteResponse, ExecuteSavedRequest
 from routes.dependencies import get_business
 from flow.blocks_manager import blocks_registry
-from flow.run import create_execution_id, get_business_blocks_json, register_engine, run_business
+from flow.run import (
+    create_execution_id,
+    get_business_blocks_json,
+    register_engine,
+    run_business,
+)
 from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
 from uuid import UUID
@@ -74,7 +79,9 @@ async def load_scripts_from_db(directory: str, business: str) -> List[str]:
     await _load_recursive(directory)
     return scripts
 
+
 # ==================== 接口 ====================
+
 
 @router.get("/blocks")
 async def get_blocks_endpoint(business: Annotated[str, Depends(get_business)]):
@@ -86,15 +93,20 @@ async def get_blocks_endpoint(business: Annotated[str, Depends(get_business)]):
     try:
         # 加载自定义脚本（动态 blocks）
         scripts = await load_scripts_from_db("/", business)
-        
+
         # 获取所有 blocks 的 JSON 配置
         json_blocks = get_business_blocks_json(business, scripts)
 
-        logger.info(f"获取 blocks - Business: {business}, 动态: {len(scripts)}, 总计: {len(json_blocks)}")
+        logger.info(
+            f"获取 blocks - Business: {business}, 动态: {len(scripts)}, 总计: {len(json_blocks)}"
+        )
         return {"blocks": json_blocks}
     except KeyError as e:
         logger.error(f"业务类型不存在: {business} - {str(e)}")
-        raise HTTPException(404, f"业务类型 '{business}' 不存在，可用类型: {blocks_registry.list_businesses()}")
+        raise HTTPException(
+            404,
+            f"业务类型 '{business}' 不存在，可用类型: {blocks_registry.list_businesses()}",
+        )
     except Exception as e:
         logger.error(f"获取 blocks 失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Failed to get blocks: {str(e)}")
@@ -102,8 +114,7 @@ async def get_blocks_endpoint(business: Annotated[str, Depends(get_business)]):
 
 @router.post("/execute", response_model=ExecuteResponse)
 async def execute(
-    request: ExecuteRequest,
-    business: Annotated[str, Depends(get_business)]
+    request: ExecuteRequest, business: Annotated[str, Depends(get_business)]
 ):
     """
     执行图计算（直接执行）
@@ -131,12 +142,13 @@ async def execute(
         scripts = request.scripts or []
         scripts_db = await load_scripts_from_db("/", business)
         scripts.extend(scripts_db)
-        
+
         # 3. 注册业务对应的 Block 模板（包含静态和动态 blocks）
         register_engine(business.upper(), scripts)
 
         # 4. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
+
         scripts_hash = calculate_scripts_hash(scripts)
 
         # 5. 创建执行ID
@@ -146,6 +158,7 @@ async def execute(
         execution = None
         if settings.ENABLE_DB_WRITE:
             from db import Execution
+
             execution = await Execution.create(
                 execution_id=execution_id,
                 user_id=USER_ID,
@@ -162,12 +175,16 @@ async def execute(
 
         # 8. 执行 flow（传递 execution_id 和 business）
         try:
-            result = await run_business(business.upper(), flow.model_dump(by_alias=True), execution_id)
+            result = await run_business(
+                business.upper(), flow.model_dump(by_alias=True), execution_id
+            )
 
             # 收集输出文件
             # 根据配置决定从数据库还是收集器获取
             if settings.ENABLE_DB_WRITE:
-                output_files = await output_file_manager.get_execution_files(execution_id)
+                output_files = await output_file_manager.get_execution_files(
+                    execution_id
+                )
             else:
                 # 从文件收集器获取（轻量化模式）
                 output_files = file_collector.get_files(execution_id)
@@ -195,7 +212,7 @@ async def execute(
                     "failed_nodes": 0,
                     "total_connections": len(flow.connections),
                     "execution_time": time.time() - start_time,
-                }
+                },
             }
             logger.info(
                 f"执行完成，耗时: {response['execution_time']:.3f}s，输出文件: {len(output_files)}"
@@ -221,11 +238,9 @@ async def execute(
         raise HTTPException(500, f"Execution failed: {str(e)}")
 
 
-
 @router.post("/sync-execute-saved", response_model=ExecuteResponse)
 async def execute_saved(
-    request: ExecuteSavedRequest,
-    business: Annotated[str, Depends(get_business)]
+    request: ExecuteSavedRequest, business: Annotated[str, Depends(get_business)]
 ):
     """
     执行已保存的图
@@ -245,7 +260,9 @@ async def execute_saved(
     8. 返回结果
     """
     try:
-        logger.info(f"Execute From DB Request - Flow ID: {request.flow_id}, Scripts Path: {request.scripts_path}, Tag: {request.tag}, Business: {business}")
+        logger.info(
+            f"Execute From DB Request - Flow ID: {request.flow_id}, Scripts Path: {request.scripts_path}, Tag: {request.tag}, Business: {business}"
+        )
 
         # 1. 从数据库加载 graph
         flow_db = await get_flow(USER_ID, business, UUID(request.flow_id))
@@ -259,8 +276,6 @@ async def execute_saved(
 
         graph = flow_data["graph"]
 
-
-
         ###################################################################################
         # 临时处理，可优化掉
         # 2. 从数据库加载脚本
@@ -272,9 +287,9 @@ async def execute_saved(
 
         # 5. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
+
         scripts_hash = calculate_scripts_hash(scripts)
         ###################################################################################
-
 
         # 6. 确定 execution_id 和清理策略
         if request.tag:
@@ -292,6 +307,7 @@ async def execute_saved(
         execution = None
         if settings.ENABLE_DB_WRITE:
             from db import Execution
+
             execution = await Execution.create(
                 execution_id=execution_id,
                 user_id=USER_ID,
@@ -315,11 +331,13 @@ async def execute_saved(
             # 收集输出文件
             # 根据配置决定从数据库还是收集器获取
             if settings.ENABLE_DB_WRITE:
-                output_files = await output_file_manager.get_execution_files(execution_id)
+                output_files = await output_file_manager.get_execution_files(
+                    execution_id
+                )
             else:
                 # 从文件收集器获取（轻量化模式）
                 output_files = file_collector.get_files(execution_id)
-         
+
             # 更新 Execution 状态为完成
             if execution:
                 execution.status = "completed"
@@ -336,14 +354,18 @@ async def execute_saved(
                 "output_files": output_files,
                 "execution_id": execution_id,
                 "execution_time": time.time() - start_time,
-                "timestamp": execution.start_time.isoformat() if execution else datetime.now().isoformat(),
+                "timestamp": (
+                    execution.start_time.isoformat()
+                    if execution
+                    else datetime.now().isoformat()
+                ),
                 "stats": {
                     "total_nodes": len(graph.get("nodes", [])),
                     "executed_nodes": len(graph.get("nodes", [])),
                     "failed_nodes": 0,
                     "total_connections": len(graph.get("connections", [])),
                     "execution_time": time.time() - start_time,
-                }
+                },
             }
             logger.info(
                 f"从数据库执行完成，耗时: {response['execution_time']:.3f}s，输出文件: {len(output_files)}"
@@ -368,11 +390,9 @@ async def execute_saved(
         raise HTTPException(500, f"Execution from DB failed: {str(e)}")
 
 
-
 @router.post("/execute-saved", response_model=ExecuteResponse)
 async def execute_saved(
-    request: ExecuteSavedRequest,
-    business: Annotated[str, Depends(get_business)]
+    request: ExecuteSavedRequest, business: Annotated[str, Depends(get_business)]
 ):
     """
     执行已保存的图（异步模式）
@@ -391,7 +411,9 @@ async def execute_saved(
     7. 通过 SSE 推送实时事件
     """
     try:
-        logger.info(f"Execute From DB Request - Flow ID: {request.flow_id}, Scripts Path: {request.scripts_path}, Tag: {request.tag}, Business: {business}")
+        logger.info(
+            f"Execute From DB Request - Flow ID: {request.flow_id}, Scripts Path: {request.scripts_path}, Tag: {request.tag}, Business: {business}"
+        )
 
         # 1. 从数据库加载 graph
         flow_db = await get_flow(USER_ID, business, UUID(request.flow_id))
@@ -416,6 +438,7 @@ async def execute_saved(
 
         # 5. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
+
         scripts_hash = calculate_scripts_hash(scripts)
         ###################################################################################
 
@@ -435,6 +458,7 @@ async def execute_saved(
         execution = None
         if settings.ENABLE_DB_WRITE:
             from db import Execution
+
             execution = await Execution.create(
                 execution_id=execution_id,
                 user_id=USER_ID,
@@ -459,7 +483,9 @@ async def execute_saved(
                 # 收集输出文件
                 # 根据配置决定从数据库还是收集器获取
                 if settings.ENABLE_DB_WRITE:
-                    output_files = await output_file_manager.get_execution_files(execution_id)
+                    output_files = await output_file_manager.get_execution_files(
+                        execution_id
+                    )
                 else:
                     # 从文件收集器获取（轻量化模式）
                     output_files = file_collector.get_files(execution_id)
@@ -487,8 +513,16 @@ async def execute_saved(
                     await execution.save()
                 logger.error(f"后台执行失败: {str(e)}", exc_info=True)
 
-        # 立即启动后台任务，不等待完成
-        asyncio.create_task(_execute_background())
+            finally:
+                engine_manager.remove_execution(execution_id)  # 自动移除
+
+        # 启动后台任务，不等待完成
+        background_task = asyncio.create_task(_execute_background())
+
+        # 注册到 EngineManager
+        engine_manager.register_execution(
+            execution_id, background_task, business, USER_ID
+        )
 
         # 9. 立即返回 execution_id，让前端可以立即订阅 SSE
         return {
@@ -497,14 +531,18 @@ async def execute_saved(
             "output_files": [],  # 异步模式下输出文件列表为空
             "execution_id": execution_id,
             "execution_time": 0.0,  # 异步模式下执行时间为 0
-            "timestamp": execution.start_time.isoformat() if execution else datetime.now().isoformat(),
+            "timestamp": (
+                execution.start_time.isoformat()
+                if execution
+                else datetime.now().isoformat()
+            ),
             "stats": {
                 "total_nodes": len(graph.get("nodes", [])),
                 "executed_nodes": 0,  # 执行中
                 "failed_nodes": 0,
                 "total_connections": len(graph.get("connections", [])),
                 "execution_time": 0.0,
-            }
+            },
         }
 
     except HTTPException:
@@ -512,6 +550,29 @@ async def execute_saved(
     except Exception as e:
         logger.error(f"从数据库执行失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Execution from DB failed: {str(e)}")
+
+
+@router.get("/running", response_model=Dict[str, Any])
+async def get_running_executions(business: Annotated[str, Depends(get_business)]):
+    running_ids = engine_manager.get_running_executions(business)
+    return {"ok": True, "running_executions": running_ids, "count": len(running_ids)}
+
+
+@router.post("/stop", response_model=Dict[str, bool])
+async def stop_execution(
+    request: Dict[str, str], business: Annotated[str, Depends(get_business)]
+):
+    execution_id = request.get("execution_id")
+    if not execution_id:
+        raise HTTPException(400, "Missing execution_id")
+
+    if not engine_manager.stop_execution(execution_id, business):
+        raise HTTPException(
+            404,
+            f"Execution {execution_id} not found, not running, or not belonging to this business",
+        )
+
+    return {"ok": True}
 
 
 async def cleanup_tag_execution(user_id: str, tag: str):
@@ -526,20 +587,17 @@ async def cleanup_tag_execution(user_id: str, tag: str):
     if not settings.ENABLE_DB_WRITE:
         logger.info(f"数据库写入已禁用，跳过 tag '{tag}' 的清理")
         return
-    
+
     from db import Execution, Output
 
     # 1. 查找同一 tag 的旧执行记录
-    old_executions = await Execution.filter(
-        user_id=user_id,
-        tag=tag
-    ).all()
+    old_executions = await Execution.filter(user_id=user_id, tag=tag).all()
 
     for old_exec in old_executions:
         # 2. 软删除关联的 Output 记录
-        await Output.filter(
-            execution_id=old_exec.execution_id
-        ).update(is_deleted=True, deleted_at=datetime.now())
+        await Output.filter(execution_id=old_exec.execution_id).update(
+            is_deleted=True, deleted_at=datetime.now()
+        )
 
         # 3. 删除旧的 Execution 记录
         await old_exec.delete()
@@ -553,7 +611,7 @@ async def get_output_files(
     file_type: Optional[str] = None,
     is_deleted: bool = False,
     limit: int = 100,
-    offset: int = 0
+    offset: int = 0,
 ) -> Dict[str, Any]:
     """
     获取输出文件列表（支持过滤和分页）
@@ -567,7 +625,7 @@ async def get_output_files(
     """
     try:
         files = []
-        
+
         if settings.ENABLE_DB_WRITE:
             # 从数据库获取
             files = await output_file_manager.get_all_files(
@@ -575,7 +633,7 @@ async def get_output_files(
                 file_type=file_type,
                 is_deleted=is_deleted,
                 limit=limit,
-                offset=offset
+                offset=offset,
             )
         else:
             # 从收集器获取（轻量化模式）
@@ -585,13 +643,13 @@ async def get_output_files(
                 # 如果没有指定 execution_id，获取所有执行的文件
                 # 注意：收集器不支持跨执行查询，这里只返回空列表
                 files = []
-            
+
             # 应用过滤
             if file_type:
                 files = [f for f in files if f.get("file_type") == file_type]
-            
+
             # 应用分页
-            files = files[offset:offset + limit]
+            files = files[offset : offset + limit]
 
         return {
             "files": files,
@@ -612,12 +670,12 @@ async def get_output_file(file_id: str):
     try:
         # 先尝试从数据库获取文件信息
         file_info = await output_file_manager.get_file_info(file_id)
-        
+
         # 如果数据库中没有，尝试从收集器获取（轻量化模式）
         if not file_info and not settings.ENABLE_DB_WRITE:
             # 从 file_id 提取 execution_id
             # file_id 格式: {execution_id}_{random}
-            parts = file_id.rsplit('_', 1)
+            parts = file_id.rsplit("_", 1)
             if len(parts) == 2:
                 execution_id = parts[0]
                 files = file_collector.get_files(execution_id)
@@ -680,16 +738,18 @@ async def delete_output_file(file_id: str) -> Dict[str, Any]:
     try:
         # 先尝试从数据库删除
         success = await output_file_manager.delete_file(file_id, soft_delete=True)
-        
+
         # 如果数据库中没有且处于轻量化模式，从收集器中删除
         if not success and not settings.ENABLE_DB_WRITE:
             # 从 file_id 提取 execution_id
-            parts = file_id.rsplit('_', 1)
+            parts = file_id.rsplit("_", 1)
             if len(parts) == 2:
                 execution_id = parts[0]
                 files = file_collector.get_files(execution_id)
                 # 从收集器中移除该文件
-                file_collector._files[execution_id] = [f for f in files if f["file_id"] != file_id]
+                file_collector._files[execution_id] = [
+                    f for f in files if f["file_id"] != file_id
+                ]
                 success = True
 
         if not success:
@@ -735,7 +795,7 @@ async def get_executions(
     scripts_hash: Optional[str] = None,
     include_outputs: bool = False,
     limit: int = 20,
-    offset: int = 0
+    offset: int = 0,
 ) -> Dict[str, Any]:
     """
     获取执行历史列表
@@ -770,41 +830,46 @@ async def get_executions(
         if scripts_hash:
             query = query.filter(scripts_hash=scripts_hash)
 
-        executions = await query.order_by("-start_time").limit(limit).offset(offset).all()
+        executions = (
+            await query.order_by("-start_time").limit(limit).offset(offset).all()
+        )
 
         # 如果需要包含输出文件且指定了 flow_id
         if include_outputs and flow_id:
             # 获取所有相关的 execution_id
             execution_ids = [e.execution_id for e in executions]
-            
+
             # 批量获取所有输出文件
             from db import Output
+
             outputs = await Output.filter(
-                execution_id__in=execution_ids,
-                is_deleted=False
+                execution_id__in=execution_ids, is_deleted=False
             ).all()
-            
+
             # 按 execution_id 分组
             outputs_by_execution = {}
             for o in outputs:
                 if o.execution_id not in outputs_by_execution:
                     outputs_by_execution[o.execution_id] = []
-                outputs_by_execution[o.execution_id].append({
-                    "file_id": o.file_id,
-                    "execution_id": o.execution_id,
-                    "filename": o.filename,
-                    "file_path": o.file_path,
-                    "file_type": o.file_type,
-                    "file_size": o.file_size,
-                    "created_at": o.created_at.isoformat(),
-                    "block_name": o.block_name,
-                    "block_id": o.block_id,
-                    "description": o.description,
-                    "metadata": o.metadata,
-                    "can_open": o.file_type in output_file_manager.settings.BROWSER_OPENABLE,
-                    "can_download": True,
-                })
-            
+                outputs_by_execution[o.execution_id].append(
+                    {
+                        "file_id": o.file_id,
+                        "execution_id": o.execution_id,
+                        "filename": o.filename,
+                        "file_path": o.file_path,
+                        "file_type": o.file_type,
+                        "file_size": o.file_size,
+                        "created_at": o.created_at.isoformat(),
+                        "block_name": o.block_name,
+                        "block_id": o.block_id,
+                        "description": o.description,
+                        "metadata": o.metadata,
+                        "can_open": o.file_type
+                        in output_file_manager.settings.BROWSER_OPENABLE,
+                        "can_download": True,
+                    }
+                )
+
             # 构建响应，包含输出文件
             executions_data = []
             for e in executions:
@@ -826,7 +891,9 @@ async def get_executions(
                     "end_time": e.end_time.isoformat() if e.end_time else None,
                     "metadata": e.metadata,
                     "output_files": outputs_by_execution.get(e.execution_id, []),
-                    "output_files_count": len(outputs_by_execution.get(e.execution_id, [])),
+                    "output_files_count": len(
+                        outputs_by_execution.get(e.execution_id, [])
+                    ),
                 }
                 executions_data.append(exec_data)
         else:
@@ -873,8 +940,7 @@ async def get_execution(execution_id: str) -> Dict[str, Any]:
         from db import Execution
 
         execution = await Execution.filter(
-            user_id=USER_ID,
-            execution_id=execution_id
+            user_id=USER_ID, execution_id=execution_id
         ).first()
 
         if not execution:
@@ -910,7 +976,7 @@ async def get_execution_outputs(
     execution_id: str,
     file_type: Optional[str] = None,
     limit: int = 100,
-    offset: int = 0
+    offset: int = 0,
 ) -> Dict[str, Any]:
     """
     获取执行的所有输出文件
@@ -922,8 +988,7 @@ async def get_execution_outputs(
         logger.info(f"get_execution_outputs - 查询执行ID: {execution_id}")
 
         execution = await Execution.filter(
-            user_id=USER_ID,
-            execution_id=execution_id
+            user_id=USER_ID, execution_id=execution_id
         ).first()
 
         if not execution:
@@ -936,7 +1001,7 @@ async def get_execution_outputs(
             file_type=file_type,
             is_deleted=False,
             limit=limit,
-            offset=offset
+            offset=offset,
         )
 
         logger.info(f"get_execution_outputs - 找到 {len(output_files)} 个输出文件")
@@ -965,17 +1030,16 @@ async def delete_execution(execution_id: str) -> Dict[str, Any]:
 
         # 获取执行记录
         execution = await Execution.filter(
-            user_id=USER_ID,
-            execution_id=execution_id
+            user_id=USER_ID, execution_id=execution_id
         ).first()
 
         if not execution:
             raise HTTPException(404, f"Execution not found: {execution_id}")
 
         # 软删除关联的 Output 记录
-        output_count = await Output.filter(
-            execution_id=execution_id
-        ).update(is_deleted=True, deleted_at=datetime.now())
+        output_count = await Output.filter(execution_id=execution_id).update(
+            is_deleted=True, deleted_at=datetime.now()
+        )
 
         # 删除 Execution 记录
         await execution.delete()
@@ -986,7 +1050,7 @@ async def delete_execution(execution_id: str) -> Dict[str, Any]:
             "execution_id": execution_id,
             "status": "deleted",
             "output_count": output_count,
-            "message": "执行记录及关联输出文件已删除"
+            "message": "执行记录及关联输出文件已删除",
         }
     except HTTPException:
         raise
@@ -1004,26 +1068,30 @@ async def get_execution_tags() -> Dict[str, Any]:
         from db import Execution
 
         # 获取所有不重复的 tag
-        tags = await Execution.filter(
-            user_id=USER_ID,
-            tag__not_isnull=True
-        ).distinct().values_list("tag", flat=True)
+        tags = (
+            await Execution.filter(user_id=USER_ID, tag__not_isnull=True)
+            .distinct()
+            .values_list("tag", flat=True)
+        )
 
         # 为每个 tag 获取最新的执行记录
         tag_info = []
         for tag in tags:
-            latest_exec = await Execution.filter(
-                user_id=USER_ID,
-                tag=tag
-            ).order_by("-start_time").first()
+            latest_exec = (
+                await Execution.filter(user_id=USER_ID, tag=tag)
+                .order_by("-start_time")
+                .first()
+            )
 
             if latest_exec:
-                tag_info.append({
-                    "tag": tag,
-                    "latest_execution_id": latest_exec.execution_id,
-                    "status": latest_exec.status,
-                    "start_time": latest_exec.start_time.isoformat(),
-                })
+                tag_info.append(
+                    {
+                        "tag": tag,
+                        "latest_execution_id": latest_exec.execution_id,
+                        "status": latest_exec.status,
+                        "start_time": latest_exec.start_time.isoformat(),
+                    }
+                )
 
         return {
             "tags": tag_info,
@@ -1042,10 +1110,11 @@ async def get_tag_execution(tag: str) -> Dict[str, Any]:
     try:
         from db import Execution
 
-        execution = await Execution.filter(
-            user_id=USER_ID,
-            tag=tag
-        ).order_by("-start_time").first()
+        execution = (
+            await Execution.filter(user_id=USER_ID, tag=tag)
+            .order_by("-start_time")
+            .first()
+        )
 
         if not execution:
             raise HTTPException(404, f"Tag not found: {tag}")
@@ -1084,10 +1153,7 @@ async def delete_tag_execution(tag: str) -> Dict[str, Any]:
         from db import Execution, Output
 
         # 查找该 tag 的所有执行记录
-        executions = await Execution.filter(
-            user_id=USER_ID,
-            tag=tag
-        ).all()
+        executions = await Execution.filter(user_id=USER_ID, tag=tag).all()
 
         if not executions:
             raise HTTPException(404, f"Tag not found: {tag}")
@@ -1103,14 +1169,16 @@ async def delete_tag_execution(tag: str) -> Dict[str, Any]:
             # 删除 Execution 记录
             await execution.delete()
 
-        logger.info(f"已删除 tag '{tag}' 的 {len(executions)} 个执行记录（共 {total_outputs} 个输出文件）")
+        logger.info(
+            f"已删除 tag '{tag}' 的 {len(executions)} 个执行记录（共 {total_outputs} 个输出文件）"
+        )
 
         return {
             "tag": tag,
             "status": "deleted",
             "execution_count": len(executions),
             "output_count": total_outputs,
-            "message": f"已删除 tag '{tag}' 的所有执行记录"
+            "message": f"已删除 tag '{tag}' 的所有执行记录",
         }
     except HTTPException:
         raise
@@ -1122,12 +1190,16 @@ async def delete_tag_execution(tag: str) -> Dict[str, Any]:
 @router.get("/stream/{exec_id}")
 async def stream_events(exec_id: str, request: Request):
     bus = RuntimeEventBus()
+
     async def event_generator():
         try:
             async for event in bus.subscribe(exec_id):
                 yield f"data: {json.dumps(asdict(event))}\n\n"
                 # 执行完成或失败时，发送结束标识并结束流
-                if event.type in (RuntimeEventType.EXECUTION_COMPLETED, RuntimeEventType.EXECUTION_FAILED):
+                if event.type in (
+                    RuntimeEventType.EXECUTION_COMPLETED,
+                    RuntimeEventType.EXECUTION_FAILED,
+                ):
                     yield "event: end\ndata: {}\n\n"
                     break
         except Exception as e:
