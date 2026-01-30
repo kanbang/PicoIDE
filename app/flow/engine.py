@@ -291,7 +291,7 @@ class ComputeEngine:
 
 
           
-        # # 从文件收集器获取，备份
+        # # 从文件收集器获取，整体返回运行结果，作为备选方案，不要删
         # output_files = file_collector.get_files(execution_id)
 
         # # 通过 SSE 发送输出文件列表给前端
