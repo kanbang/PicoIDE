@@ -14,6 +14,7 @@ from .modbus_block import ModbusReadBlock, ModbusWriteBlock, ModbusSubscribeBloc
 import os
 import csv
 import asyncio
+from pathlib import Path
 from datetime import datetime
 from flow.block import BaseBlock
 
@@ -47,8 +48,6 @@ class ConstantBlock(BaseBlock):
             value = self.get_option("text")
 
         self.set_interface("value", value)
-
-
 class CsvRecorderBlock(BaseBlock):
     NAME = "CsvRecorder"
     CATEGORY = "Output"
@@ -61,29 +60,17 @@ class CsvRecorderBlock(BaseBlock):
 
         # 定义输入接口
         self.add_input("data")  # 接收要保存的字典或字符串
-        self._initialized = False
-
-    async def _init_file(self, file_path: str, fieldnames: list):
-        """如果文件不存在，初始化并写入表头"""
-        if not os.path.exists(file_path):
-            # 使用 to_thread 避免同步 IO 阻塞 loop
-            await asyncio.to_thread(self._write_header, file_path, fieldnames)
-        self._initialized = True
-
-    def _write_header(self, file_path, fieldnames):
-        with open(file_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
+        self._fieldnames = None
 
     async def async_on_compute(self, execution_id: str = None):
         data = self.get_interface("data")
         if data is None:
             return
 
-        file_path = self.get_option("file_path")
+        filename = self.get_option("file_path")
 
         # 统一格式为字典
-        if not isinstance(data,  dict):
+        if not isinstance(data, dict):
             row = {"value": data}
         else:
             row = data.copy()
@@ -92,23 +79,31 @@ class CsvRecorderBlock(BaseBlock):
         if self.get_option("auto_timestamp"):
             row["_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
-        if not self._initialized:
-            await self._init_file(file_path, list(row.keys()))
+        # 初始化表头（如果首次）
+        if self._fieldnames is None:
+            self._fieldnames = list(row.keys())
 
-        # 使用通用文件写入方法
-        def write_csv(full_path):
-            with open(full_path, "a", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=list(row.keys()))
-                writer.writerow(row)
+        # 定义写入函数（处理写或追加，包括header）
+        def write_csv(full_path: Path, mode: str):
+            if mode == "w":
+                with open(full_path, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=self._fieldnames)
+                    writer.writeheader()
+                    writer.writerow(row)
+            else:  # "a"
+                with open(full_path, "a", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=self._fieldnames)
+                    writer.writerow(row)
 
+        # 使用基类方法（非唯一，追加模式）
         self._write_file(
-            filename=file_path,
+            filename=filename,
             write_func=write_csv,
             execution_id=execution_id,
             description="CSV数据文件",
+            unique=False,
+            mode="a",
         )
-
-
 
 # IoT 业务类型的 Block 列表
 IOT_BLOCKS = [

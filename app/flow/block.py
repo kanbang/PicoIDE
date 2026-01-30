@@ -2,7 +2,7 @@ import asyncio
 import time
 import uuid
 import logging
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Callable
 from pathlib import Path
 from flow.setting import settings
 from flow.log import logger
@@ -184,6 +184,8 @@ class BaseBlock(Block):
         self._compute_count = 0
         self._error_count = 0
         self._last_compute_time = 0.0
+        self._file_ids: Dict[str, str] = {}  # filename -> file_id for appendable files
+        self.event_bus = RuntimeEventBus()  # 使用单例 for emitting events
 
     def _log_compute_start(self, execution_id: str = ""):
         self._last_compute_time = time.time()
@@ -222,13 +224,15 @@ class BaseBlock(Block):
     def _write_file(
         self,
         filename: str,
-        write_func: callable,
+        write_func: Callable[[Path, str], None],  # write_func(full_path, mode)
         execution_id: Optional[str],
         description: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        unique: bool = True,
+        mode: str = "w",  # 'w' or 'a'
     ) -> str:
         """
-        原子化执行：自动分目录 -> 路径唯一化 -> 写入 -> 系统注册
+        原子化执行：自动分目录 -> 路径唯一化/固定 -> 写入/追加 -> 系统注册/事件推送
         """
         try:
             # 1. 生成时间标记
@@ -237,57 +241,92 @@ class BaseBlock(Block):
             timestamp = time.strftime("%H%M%S", now)  # 文件名时间戳：143005
             unique_suffix = uuid.uuid4().hex[:8]  # 随机后缀
 
-            # 2. 构建分级唯一路径
+            # 2. 构建路径
             path_obj = Path(filename)
-            unique_filename = (
-                f"{path_obj.stem}_{timestamp}_{unique_suffix}{path_obj.suffix}"
-            )
+            if unique:
+                # 唯一模式：生成新文件名
+                unique_filename = (
+                    f"{path_obj.stem}_{timestamp}_{unique_suffix}{path_obj.suffix}"
+                )
+                target_dir = settings.OUTPUT_DIR / date_dir
+                full_path = target_dir / unique_filename
+                relative_path = f"{date_dir}/{unique_filename}"
+                # 强制写模式
+                effective_mode = "w"
+            else:
+                # 固定模式：使用原文件名
+                unique_filename = filename
+                target_dir = settings.OUTPUT_DIR / date_dir
+                full_path = target_dir / unique_filename
+                relative_path = f"{date_dir}/{unique_filename}"
+                # 检查是否存在来决定是否创建新记录
+                file_exists = full_path.exists()
+                if mode == "a" and file_exists:
+                    effective_mode = "a"
+                else:
+                    effective_mode = "w"
 
-            # 核心变更：在 OUTPUT_DIR 下增加一层日期目录
-            target_dir = settings.OUTPUT_DIR / date_dir
-            full_path = target_dir / unique_filename
-
-            # 确保父级目录（包括日期目录）存在
+            # 确保父级目录存在
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # 3. 执行写入回调
-            write_func(full_path)
+            # 3. 执行写入/追加回调
+            write_func(full_path, effective_mode)
 
             # 4. 获取文件状态 (Size)
-            file_size = 0
-            if full_path.exists():
-                file_size = full_path.stat().st_size
-            else:
-                self._logger.warning(f"文件 {unique_filename} 写入后未找到")
+            file_size = full_path.stat().st_size if full_path.exists() else 0
 
-            # 5. 生成元数据与注册记录
-            file_id = f"{execution_id or 'temp'}_{unique_suffix}"
+            # 5. 处理注册或事件
             file_type = settings.FILE_TYPE_MAP.get(full_path.suffix.lower(), "unknown")
+            file_id = self._file_ids.get(filename)  # 对于非唯一，尝试获取现有ID
 
-            file_info = {
-                "file_id": file_id,
-                "execution_id": execution_id,
-                "filename": filename,
-                "relative_path": f"{date_dir}/{unique_filename}",  # 记录相对路径，方便迁移
-                "file_path": str(full_path),
-                "file_type": file_type,
-                "file_size": file_size,
-                "block_name": self.NAME,
-                "block_id": str(id(self)),
-                "description": description or "Unique hierarchical output",
-                "metadata": metadata or {},
-                "original_name": filename,
-            }
+            if unique or file_id is None:
+                # 新文件：生成ID并注册
+                file_id = f"{execution_id or 'temp'}_{unique_suffix}"
+                file_info = {
+                    "file_id": file_id,
+                    "execution_id": execution_id,
+                    "filename": unique_filename,
+                    "relative_path": relative_path,  # 记录相对路径，方便迁移
+                    "file_path": str(full_path),
+                    "file_type": file_type,
+                    "file_size": file_size,
+                    "block_name": self.NAME,
+                    "block_id": str(id(self)),
+                    "description": description or "Unique hierarchical output",
+                    "metadata": metadata or {},
+                    "original_name": filename,
+                }
 
-            # 6. 推送至收集器
-            file_collector.add_file(execution_id, file_info)
+                # 推送至收集器（触发生成事件）
+                file_collector.add_file(execution_id, file_info)
+
+                if not unique:
+                    # 对于固定文件，存储ID以便后续追加
+                    self._file_ids[filename] = file_id
+            else:
+                # 追加：发送更新事件
+                asyncio.create_task(
+                    self.event_bus.emit(
+                        RuntimeEvent(
+                            execution_id,
+                            RuntimeEventType.DATA,
+                            self.NAME,
+                            f"Appended to file: {unique_filename}",
+                            payload={
+                                "file_id": file_id,
+                                "action": "append",
+                                # 可以添加更多payload，如追加的内容摘要
+                            },
+                        )
+                    )
+                )
 
             return file_id
 
         except Exception as e:
             self._log_error(e, f"文件处理失败: {filename}")
             raise
-
+        
 
 # ==================== DebugBlock (用于流程中收集特定节点信息) ====================
 class DebugBlock(BaseBlock):
