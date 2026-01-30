@@ -2,17 +2,16 @@ import asyncio
 import time
 import uuid
 import logging
-from typing import Dict, List, Any, Optional, Union, Callable
+from typing import Dict, List, Any, Optional, Union, Callable, Tuple
 from pathlib import Path
 from flow.setting import settings
 from flow.log import logger
 from flow.collector import file_collector
 from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
 
-
-# ==================== Option Optimization ====================
+# ==================== Option Class ====================
 class Option:
-    # 使用 __slots__ 减少内存占用
+    """Represents an option with type-specific attributes."""
     __slots__ = ("name", "type", "value", "items", "min", "max")
 
     def __init__(
@@ -32,35 +31,31 @@ class Option:
         self.max = max_val
 
     def to_dict(self) -> Dict[str, Any]:
-        """优化后的字典导出逻辑"""
-        d = {"name": self.name, "type": self.type}
-
+        """Exports the option to a dictionary."""
+        result = {"name": self.name, "type": self.type}
         if self.type != "Button":
-            d["value"] = self.value
+            result["value"] = self.value
 
-        # 2. 逻辑简化：直接根据类型映射属性
         if self.type == "Select" and self.items is not None:
-            d["items"] = self.items
-            d["properties"] = {"items": self.items}
+            result["items"] = self.items
+            result["properties"] = {"items": self.items}
 
-        # 统一处理数值范围
         if self.type in ("Integer", "Number", "Slider"):
             if self.min is not None:
-                d["min"] = self.min
+                result["min"] = self.min
             if self.max is not None:
-                d["max"] = self.max
+                result["max"] = self.max
 
-        return d
+        return result
 
-
-# ==================== Block Optimization ====================
+# ==================== Block Class ====================
 class Block:
+    """Base class for blocks in the flow system."""
     NAME = "Block"
     CATEGORY = "General"
     STREAMING = False
 
     def __init__(self):
-        # 使用 slots 的话 inputs/outputs 也需要调整，这里为了扩展性暂保留 dict
         self._inputs: Dict[str, Any] = {}
         self._outputs: Dict[str, Any] = {}
         self._options: Dict[str, Option] = {}
@@ -68,23 +63,26 @@ class Block:
         self._output_names: List[str] = []
 
     def set_interface(self, name: str, value: Any):
+        """Sets an output interface value."""
         self._outputs[name] = value
 
-    def get_interface(self, name: str):
+    def get_interface(self, name: str) -> Any:
+        """Gets an input interface value."""
         return self._inputs.get(name)
 
-    # --- 基础接口 ---
     def add_input(self, name: str):
-        if name not in self._inputs:  # 防止重复添加
+        """Adds an input if it doesn't exist."""
+        if name not in self._inputs:
             self._input_names.append(name)
             self._inputs[name] = None
 
     def add_output(self, name: str):
+        """Adds an output if it doesn't exist."""
         if name not in self._outputs:
             self._output_names.append(name)
             self._outputs[name] = None
 
-    # --- Option Helper Methods (保持原有API，内部逻辑微调) ---
+    # --- Option Helper Methods ---
     def add_button_option(self, name: str):
         self._options[name] = Option(name, "Button")
 
@@ -121,8 +119,8 @@ class Block:
         )
 
     def add_select_option(self, name: str, items: List[str], default: str = None):
-        val = default if default else (items[0] if items else None)
-        self._options[name] = Option(name, "Select", value=val, items=items)
+        value = default if default else (items[0] if items else None)
+        self._options[name] = Option(name, "Select", value=value, items=items)
 
     def add_text_option(self, name: str, default: str = ""):
         self._options[name] = Option(name, "Text", value=str(default))
@@ -134,37 +132,39 @@ class Block:
         self._options[name] = Option(name, "TextareaInput", value=str(default))
 
     def get_option(self, name: str) -> Any:
+        """Gets the value of an option."""
         opt = self._options.get(name)
         return opt.value if opt else None
 
     def set_option(self, name: str, value: Any):
+        """Sets the value of an option with validation."""
         opt = self._options.get(name)
         if not opt:
             return
 
-        # 3. 优化数值校验逻辑：使用 min/max 函数前先判断 None，避免 TypeError
         if opt.type in ("Integer", "Number", "Slider"):
-            if opt.min is not None and value < opt.min:
-                value = opt.min
-            if opt.max is not None and value > opt.max:
-                value = opt.max
+            if opt.min is not None:
+                value = max(value, opt.min)
+            if opt.max is not None:
+                value = min(value, opt.max)
+
         opt.value = value
 
     def reset(self):
-        """重置运行时状态"""
-        # 使用 fromkeys 快速重置字典值
-        self._inputs = dict.fromkeys(self._inputs, None)
-        self._outputs = dict.fromkeys(self._outputs, None)
+        """Resets inputs and outputs to None."""
+        self._inputs = {key: None for key in self._inputs}
+        self._outputs = {key: None for key in self._outputs}
 
     def on_compute(self, execution_id: str = None):
-        """子类覆盖此方法"""
+        """To be overridden by subclasses for computation logic."""
         pass
 
     async def async_on_compute(self, execution_id: str = None):
-        """异步执行接口"""
+        """Asynchronous wrapper for on_compute."""
         await asyncio.to_thread(self.on_compute, execution_id)
 
-    def export_config(self):
+    def export_config(self) -> Dict[str, Any]:
+        """Exports the block configuration."""
         return {
             "name": self.NAME,
             "category": self.CATEGORY,
@@ -173,52 +173,57 @@ class Block:
             "options": [opt.to_dict() for opt in self._options.values()],
         }
 
-
-# ==================== BaseBlock Optimization ====================
-
-
+# ==================== BaseBlock Class ====================
 class BaseBlock(Block):
+    """Extended block with logging, metrics, and file handling."""
+
     def __init__(self):
         super().__init__()
         self._logger = logging.getLogger(f"{logger.name}.{self.NAME}")
         self._compute_count = 0
         self._error_count = 0
         self._last_compute_time = 0.0
-        self._file_ids: Dict[str, str] = {}  # filename -> file_id for appendable files
-        self.event_bus = RuntimeEventBus()  # 使用单例 for emitting events
+        self._execution_files: Dict[Tuple[str, str], str] = {}  # (filename, execution_id) -> unique_filename
+        self._file_ids: Dict[Tuple[str, str], str] = {}  # (filename, execution_id) -> file_id
+        self.event_bus = RuntimeEventBus()  # Singleton for emitting events
 
     def _log_compute_start(self, execution_id: str = ""):
+        """Logs the start of computation."""
         self._last_compute_time = time.time()
         self._compute_count += 1
-        self._logger.debug(f"[{execution_id}] 开始计算 (第 {self._compute_count} 次)")
+        self._logger.debug(f"[{execution_id}] Starting computation (#{self._compute_count})")
 
     def _log_compute_end(self):
+        """Logs the end of computation with elapsed time."""
         elapsed = time.time() - self._last_compute_time
-        self._logger.debug(f"计算完成，耗时: {elapsed:.3f}s")
+        self._logger.debug(f"Computation completed in {elapsed:.3f}s")
 
     def _log_error(self, error: Exception, context: str = ""):
+        """Logs an error with context."""
         self._error_count += 1
         self._logger.error(
-            f"错误 (第 {self._error_count} 次): {context} - {error}", exc_info=True
+            f"Error (#{self._error_count}): {context} - {error}", exc_info=True
         )
 
     def _validate_input_data(self, data: Optional[Dict[str, Any]]) -> bool:
+        """Validates input data structure."""
         if data is None:
-            self._logger.warning("输入数据为空")
+            self._logger.warning("Input data is None")
             return False
         if "data" not in data:
-            self._logger.warning("输入数据缺少 'data' 字段")
+            self._logger.warning("Input data missing 'data' field")
             return False
         return True
 
     def safe_compute(self, execution_id: str = None) -> bool:
+        """Safely executes on_compute with logging."""
         self._log_compute_start(execution_id)
         try:
             self.on_compute(execution_id=execution_id)
             self._log_compute_end()
             return True
         except Exception as e:
-            self._log_error(e, "on_compute")
+            self._log_error(e, "in on_compute")
             return False
 
     def _write_file(
@@ -232,61 +237,62 @@ class BaseBlock(Block):
         mode: str = "w",  # 'w' or 'a'
     ) -> str:
         """
-        原子化执行：自动分目录 -> 路径唯一化/固定 -> 写入/追加 -> 系统注册/事件推送
+        Handles file writing/appending with unique naming, directory management,
+        and event emission. Returns the file_id.
         """
         try:
-            # 1. 生成时间标记
+            # Generate timestamps and unique suffix
             now = time.localtime()
-            date_dir = time.strftime("%Y%m%d", now)  # 文件夹名：20240520
-            timestamp = time.strftime("%H%M%S", now)  # 文件名时间戳：143005
-            unique_suffix = uuid.uuid4().hex[:8]  # 随机后缀
+            date_dir = time.strftime("%Y%m%d", now)
+            timestamp = time.strftime("%H%M%S", now)
+            unique_suffix = uuid.uuid4().hex[:8]
 
-            # 2. 构建路径
+            # Parse filename
             path_obj = Path(filename)
-            if unique:
-                # 唯一模式：生成新文件名
-                unique_filename = (
-                    f"{path_obj.stem}_{timestamp}_{unique_suffix}{path_obj.suffix}"
-                )
-                target_dir = settings.OUTPUT_DIR / date_dir
-                full_path = target_dir / unique_filename
-                relative_path = f"{date_dir}/{unique_filename}"
-                # 强制写模式
-                effective_mode = "w"
-            else:
-                # 固定模式：使用原文件名
-                unique_filename = filename
-                target_dir = settings.OUTPUT_DIR / date_dir
-                full_path = target_dir / unique_filename
-                relative_path = f"{date_dir}/{unique_filename}"
-                # 检查是否存在来决定是否创建新记录
-                file_exists = full_path.exists()
-                if mode == "a" and file_exists:
-                    effective_mode = "a"
-                else:
-                    effective_mode = "w"
+            target_dir = settings.OUTPUT_DIR / date_dir
 
-            # 确保父级目录存在
+            # Determine unique filename and mode
+            if unique:
+                unique_filename = f"{path_obj.stem}_{timestamp}_{unique_suffix}{path_obj.suffix}"
+                effective_mode = "w"
+                file_key = None
+            else:
+                file_key = (filename, execution_id or "_temp_")
+                exec_suffix = execution_id or unique_suffix
+                if file_key not in self._execution_files:
+                    unique_filename = f"{path_obj.stem}_{exec_suffix}_{timestamp}_{unique_suffix}{path_obj.suffix}"
+                    self._execution_files[file_key] = unique_filename
+                else:
+                    unique_filename = self._execution_files[file_key]
+
+                full_path = target_dir / unique_filename
+                effective_mode = "a" if mode == "a" and full_path.exists() else "w"
+
+            # Build full and relative paths
+            full_path = target_dir / unique_filename
+            relative_path = f"{date_dir}/{unique_filename}"
+
+            # Ensure directory exists
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # 3. 执行写入/追加回调
+            # Execute write/append
             write_func(full_path, effective_mode)
 
-            # 4. 获取文件状态 (Size)
+            # Get file size
             file_size = full_path.stat().st_size if full_path.exists() else 0
 
-            # 5. 处理注册或事件
+            # Determine file type
             file_type = settings.FILE_TYPE_MAP.get(full_path.suffix.lower(), "unknown")
-            file_id = self._file_ids.get(filename)  # 对于非唯一，尝试获取现有ID
 
-            if unique or file_id is None:
-                # 新文件：生成ID并注册
+            # Handle new file or append
+            if unique or (file_key and file_key not in self._file_ids):
+                # New file: Generate ID, register, and add to collector
                 file_id = f"{execution_id or 'temp'}_{unique_suffix}"
                 file_info = {
                     "file_id": file_id,
                     "execution_id": execution_id,
                     "filename": unique_filename,
-                    "relative_path": relative_path,  # 记录相对路径，方便迁移
+                    "relative_path": relative_path,
                     "file_path": str(full_path),
                     "file_type": file_type,
                     "file_size": file_size,
@@ -296,15 +302,12 @@ class BaseBlock(Block):
                     "metadata": metadata or {},
                     "original_name": filename,
                 }
-
-                # 推送至收集器（触发生成事件）
                 file_collector.add_file(execution_id, file_info)
-
                 if not unique:
-                    # 对于固定文件，存储ID以便后续追加
-                    self._file_ids[filename] = file_id
+                    self._file_ids[file_key] = file_id
             else:
-                # 追加：发送更新事件
+                # Append: Emit update event
+                file_id = self._file_ids[file_key]
                 asyncio.create_task(
                     self.event_bus.emit(
                         RuntimeEvent(
@@ -315,40 +318,37 @@ class BaseBlock(Block):
                             payload={
                                 "file_id": file_id,
                                 "action": "append",
-                                # 可以添加更多payload，如追加的内容摘要
                             },
                         )
                     )
                 )
 
             return file_id
-
         except Exception as e:
-            self._log_error(e, f"文件处理失败: {filename}")
+            self._log_error(e, f"File processing failed: {filename}")
             raise
-        
 
-# ==================== DebugBlock (用于流程中收集特定节点信息) ====================
+# ==================== DebugBlock Class ====================
 class DebugBlock(BaseBlock):
+    """Block for logging debug information."""
     NAME = "Debug Logger"
     CATEGORY = "Utilities"
     STREAMING = False
 
     def __init__(self):
         super().__init__()
-        self.add_input("data")  # 任意输入数据，用于触发
-        self.event_bus = RuntimeEventBus()  # 使用单例
+        self.add_input("data")  # Input to trigger logging
+        self.event_bus = RuntimeEventBus()  # Singleton
 
     async def async_on_compute(self, execution_id: str = None):
+        """Asynchronously logs input data and emits a debug event."""
         data = self.get_interface("data")
         log_msg = f"{data}"
-
-        # 推送事件到队列
         await self.event_bus.emit(
             RuntimeEvent(
                 execution_id,
                 RuntimeEventType.DEBUG,
-                self.instance_id,
+                self.NAME,  # Fixed: Use self.NAME instead of undefined instance_id
                 log_msg,
                 payload=data,
             )
