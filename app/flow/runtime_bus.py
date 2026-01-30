@@ -1,5 +1,5 @@
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 from typing import Any, Optional
 import asyncio
@@ -18,14 +18,14 @@ class RuntimeEventType(str, Enum):
     EXECUTION_COMPLETED = "execution_completed"
     EXECUTION_FAILED = "execution_failed"
 
-@dataclass
+@dataclass(frozen=True)  # 添加 frozen=True 使事件不可变，增强安全性
 class RuntimeEvent:
     execution_id: str
     type: RuntimeEventType
     source: str  # engine / block_id
     message: str
     payload: Optional[Any] = None
-    ts: float = time.time()
+    ts: float = field(default_factory=time.time)  # 使用 default_factory 确保每次实例化时生成新时间戳
 
 @singleton
 class RuntimeEventBus:

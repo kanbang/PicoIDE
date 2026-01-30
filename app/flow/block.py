@@ -289,7 +289,7 @@ class BaseBlock(Block):
             raise
 
 
-# ==================== DebugBlock (用于流程中收集特定节点信息，并推送事件) ====================
+# ==================== DebugBlock (用于流程中收集特定节点信息) ====================
 class DebugBlock(BaseBlock):
     NAME = "Debug Logger"
     CATEGORY = "Utilities"
@@ -302,7 +302,7 @@ class DebugBlock(BaseBlock):
 
     async def async_on_compute(self, execution_id: str = None):
         data = self.get_interface("data")
-        log_msg = f"Debug: Received data {data} at {time.time()}"
+        log_msg = f"{data}"
 
         # 推送事件到队列
         await self.event_bus.emit(
