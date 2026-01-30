@@ -42,6 +42,7 @@ import { BaklavaEditor, useBaklava, DEFAULT_TOOLBAR_COMMANDS } from "@baklavajs/
 import { defineComponent, defineEmits, defineProps, h, onMounted, onUnmounted, nextTick, ref, watch, markRaw, computed } from 'vue';
 import SaveIcon from '@/components/icons/Save.vue';
 import RunIcon from '@/components/icons/Run.vue';
+import StopIcon from '@/components/icons/Stop.vue';
 import { BuildBlock } from './BlockBuilder';
 import TestNode from './TestNode';
 import OutputPanel from './OutputPanel.vue';
@@ -61,6 +62,7 @@ const emit = defineEmits<{
   update: [flow: any];
   unsavedChanges: [hasChanges: boolean];
   run: [data: any];
+  stop: [executionId?: string];
 }>();
 
 // --- Baklava 核心 ---
@@ -82,6 +84,7 @@ const splitPaneRef = ref<any>(null); // 引用水平分割组件
 // --- 执行状态 ---
 const currentExecutionId = ref<string | undefined>(undefined);
 const consolePanelVisible = ref(false);
+const isRunning = ref(false);
 
 // --- SSE 连接管理 ---
 const isSSEConnecting = ref(false);
@@ -176,10 +179,6 @@ const SaveButtonIcon = markRaw(defineComponent({
   setup: () => () => h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' } }, [h(SaveIcon)])
 }));
 
-const RunButtonIcon = markRaw(defineComponent({
-  setup: () => () => h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' } }, [h(RunIcon)])
-}));
-
 const SeparatorIcon = markRaw(defineComponent({
   setup: () => () => h('div', { style: { width: '1px', height: '20px', background: '#555', margin: '0 4px' } })
 }));
@@ -210,8 +209,14 @@ function registerCustomCommands(): void {
   baklava.commandHandler.registerCommand(RUN_COMMAND_ID, {
     execute: () => {
       try {
-        const data = editor.save();
-        emit('run', data);
+        if (isRunning.value) {
+          // 运行中状态：发出停止事件
+          emit('stop', currentExecutionId.value);
+        } else {
+          // 未运行状态：发出运行事件
+          const data = editor.save();
+          emit('run', data);
+        }
       } catch (error) {
         console.error('运行失败:', error);
         emit('error', `运行失败: ${error}`);
@@ -225,7 +230,23 @@ function registerCustomCommands(): void {
 
   if (props.showRun) {
     commands.push({ command: 'SEPARATOR', title: "", icon: SeparatorIcon });
-    commands.push({ command: RUN_COMMAND_ID, title: "运行", icon: RunButtonIcon });
+    // 使用动态按钮，根据运行状态显示不同图标和标题
+    const RunStopButtonIcon = markRaw(defineComponent({
+      setup: () => () => h('div', {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          height: '100%'
+        }
+      }, [h(isRunning.value ? StopIcon : RunIcon, { isRunning: isRunning.value })])
+    }));
+    commands.push({
+      command: RUN_COMMAND_ID,
+      title: isRunning.value ? "停止" : "运行",
+      icon: RunStopButtonIcon
+    });
   }
 
   baklava.settings.toolbar.commands = commands;
@@ -345,6 +366,11 @@ onMounted(() => {
     if (newBlocks) updateBlocks(newBlocks);
   }, { deep: true });
 
+  watch(isRunning, () => {
+    // 运行状态改变时更新按钮
+    registerCustomCommands();
+  });
+
   loadFlow(props.flow ?? null);
   setupChangeDetection();
 });
@@ -391,6 +417,7 @@ function connectSSE(executionId: string) {
       eventSource.close();
       isSSEConnected.value = false;
       isSSEConnecting.value = false;
+      isRunning.value = false;
     });
 
     eventSource.onmessage = (event) => {
@@ -504,8 +531,18 @@ function setCurrentExecutionId(executionId: string | null) {
   if (executionId) {
     // 延迟连接，确保后端执行已开始
     consolePanelVisible.value = true;
+    isRunning.value = true;
     setTimeout(() => connectSSE(executionId), 500);
   } else {
+    disconnectSSE();
+  }
+}
+
+// --- 设置运行状态 ---
+function setRunning(running: boolean) {
+  isRunning.value = running;
+  if (!running) {
+    currentExecutionId.value = undefined;
     disconnectSSE();
   }
 }
@@ -530,10 +567,12 @@ defineExpose({
   hideConsolePanel,
   toggleConsolePanel,
   setCurrentExecutionId,
+  setRunning,
   consolePanelVisible,
   ssePanelVisible: consolePanelVisible, // 保持向后兼容
   currentExecutionId,
   isSSEConnected,
+  isRunning,
 });
 </script>
 

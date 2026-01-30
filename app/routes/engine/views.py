@@ -28,6 +28,7 @@ from routes.dependencies import get_business
 from flow.blocks_manager import blocks_registry
 from flow.run import (
     create_execution_id,
+    engine_manager,
     get_business_blocks_json,
     register_engine,
     run_business,
@@ -239,7 +240,7 @@ async def execute(
 
 
 @router.post("/sync-execute-saved", response_model=ExecuteResponse)
-async def execute_saved(
+async def sync_execute_saved(
     request: ExecuteSavedRequest, business: Annotated[str, Depends(get_business)]
 ):
     """
