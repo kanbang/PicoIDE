@@ -1196,10 +1196,11 @@ async def stream_events(exec_id: str, request: Request):
         try:
             async for event in bus.subscribe(exec_id):
                 yield f"data: {json.dumps(asdict(event))}\n\n"
-                # 执行完成或失败时，发送结束标识并结束流
+                # 执行完成、失败或停止时，发送结束标识并结束流
                 if event.type in (
                     RuntimeEventType.EXECUTION_COMPLETED,
                     RuntimeEventType.EXECUTION_FAILED,
+                    RuntimeEventType.EXECUTION_STOPPED,
                 ):
                     yield "event: end\ndata: {}\n\n"
                     break

@@ -17,6 +17,7 @@ class RuntimeEventType(str, Enum):
     # 引擎状态
     EXECUTION_COMPLETED = "execution_completed"
     EXECUTION_FAILED = "execution_failed"
+    EXECUTION_STOPPED = "execution_stopped"  # 用户手动停止
 
 @dataclass(frozen=True)  # 添加 frozen=True 使事件不可变，增强安全性
 class RuntimeEvent:

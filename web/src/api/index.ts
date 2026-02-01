@@ -6,22 +6,7 @@
  * @LastEditors: zhai
  * @LastEditTime: 2026-01-19 19:36:56
  */
-/*
- * @Descripttion: 
- * @version: 0.x
- * @Author: zhai
- * @Date: 2026-01-12 19:53:48
- * @LastEditors: zhai
- * @LastEditTime: 2026-01-12 20:27:30
- */
-/*
- * @Descripttion: 
- * @version: 0.x
- * @Author: zhai
- * @Date: 2026-01-12 19:53:48
- * @LastEditors: zhai
- * @LastEditTime: 2026-01-12 20:18:28
- */
+
 /**
  * API 统一导出
  */
@@ -30,12 +15,13 @@
 export { api } from './request';
 
 // 导出 blocks 相关 API
-export { 
-  getBlocks, 
-  executeBlocks, 
+export {
+  getBlocks,
+  executeBlocks,
   executeSavedFlow,
   getFlowExecutions,
-  getExecutionOutputs
+  getExecutionOutputs,
+  stopExecution
 } from './execute';
 export type { 
   ExecuteRequest, 

@@ -38,6 +38,8 @@ class ComputeEngine:
         self._shutdown_event = asyncio.Event()
         # 记录执行开始时间，用于计算 duration
         self._execution_start_time: Optional[float] = None
+        # 当前执行的ID，用于发送停止事件
+        self._current_execution_id: Optional[str] = None
 
     # --- 1. 配置与编译阶段 ---
 
@@ -244,6 +246,7 @@ class ComputeEngine:
             return
 
         self.status = EngineStatus.RUNNING
+        self._current_execution_id = execution_id
         self._execution_start_time = time.time()
         self._shutdown_event.clear()
 
@@ -264,6 +267,7 @@ class ComputeEngine:
             self.logger.error("No source nodes found in flow!")
             self.status = EngineStatus.IDLE
             self._execution_start_time = None
+            self._current_execution_id = None
             await self.event_bus.emit(
                 RuntimeEvent(
                     execution_id,
@@ -329,6 +333,21 @@ class ComputeEngine:
         self.status = EngineStatus.STOPPING
         self._shutdown_event.set()
 
+        # 发送停止事件
+        if self._current_execution_id:
+            duration = None
+            if self._execution_start_time:
+                duration = time.time() - self._execution_start_time
+            await self.event_bus.emit(
+                RuntimeEvent(
+                    self._current_execution_id,
+                    RuntimeEventType.EXECUTION_STOPPED,
+                    "engine",
+                    "Execution stopped by user",
+                    payload={"duration": duration} if duration is not None else None
+                )
+            )
+
         if self._running_tasks:
             self.logger.info(f"Cancelling {len(self._running_tasks)} tasks...")
             for task in list(self._running_tasks):
@@ -340,4 +359,7 @@ class ComputeEngine:
 
         self._ready_ports.clear()
         self.status = EngineStatus.IDLE
+        # 清空执行相关状态
+        self._current_execution_id = None
+        self._execution_start_time = None
         self.logger.info("Engine stopped.")

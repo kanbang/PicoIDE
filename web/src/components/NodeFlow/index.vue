@@ -65,6 +65,7 @@ const emit = defineEmits<{
   unsavedChanges: [hasChanges: boolean];
   run: [data: any];
   stop: [executionId?: string];
+  executionEnded: [executionId: string];
 }>();
 
 // --- Baklava 核心 ---
@@ -418,6 +419,10 @@ function connectSSE(executionId: string) {
       isSSEConnected.value = false;
       isSSEConnecting.value = false;
       isRunning.value = false;
+      // 发出执行结束事件
+      if (currentExecutionId.value) {
+        emit('executionEnded', currentExecutionId.value);
+      }
     });
 
     eventSource.onmessage = (event) => {

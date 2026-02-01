@@ -3,7 +3,7 @@ import { ref, watch, computed, nextTick } from 'vue';
 import NodeFlow from '../NodeFlow/index.vue';
 import Modal from '../common/Modal.vue';
 import SplitPane from '../common/Splitter.vue';
-import FlowList, { FlowItem } from './FlowListPanel.vue'; // 引入新组件
+import FlowList, { type FlowItem } from './FlowListPanel.vue'; // 引入新组件
 
 // Props
 interface Props {
@@ -28,6 +28,7 @@ const emit = defineEmits<{
   duplicate: [id: string, newFlow: FlowItem];
   run: [id: string, data: any];
   stop: [executionId?: string];
+  executionEnded: [executionId: string];
 }>();
 
 // --- 状态控制 (Modal 等) ---
@@ -56,7 +57,10 @@ watch(flows, () => {
     return;
   }
   if (!selectedFlowId.value || !flows.value.some(s => s.id === selectedFlowId.value)) {
-    doSelectFlow(flows.value[0].id);
+    const firstFlow = flows.value[0];
+    if (firstFlow) {
+      doSelectFlow(firstFlow.id);
+    }
   }
 }, { deep: true, immediate: true });
 
@@ -204,7 +208,10 @@ function confirmDelete() {
       if (oldIndex >= flows.value.length) {
         newIndex = flows.value.length - 1;
       }
-      doSelectFlow(flows.value[newIndex].id);
+      const flowToSelect = flows.value[newIndex];
+      if (flowToSelect) {
+        doSelectFlow(flowToSelect.id);
+      }
     }
   });
 
@@ -271,6 +278,10 @@ function handleStop(executionId?: string) {
   emit('stop', executionId);
 }
 
+function handleExecutionEnded(executionId: string) {
+  emit('executionEnded', executionId);
+}
+
 defineExpose({ nodeFlowRef });
 </script>
 
@@ -298,8 +309,8 @@ defineExpose({ nodeFlowRef });
 
       <template #2>
         <div class="flow-editor">
-          <NodeFlow v-if="hasSelectedFlow" ref="nodeFlowRef" :blocks="props.blocks" :show-run="props.showRun" :flowId="selectedFlowId"
-            @update="handleUpdate" @unsavedChanges="handleUnsavedChanges" @save="handleSave" @run="handleRun" @stop="handleStop" />
+          <NodeFlow v-if="hasSelectedFlow" ref="nodeFlowRef" :blocks="props.blocks" :show-run="props.showRun" :flowId="selectedFlowId || undefined"
+            @update="handleUpdate" @unsavedChanges="handleUnsavedChanges" @save="handleSave" @run="handleRun" @stop="handleStop" @executionEnded="handleExecutionEnded" />
 
           <div v-if="!hasSelectedFlow" class="empty-editor-full">
             <div class="empty-message">

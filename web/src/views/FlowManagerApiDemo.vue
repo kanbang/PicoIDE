@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue';
 import FlowManager, { FlowItem } from '@/components/FlowManager/index.vue';
 import {
   getBlocks, getFlows, createFlow, updateFlow,
-  deleteFlow, duplicateFlow, executeBlocks, executeSavedFlow,
+  deleteFlow, duplicateFlow, executeBlocks, executeSavedFlow, stopExecution,
   FlowItem as ApiFlowItem
 } from '@/api/index';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
@@ -12,6 +12,7 @@ import { showSuccess, showError, showInfo } from '@/utils/toast';
 const blocks = ref<any[]>([]);
 const flows = ref<ApiFlowItem[]>([]);
 const selectedFlowId = ref<string | null>(null);
+const currentExecutionId = ref<string | null>(null);
 
 // 引用 FlowManager 实例
 const flowManagerRef = ref<InstanceType<typeof FlowManager> | null>(null);
@@ -147,6 +148,7 @@ async function handleRun(id: string, flow: any) {
     // 6. 设置 SSE 面板的 execution_id（开始接收流式日志）
     if (result.execution_id) {
       nodeFlowInstance.setCurrentExecutionId(result.execution_id);
+      currentExecutionId.value = result.execution_id;
     }
 
     // 7. 更新输出面板结果
@@ -168,6 +170,53 @@ async function handleRun(id: string, flow: any) {
       outputPanel.setErrors([error?.message || String(error)]);
     }
     showError('执行失败: ' + (error?.message || '未知错误'));
+
+    // 清空当前执行 ID
+    currentExecutionId.value = null;
+  }
+}
+
+// --- 停止执行逻辑 ---
+async function handleStop(executionId?: string) {
+  try {
+    const idToStop = executionId || currentExecutionId.value;
+    if (!idToStop) {
+      showError('没有正在执行的流程可停止');
+      return;
+    }
+
+    console.log('停止执行:', idToStop);
+
+    // 调用 API 停止执行
+    const result = await stopExecution(idToStop);
+
+    if (result.ok) {
+      showInfo('已发送停止请求');
+
+      // 更新输出面板状态
+      const nodeFlowInstance = flowManagerRef.value?.nodeFlowRef;
+      const outputPanel = nodeFlowInstance?.outputPanelRef;
+      if (outputPanel) {
+        outputPanel.setExecutionStatus('stopping');
+      }
+
+      // 清空当前执行 ID
+      currentExecutionId.value = null;
+    } else {
+      showError('停止执行失败');
+    }
+  } catch (error: any) {
+    console.error('停止执行失败:', error);
+    showError('停止执行失败: ' + (error?.message || '未知错误'));
+  }
+}
+
+// --- 执行结束事件处理 ---
+function handleExecutionEnded(executionId: string) {
+  console.log('执行结束:', executionId);
+  // 只有当结束的执行是当前正在执行的时才清空 currentExecutionId
+  if (currentExecutionId.value === executionId) {
+    currentExecutionId.value = null;
   }
 }
 
@@ -181,7 +230,7 @@ onMounted(() => {
 <template>
   <div class="manager-page-wrapper">
     <FlowManager ref="flowManagerRef" v-model:flows="flows" v-model:selected-flow-id="selectedFlowId"
-      :blocks="blocks" :show-run="true" @run="handleRun" @create="handleCreate" @save="handleSave"
+      :blocks="blocks" :show-run="true" @run="handleRun" @stop="handleStop" @executionEnded="handleExecutionEnded" @create="handleCreate" @save="handleSave"
       @delete="handleDelete" @rename="handleRename" @duplicate="handleDuplicate" />
   </div>
 </template>

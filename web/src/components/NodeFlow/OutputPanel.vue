@@ -30,7 +30,7 @@ const emit = defineEmits<{
 
 // 状态
 const activeTab = ref<'output' | 'history'>('output');
-const executionStatus = ref<'running' | 'completed' | 'failed' | null>(null);
+const executionStatus = ref<'running' | 'completed' | 'failed' | 'stopping' | 'stopped' | null>(null);
 const executionDuration = ref<number>(0);
 const outputFiles = ref<OutputFile[]>([]);
 const errors = ref<string[]>([]);
@@ -224,7 +224,7 @@ function showConfirm(message: string, title: string = '确认'): Promise<boolean
 
 // 暴露方法供父组件调用
 defineExpose({
-  setExecutionStatus: (status: 'running' | 'completed' | 'failed', duration?: number) => {
+  setExecutionStatus: (status: 'running' | 'completed' | 'failed' | 'stopping' | 'stopped', duration?: number) => {
     executionStatus.value = status;
     if (duration !== undefined) {
       executionDuration.value = duration;
@@ -280,6 +280,20 @@ defineExpose({
       }
       executionStartTime = null;
       errors.value = [...errors.value, eventData.message || '执行失败'];
+      show();
+      return;
+    }
+
+    // 处理执行停止事件
+    if (eventData.type === 'execution_stopped') {
+      executionStatus.value = 'stopped';
+      // 使用后端的 ts 计算耗时
+      if (eventData.payload?.duration !== undefined) {
+        executionDuration.value = eventData.payload.duration;
+      } else if (eventData.ts && executionStartTime !== null) {
+        executionDuration.value = eventData.ts - executionStartTime;
+      }
+      executionStartTime = null;
       show();
       return;
     }
