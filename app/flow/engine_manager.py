@@ -1,36 +1,20 @@
 import hashlib
 import json
 import asyncio
-import copy
 import threading
-from collections import deque
 from typing import Dict, List, Any, Optional, Type
 from cachetools import LRUCache
-from flow.block import Block
-from flow.engine import ComputeEngine
-from utils.singleton import singleton
-
+from flow.block import Block  # 假设这是你的自定义模块
+from flow.engine import ComputeEngine  # 假设这是你的自定义模块
+from utils.singleton import singleton  # 假设这是你的单例工具
 
 @singleton
 class EngineManager:
-    def __init__(self, pool_size: int = 10, blueprint_size: int = 100):
-        # 1. 静态资源：业务对应的 Block 模板类
+    def __init__(self, precompiled_size: int = 100):
         self._block_libraries: Dict[str, list[Type[Block]]] = {}
-
-        # 2. 核心缓存：预编译蓝图 (LRU)
-        self._blueprints = LRUCache(maxsize=blueprint_size)
-
-        # 3. 实例池：{ flow_hash: deque([ComputeEngine]) }
-        self._instance_pools: Dict[str, deque] = {}
-        self._pool_max = pool_size
-
-        # 4. 双重锁机制
-        # 线程锁保护同步操作（线程安全）
+        self._precompiled_engines = LRUCache(maxsize=precompiled_size)
         self._lock = threading.Lock()
-        # 异步锁保护蓝图初始化逻辑（协程安全，防止惊群效应）
         self._async_lock = asyncio.Lock()
-
-        # 5. 运行执行追踪 {execution_id: {'task': asyncio.Task, 'business': str, 'user_id': str}}
         self._running_executions: Dict[str, Dict[str, Any]] = {}
 
     def register_business(self, business_id: str, blocks: list[Type[Block]]):
@@ -38,174 +22,150 @@ class EngineManager:
             self._block_libraries[business_id] = blocks
 
     def _get_hash(self, business_id: str, flow: Dict) -> str:
-        # 进行排序序列化
+        if not flow:
+            raise ValueError("Flow cannot be empty.")
         s_str = json.dumps(flow, sort_keys=True)
         return hashlib.md5(f"{business_id}:{s_str}".encode()).hexdigest()
 
-    # --- 异步接口层 ---
-    async def acquire(self, business_id: str, flow: Dict) -> "ScopedEngine":
-        s_hash = self._get_hash(business_id, flow)
-
-        # 1. 异步检查蓝图是否存在（非阻塞快速路径）
-        if s_hash not in self._blueprints:
+    async def _ensure_precompiled_async(self, business_id: str, flow: Dict, s_hash: str):
+        if s_hash not in self._precompiled_engines:
             async with self._async_lock:
-                # Double-Check 避免并发请求重复编译
-                if s_hash not in self._blueprints:
-                    self._create_blueprint_internal(business_id, flow, s_hash)
+                if s_hash not in self._precompiled_engines:
+                    self._create_precompiled_internal(business_id, flow, s_hash)
 
-        return ScopedEngine(self, business_id, flow, s_hash)
-
-    # --- 同步接口层 ---
-    def acquire_sync(self, business_id: str, flow: Dict) -> "ScopedEngineSync":
-        s_hash = self._get_hash(business_id, flow)
-
-        # 同步环境下直接检查并创建蓝图
-        if s_hash not in self._blueprints:
+    def _ensure_precompiled_sync(self, business_id: str, flow: Dict, s_hash: str):
+        if s_hash not in self._precompiled_engines:
             with self._lock:
-                if s_hash not in self._blueprints:
-                    self._create_blueprint_internal(business_id, flow, s_hash)
+                if s_hash not in self._precompiled_engines:
+                    self._create_precompiled_internal(business_id, flow, s_hash)
 
-        return ScopedEngineSync(self, business_id, flow, s_hash)
+    async def acquire(self, business_id: str, flow: Dict) -> ComputeEngine:
+        s_hash = self._get_hash(business_id, flow)
+        await self._ensure_precompiled_async(business_id, flow, s_hash)
+        return self._precompiled_engines[s_hash]
 
-    # 注册运行执行
-    def register_execution(
-        self, execution_id: str, task: asyncio.Task, business: str, user_id: str
-    ):
+    def acquire_sync(self, business_id: str, flow: Dict) -> ComputeEngine:
+        s_hash = self._get_hash(business_id, flow)
+        self._ensure_precompiled_sync(business_id, flow, s_hash)
+        return self._precompiled_engines[s_hash]
+
+    def register_execution(self, execution_id: str, task: asyncio.Task, engine: ComputeEngine, business: str, user_id: str):
         with self._lock:
             self._running_executions[execution_id] = {
                 "task": task,
+                "engine": engine,
                 "business": business,
                 "user_id": user_id,
             }
 
-    # 移除执行（任务完成或取消时调用）
     def remove_execution(self, execution_id: str):
         with self._lock:
             if execution_id in self._running_executions:
                 del self._running_executions[execution_id]
 
-    # 获取运行中的执行（可按 business 过滤）
     def get_running_executions(self, business: Optional[str] = None) -> List[str]:
         with self._lock:
             if business:
-                return [
-                    ex_id
-                    for ex_id, info in self._running_executions.items()
-                    if info["business"].upper() == business.upper()
-                ]
+                return [ex_id for ex_id, info in self._running_executions.items() if info["business"].upper() == business.upper()]
             return list(self._running_executions.keys())
 
-    # 停止执行（取消任务）
-    def stop_execution(self, execution_id: str, business: Optional[str] = None) -> bool:
+    async def stop_execution(self, execution_id: str, business: Optional[str] = None) -> bool:
         with self._lock:
             if execution_id not in self._running_executions:
                 return False
             info = self._running_executions[execution_id]
             if business and info["business"].upper() != business.upper():
                 return False
+            await info["engine"].stop_execution(execution_id)
             info["task"].cancel()
             return True
 
-    # --- 核心逻辑私有化 ---
-    def _create_blueprint_internal(self, biz_id: str, flow: Dict, s_hash: str):
-        """严谨的编译流程：创建蓝图并初始化池"""
+    def _create_precompiled_internal(self, biz_id: str, flow: Dict, s_hash: str):
         if biz_id not in self._block_libraries:
             raise ValueError(f"Business {biz_id} not registered.")
+        engine = ComputeEngine()
+        engine.set_blocks(self._block_libraries[biz_id])
+        engine.set_flow(flow)
+        self._precompiled_engines[s_hash] = engine
 
-        bp = ComputeEngine()
-        bp.set_blocks(self._block_libraries[biz_id])
-        # 拓扑排序与环路检测在此处一次性完成
-        bp.set_flow(flow)
+    async def start_execution(self, business_id: str, flow: Dict, execution_id: str, user_id: str):
+        engine = await self.acquire(business_id, flow)
+        await engine.run(execution_id)
+        execution = engine.executions.get(execution_id)
+        if execution:
+            wait_task = asyncio.create_task(execution.shutdown_event.wait())
+            self.register_execution(execution_id, wait_task, engine, business_id, user_id)
+            wait_task.add_done_callback(lambda t: self.remove_execution(execution_id))
 
-        self._blueprints[s_hash] = bp
-        self._instance_pools[s_hash] = deque()
+    def start_execution_sync(self, business_id: str, flow: Dict, execution_id: str, user_id: str):
+        engine = self.acquire_sync(business_id, flow)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        loop.run_until_complete(engine.run(execution_id))
+        execution = engine.executions.get(execution_id)
+        if execution:
+            wait_task = loop.create_task(execution.shutdown_event.wait())
+            self.register_execution(execution_id, wait_task, engine, business_id, user_id)
+            wait_task.add_done_callback(lambda t: self.remove_execution(execution_id))
 
-    def _get_instance(self, s_hash: str) -> "ComputeEngine":
-        """从池中弹出实例或从蓝图克隆"""
-        with self._lock:
-            pool = self._instance_pools[s_hash]
-            if pool:
-                return pool.popleft()
-            # 池空时创建新实例（不能deepcopy因为包含asyncio队列）
-            blueprint = self._blueprints[s_hash]
-            new_engine = ComputeEngine(logger=blueprint.logger)
-            new_engine.event_bus = blueprint.event_bus
-            new_engine.status = blueprint.status
-            new_engine.block_registry = blueprint.block_registry.copy()
-            new_engine.instances = blueprint.instances.copy()
-            new_engine._graph = blueprint._graph.copy()
-            new_engine._node_locks = blueprint._node_locks.copy()
-            new_engine._ready_ports = blueprint._ready_ports.copy()
-            new_engine._running_tasks = blueprint._running_tasks.copy()
-            new_engine._shutdown_event = blueprint._shutdown_event
-            return new_engine
+    async def run_existing(self, engine: ComputeEngine, business_id: str, execution_id: str, user_id: str):
+        if not hasattr(engine, 'run'):
+            raise ValueError("Invalid engine instance.")
+        await engine.run(execution_id)
+        execution = engine.executions.get(execution_id)
+        if execution:
+            wait_task = asyncio.create_task(execution.shutdown_event.wait())
+            self.register_execution(execution_id, wait_task, engine, business_id, user_id)
+            wait_task.add_done_callback(lambda t: self.remove_execution(execution_id))
 
-    def _return_instance(self, s_hash: str, engine: "ComputeEngine"):
-        """归还实例前重置数据，并入池"""
-        for inst in engine.instances.values():
-            inst.reset()
+    def run_existing_sync(self, engine: ComputeEngine, business_id: str, execution_id: str, user_id: str):
+        if not hasattr(engine, 'run'):
+            raise ValueError("Invalid engine instance.")
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        loop.run_until_complete(engine.run(execution_id))
+        execution = engine.executions.get(execution_id)
+        if execution:
+            wait_task = loop.create_task(execution.shutdown_event.wait())
+            self.register_execution(execution_id, wait_task, engine, business_id, user_id)
+            wait_task.add_done_callback(lambda t: self.remove_execution(execution_id))
 
-        with self._lock:
-            pool = self._instance_pools.get(s_hash)
-            if pool is not None and len(pool) < self._pool_max:
-                pool.append(engine)
+    # 新增简便函数：异步启动执行（简化接口，直接启动，无需手动获取 engine）
+    async def simple_start_execution(self, business_id: str, flow: Dict, execution_id: str = "default_exec", user_id: str = "default_user"):
+        await self.start_execution(business_id, flow, execution_id, user_id)
 
+    # 新增简便函数：同步启动执行（简化接口，直接启动，无需手动获取 engine）
+    def simple_start_execution_sync(self, business_id: str, flow: Dict, execution_id: str = "default_exec", user_id: str = "default_user"):
+        self.start_execution_sync(business_id, flow, execution_id, user_id)
 
-# ==========================================
-# 5. 上下文管理器封装（严谨资源回收）
-# ==========================================
+# 使用示例（假设 engine_manager 是 EngineManager 实例）
+# 1. 注册业务
+# engine_manager.register_business("vibration_analysis", [BlockType1, BlockType2])  # 替换为实际 Block 类型
 
+# 2. 预编译并获取 engine（可选，如果使用 start_execution 会自动预编译）
+# engine = await engine_manager.acquire("vibration_analysis", {"key": "flow_data"})
 
-class ScopedEngine:
-    """异步上下文管理器"""
+# 3. 使用简便函数启动执行（异步）
+# await engine_manager.simple_start_execution("vibration_analysis", {"key": "flow_data"}, "exec_001", "user_001")
 
-    def __init__(self, mgr: EngineManager, biz_id: str, flow: Dict, s_hash: str):
-        self.mgr, self.biz_id, self.flow, self.s_hash = mgr, biz_id, flow, s_hash
-        self.engine: Optional[ComputeEngine] = None
+# 4. 使用简便函数启动执行（同步）
+# engine_manager.simple_start_execution_sync("vibration_analysis", {"key": "flow_data"}, "exec_002", "user_002")
 
-    async def __aenter__(self) -> "ComputeEngine":
-        self.engine = self.mgr._get_instance(self.s_hash)
-        return self.engine
+# 5. 运行现有 engine（异步）
+# await engine_manager.run_existing(engine, "vibration_analysis", "new_exec_003", "user_003")
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        self.mgr._return_instance(self.s_hash, self.engine)
+# 6. 运行现有 engine（同步）
+# engine_manager.run_existing_sync(engine, "vibration_analysis", "new_exec_004", "user_004")
 
+# 7. 停止执行
+# await engine_manager.stop_execution("exec_001")
 
-class ScopedEngineSync:
-    """同步上下文管理器"""
-
-    def __init__(self, mgr: EngineManager, biz_id: str, flow: Dict, s_hash: str):
-        self.mgr, self.biz_id, self.flow, self.s_hash = mgr, biz_id, flow, s_hash
-        self.engine: Optional[ComputeEngine] = None
-
-    def __enter__(self) -> "ComputeEngine":
-        self.engine = self.mgr._get_instance(self.s_hash)
-        return self.engine
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.mgr._return_instance(self.s_hash, self.engine)
-
-
-# # 示例使用场景
-
-# async def analyze_vibration(flow: dict = Body(...)):
-#     """
-#     在高并发下，相同的 flow 会从 Object Pool 中 O(1) 获取实例。
-#     """
-
-#     # 1. 异步获取引擎（内置蓝图编译检查、惊群保护、对象池复用）
-#     async with await engine_manager.acquire("vibration_analysis", flow) as engine:
-#         # 2. 执行高性能计算
-#         # 虽然 compute 是同步的，但管理器支持在协程中安全运行
-#         await engine.async_run()
-
-
-# def worker_task(flow_data):
-#     """
-#     同步 Worker 任务。
-#     使用 acquire_sync 确保在多线程环境下对池的访问是原子性的。
-#     """
-#     # 1. 同步方式借出引擎
-#     with engine_manager.acquire_sync("vibration_analysis", flow_data) as engine:
-#         # 2. 执行计算
-#         engine.run()
+# 8. 获取运行中执行
+# running = engine_manager.get_running_executions("vibration_analysis")
+# print(running)
