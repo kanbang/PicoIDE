@@ -28,7 +28,6 @@ from routes.dependencies import get_business
 from flow.blocks_manager import blocks_registry
 from flow.run import (
     create_execution_id,
-    engine_manager,
     get_business_blocks_json,
     register_engine,
     run_business,
@@ -42,12 +41,14 @@ from flow.setting import settings
 from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
 from fastapi.responses import StreamingResponse
 import json
+from flow.engine_manager import EngineManager, async_stop_flow, get_running_flows, async_acquire_flow, async_run_existing_engine
 
 logger = logging.getLogger(__name__)
 
 USER_ID = "default"
 
 router = APIRouter(prefix="/api/engine", tags=["engine"])
+engine_manager = EngineManager()
 
 
 async def load_scripts_from_db(directory: str, business: str) -> List[str]:
@@ -145,7 +146,7 @@ async def execute(
         scripts.extend(scripts_db)
 
         # 3. 注册业务对应的 Block 模板（包含静态和动态 blocks）
-        register_engine(business.upper(), scripts)
+        await register_engine(business.upper(), scripts)
 
         # 4. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
@@ -177,7 +178,7 @@ async def execute(
         # 8. 执行 flow（传递 execution_id 和 business）
         try:
             result = await run_business(
-                business.upper(), flow.model_dump(by_alias=True), execution_id
+                business.upper(), flow.model_dump(by_alias=True), execution_id, USER_ID
             )
 
             # 收集输出文件
@@ -284,7 +285,7 @@ async def sync_execute_saved(
         logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
 
         # 4. 注册业务对应的 Block 模板（包含静态和动态 blocks）
-        register_engine(business.upper(), scripts)
+        await register_engine(business.upper(), scripts)
 
         # 5. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
@@ -327,7 +328,7 @@ async def sync_execute_saved(
 
         # 9. 执行 flow（传递 execution_id 和 business）
         try:
-            result = await run_business(business.upper(), graph, execution_id)
+            result = await run_business(business.upper(), graph, execution_id, USER_ID)
 
             # 收集输出文件
             # 根据配置决定从数据库还是收集器获取
@@ -435,7 +436,7 @@ async def execute_saved(
         logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
 
         # 4. 注册业务对应的 Block 模板（包含静态和动态 blocks）
-        register_engine(business.upper(), scripts)
+        await register_engine(business.upper(), scripts)
 
         # 5. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
@@ -479,7 +480,7 @@ async def execute_saved(
             start_time = time.time()
             try:
                 # 执行 flow（传递 execution_id 和 business）
-                result = await run_business(business.upper(), graph, execution_id)
+                result = await run_business(business.upper(), graph, execution_id, USER_ID)
 
                 # 收集输出文件
                 # 根据配置决定从数据库还是收集器获取
@@ -515,14 +516,14 @@ async def execute_saved(
                 logger.error(f"后台执行失败: {str(e)}", exc_info=True)
 
             finally:
-                engine_manager.remove_execution(execution_id)  # 自动移除
+                await engine_manager.remove_execution(execution_id)  # 自动移除
 
         # 启动后台任务，不等待完成
         background_task = asyncio.create_task(_execute_background())
 
         # 注册到 EngineManager
-        engine_manager.register_execution(
-            execution_id, background_task, business, USER_ID
+        await engine_manager.register_execution(
+            execution_id, background_task, engine_manager, business, USER_ID
         )
 
         # 9. 立即返回 execution_id，让前端可以立即订阅 SSE
@@ -555,7 +556,7 @@ async def execute_saved(
 
 @router.get("/running", response_model=Dict[str, Any])
 async def get_running_executions(business: Annotated[str, Depends(get_business)]):
-    running_ids = engine_manager.get_running_executions(business)
+    running_ids = await get_running_flows(business)
     return {"ok": True, "running_executions": running_ids, "count": len(running_ids)}
 
 
@@ -567,7 +568,7 @@ async def stop_execution(
     if not execution_id:
         raise HTTPException(400, "Missing execution_id")
 
-    if not engine_manager.stop_execution(execution_id, business):
+    if not await async_stop_flow(execution_id, business):
         raise HTTPException(
             404,
             f"Execution {execution_id} not found, not running, or not belonging to this business",
@@ -670,10 +671,11 @@ async def get_output_file(file_id: str):
     """
     try:
         # 先尝试从数据库获取文件信息
-        file_info = await output_file_manager.get_file_info(file_id)
+        if settings.ENABLE_DB_WRITE:
+            file_info = await output_file_manager.get_file_info(file_id)
 
         # 如果数据库中没有，尝试从收集器获取（轻量化模式）
-        if not file_info and not settings.ENABLE_DB_WRITE:
+        if not file_info:
             # 从 file_id 提取 execution_id
             # file_id 格式: {execution_id}_{random}
             parts = file_id.rsplit("_", 1)
@@ -983,7 +985,6 @@ async def get_execution_outputs(
     获取执行的所有输出文件
     """
     try:
-        # 验证执行是否存在
         from db import Execution
 
         logger.info(f"get_execution_outputs - 查询执行ID: {execution_id}")

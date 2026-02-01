@@ -11,7 +11,7 @@ from flow.demo_blocks import DEMO_BLOCKS
 from db import Output
 from flow.engine import ComputeEngine
 from flow.block import Block, BaseBlock
-from flow.engine_manager import EngineManager
+from flow.engine_manager import EngineManager, async_start_flow, register_business_blocks
 from flow.blocks_manager import blocks_registry
 from typing import Any, List
 from flow.output import output_file_manager
@@ -40,10 +40,8 @@ def get_business_blocks_json(business: str, scripts: List[str] = None):
     all_blocks = blocks_registry.get_blocks_with_scripts(business, scripts)
     return [b().export_config() for b in all_blocks]
 
-engine_manager = EngineManager(pool_size=5)
 
-
-def register_engine(business: str, scripts: List[str] = None):
+async def register_engine(business: str, scripts: List[str] = None):
     """
     注册业务对应的 Block 模板
 
@@ -54,7 +52,7 @@ def register_engine(business: str, scripts: List[str] = None):
     """
     # 使用 BlocksRegistry 获取静态和动态 blocks
     all_blocks = blocks_registry.get_blocks_with_scripts(business, scripts)
-    engine_manager.register_business(business, all_blocks)
+    await register_business_blocks(business, all_blocks)
 
 
 def create_execution_id() -> str:
@@ -68,7 +66,7 @@ def create_execution_id() -> str:
     return execution_id
 
 
-async def run_business(business: str, flow: dict, execution_id: str = None):
+async def run_business(business: str, flow: dict, execution_id: str = None, user_id: str = "default"):
     """
     执行 flow
 
@@ -83,16 +81,8 @@ async def run_business(business: str, flow: dict, execution_id: str = None):
     if execution_id is None:
         execution_id = create_execution_id()
 
-    async with await engine_manager.acquire(business, flow) as engine:
-        await engine.run(execution_id)
+    await async_start_flow(business, flow, execution_id, user_id)
 
-    # 执行流程，传递 execution_id（使用异步执行）
-    # async with await engine_manager.acquire(business, flow) as engine:
-    #     await engine.async_run(execution_id)
-
-    # 使用同步执行版本
-    # with engine_manager.acquire_sync(business, flow) as engine:
-    #     engine.run(execution_id)
 
     # 执行完成后，批量将文件信息写入数据库
     await _batch_save_outputs(execution_id)
@@ -149,4 +139,4 @@ async def _batch_save_outputs(execution_id: str):
 
 
 # 注册业务：Demo（包含所有内置节点）
-# register_engine("DEMO", [])
+# register_engine("DEMO", [])  # 示例调用需在异步上下文中使用 await register_engine("DEMO", [])
