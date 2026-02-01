@@ -27,6 +27,7 @@ const emit = defineEmits<{
   rename: [id: string, newName: string];
   duplicate: [id: string, newFlow: FlowItem];
   run: [id: string, data: any];
+  stop: [executionId?: string];
 }>();
 
 // --- 状态控制 (Modal 等) ---
@@ -266,6 +267,10 @@ function handleRun(data: any) {
   emit('run', selectedFlowId.value, data);
 }
 
+function handleStop(executionId?: string) {
+  emit('stop', executionId);
+}
+
 defineExpose({ nodeFlowRef });
 </script>
 
@@ -294,7 +299,7 @@ defineExpose({ nodeFlowRef });
       <template #2>
         <div class="flow-editor">
           <NodeFlow v-if="hasSelectedFlow" ref="nodeFlowRef" :blocks="props.blocks" :show-run="props.showRun" :flowId="selectedFlowId"
-            @update="handleUpdate" @unsavedChanges="handleUnsavedChanges" @save="handleSave" @run="handleRun" />
+            @update="handleUpdate" @unsavedChanges="handleUnsavedChanges" @save="handleSave" @run="handleRun" @stop="handleStop" />
 
           <div v-if="!hasSelectedFlow" class="empty-editor-full">
             <div class="empty-message">

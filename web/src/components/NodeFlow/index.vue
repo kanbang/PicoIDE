@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-17 17:01:06
  * @LastEditors: zhai
- * @LastEditTime: 2026-01-21 16:33:26
+ * @LastEditTime: 2026-01-30 17:42:44
 -->
 <template>
   <div class="nodeflow-container">
@@ -22,7 +22,8 @@
             </template>
 
             <template #2>
-              <ConsolePanel ref="consolePanelRef" :isVisible="consolePanelVisible" :isConnecting="isSSEConnecting" :isConnected="isSSEConnected" />
+              <ConsolePanel ref="consolePanelRef" :isVisible="consolePanelVisible" :isConnecting="isSSEConnecting"
+                :isConnected="isSSEConnected" />
             </template>
           </SplitterVertical>
         </div>
@@ -30,7 +31,8 @@
 
       <template #2>
         <div class="output-panel-wrapper">
-          <OutputPanel ref="outputPanelRef" :flowId="props.flowId" @file-opened="handleFileOpened" @file-downloaded="handleFileDownloaded" />
+          <OutputPanel ref="outputPanelRef" :flowId="props.flowId" @file-opened="handleFileOpened"
+            @file-downloaded="handleFileDownloaded" />
         </div>
       </template>
     </SplitPane>
@@ -183,6 +185,19 @@ const SeparatorIcon = markRaw(defineComponent({
   setup: () => () => h('div', { style: { width: '1px', height: '20px', background: '#555', margin: '0 4px' } })
 }));
 
+// 使用动态按钮，根据运行状态显示不同图标和标题
+const RunStopButtonIcon = markRaw(defineComponent({
+  setup: () => () => h('div', {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '100%',
+      height: '100%'
+    }
+  }, [h(isRunning.value ? StopIcon : RunIcon, { isRunning: isRunning.value })])
+}));
+
 // --- 注册命令 ---
 function registerCustomCommands(): void {
   baklava.commandHandler.registerCommand(SAVE_COMMAND_ID, {
@@ -230,18 +245,7 @@ function registerCustomCommands(): void {
 
   if (props.showRun) {
     commands.push({ command: 'SEPARATOR', title: "", icon: SeparatorIcon });
-    // 使用动态按钮，根据运行状态显示不同图标和标题
-    const RunStopButtonIcon = markRaw(defineComponent({
-      setup: () => () => h('div', {
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: '100%',
-          height: '100%'
-        }
-      }, [h(isRunning.value ? StopIcon : RunIcon, { isRunning: isRunning.value })])
-    }));
+
     commands.push({
       command: RUN_COMMAND_ID,
       title: isRunning.value ? "停止" : "运行",
@@ -366,10 +370,6 @@ onMounted(() => {
     if (newBlocks) updateBlocks(newBlocks);
   }, { deep: true });
 
-  watch(isRunning, () => {
-    // 运行状态改变时更新按钮
-    registerCustomCommands();
-  });
 
   loadFlow(props.flow ?? null);
   setupChangeDetection();

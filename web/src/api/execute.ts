@@ -70,6 +70,13 @@ export async function executeSavedFlow(flowId: string): Promise<ExecuteResponse>
 }
 
 /**
+ * 停止执行
+ */
+export async function stopExecution(executionId: string): Promise<{ ok: boolean }> {
+  return await api.post('/engine/stop', { execution_id: executionId });
+}
+
+/**
  * 获取所有输出文件
  */
 export async function getOutputFiles(): Promise<OutputFile[]> {
