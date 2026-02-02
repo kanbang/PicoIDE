@@ -104,67 +104,92 @@ function formatTime(isoString: string): string {
 }
 
 function toggleDataExpand(event: SSEEvent) {
-  if (event.type === 'data') {
     event.expanded = !event.expanded;
-  }
 }
 
 function getEventIcon(event: SSEEvent) {
   const type = event.type?.toLowerCase() || 'info';
 
   const icons: Record<string, { svg: string; color: string }> = {
-    status: {
-      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="8"/>
-        <line x1="12" y1="6" x2="12" y2="12" stroke-linecap="round"/>
-      </svg>`,
-      color: '#4caf50'
-    },
+    // 基础日志类型
     log: {
       svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M4 6h16M4 12h16M4 18h16"/>
       </svg>`,
       color: '#4caf50'
     },
+    debug: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12" stroke-linecap="round"/>
+        <circle cx="12" cy="16" r="0.5" fill="currentColor"/>
+      </svg>`,
+      color: '#9e9e9e'
+    },
     info: {
       svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="8" stroke="none" fill="currentColor" fill-opacity="0.2"/>
-        <circle cx="12" cy="12" r="4" fill="currentColor"/>
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="7" x2="12" y2="12" stroke-linecap="round"/>
+        <circle cx="12" cy="16" r="0.5" fill="currentColor"/>
       </svg>`,
       color: '#2196f3'
-    },
-    data: {
-      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="4" y="5" width="16" height="14" rx="2" fill="currentColor" fill-opacity="0.2"/>
-        <line x1="12" y1="16" x2="12" y2="9" stroke-linecap="round"/>
-      </svg>`,
-      color: '#2196f3'
-    },
-    node_start: {
-      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M5 3l14 9-14 9V3z" fill="currentColor" fill-opacity="0.2"/>
-      </svg>`,
-      color: '#4caf50'
-    },
-    node_complete: {
-      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M20 6L9 17l-5-5" />
-      </svg>`,
-      color: '#4caf50'
-    },
-    node_error: {
-      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M6 18L18 6M6 6l12 12" />
-      </svg>`,
-      color: '#f44336'
     },
     error: {
       svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="8" fill="none"/>
-        <line x1="12" y1="6" x2="12" y2="12" stroke-linecap="round"/>
-        <circle cx="12" cy="16" r="0.5" fill="currentColor"/>
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="14" stroke-linecap="round"/>
+        <circle cx="12" cy="17" r="0.5" fill="currentColor"/>
       </svg>`,
       color: '#f44336'
+    },
+    // 数据类型
+    data: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="4" width="18" height="16" rx="2" fill="currentColor" fill-opacity="0.1"/>
+        <line x1="8" y1="12" x2="16" y2="12" stroke-linecap="round"/>
+        <line x1="8" y1="8" x2="12" y2="8" stroke-linecap="round"/>
+        <line x1="8" y1="16" x2="14" y2="16" stroke-linecap="round"/>
+      </svg>`,
+      color: '#2196f3'
+    },
+    file: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+        <polyline points="13 2 13 9 20 9"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>`,
+      color: '#ff9800'
+    },
+    // 引擎状态类型
+    status: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="6" x2="12" y2="12" stroke-linecap="round"/>
+      </svg>`,
+      color: '#4caf50'
+    },
+    execution_completed: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`,
+      color: '#4caf50'
+    },
+    execution_failed: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="15" y1="9" x2="9" y2="15" stroke-linecap="round"/>
+        <line x1="9" y1="9" x2="15" y2="15" stroke-linecap="round"/>
+      </svg>`,
+      color: '#f44336'
+    },
+    execution_stopped: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <rect x="9" y="9" width="6" height="6" fill="currentColor"/>
+      </svg>`,
+      color: '#ff9800'
     }
   };
 
@@ -272,18 +297,17 @@ defineExpose({
             <div class="event-header">
               <span class="event-type">{{ event.type || 'INFO' }}</span>
               <span v-if="event.node_type" class="event-node">{{ event.node_type }}</span>
+              <span v-if="event.data" class="data-toggle" @click="toggleDataExpand(event)">
+                <svg class="toggle-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                  <path v-if="!event.expanded" d="M6 9l6 6 6-6"/>
+                  <path v-else d="M18 15l-6-6-6 6"/>
+                </svg>
+              </span>
               <span class="event-time">{{ formatTime(event.timestamp || '') }}</span>
             </div>
             <div class="event-message" v-if="event.message">{{ event.message }}</div>
-            <div class="event-data" v-if="event.data && event.type === 'data' && event.expanded">
+            <div class="event-data" v-if="event.data && event.expanded">
               <pre>{{ formatData(event.data) }}</pre>
-            </div>
-            <div class="data-toggle" v-if="event.type === 'data'" @click="toggleDataExpand(event)">
-              <span class="toggle-text">{{ event.expanded ? '收起' : '展开' }}</span>
-              <svg class="toggle-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline v-if="!event.expanded" points="6 9 12 15 18 9" />
-                <polyline v-else points="6 15 12 9 18 15" />
-              </svg>
             </div>
           </div>
         </div>
@@ -528,19 +552,19 @@ defineExpose({
   border-left: 3px solid #4caf50;
 }
 
-.event-item.node_start {
+.event-item.log {
   padding-left: 8px;
   border-left: 3px solid #4caf50;
 }
 
-.event-item.node_complete {
+.event-item.debug {
   padding-left: 8px;
-  border-left: 3px solid #4caf50;
+  border-left: 3px solid #9e9e9e;
 }
 
-.event-item.node_error {
+.event-item.info {
   padding-left: 8px;
-  border-left: 3px solid #f44336;
+  border-left: 3px solid #2196f3;
 }
 
 .event-item.error {
@@ -551,6 +575,26 @@ defineExpose({
 .event-item.data {
   padding-left: 8px;
   border-left: 3px solid #2196f3;
+}
+
+.event-item.file {
+  padding-left: 8px;
+  border-left: 3px solid #ff9800;
+}
+
+.event-item.execution_completed {
+  padding-left: 8px;
+  border-left: 3px solid #4caf50;
+}
+
+.event-item.execution_failed {
+  padding-left: 8px;
+  border-left: 3px solid #f44336;
+}
+
+.event-item.execution_stopped {
+  padding-left: 8px;
+  border-left: 3px solid #ff9800;
 }
 
 .event-item.is-data {
@@ -599,13 +643,16 @@ defineExpose({
   background: #4caf50;
 }
 
-.event-item.node_start .event-type,
-.event-item.node_complete .event-type {
+.event-item.log .event-type {
   background: #4caf50;
 }
 
-.event-item.node_error .event-type {
-  background: #f44336;
+.event-item.debug .event-type {
+  background: #9e9e9e;
+}
+
+.event-item.info .event-type {
+  background: #2196f3;
 }
 
 .event-item.error .event-type {
@@ -614,6 +661,22 @@ defineExpose({
 
 .event-item.data .event-type {
   background: #2196f3;
+}
+
+.event-item.file .event-type {
+  background: #ff9800;
+}
+
+.event-item.execution_completed .event-type {
+  background: #4caf50;
+}
+
+.event-item.execution_failed .event-type {
+  background: #f44336;
+}
+
+.event-item.execution_stopped .event-type {
+  background: #ff9800;
 }
 
 .event-node {
@@ -669,33 +732,22 @@ defineExpose({
 .data-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: #1e1e1e;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 10px;
-  color: #ccc;
-  transition: all 0.2s;
-  margin-top: 4px;
+  color: #666;
+  transition: all 0.15s;
 }
 
 .data-toggle:hover {
-  background: #2d2d30;
+  background: #374151;
   color: #4caf50;
 }
 
-.toggle-text {
-  white-space: nowrap;
-  font-size: 10px;
-}
-
 .toggle-icon {
-  width: 12px;
-  height: 12px;
-  opacity: 0.7;
-  background: #1e1e1e;
-  border-radius: 2px;
+  transition: transform 0.15s;
 }
 
 /* 滚动条美化 */
