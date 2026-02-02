@@ -169,7 +169,7 @@ class EngineManager:
             execution_id, wait_task, engine, business_id, user_id
         )
         wait_task.add_done_callback(
-            lambda t: asyncio.create_task(self.remove_execution(execution_id))
+            lambda _: asyncio.create_task(self.remove_execution(execution_id))
         )
 
 

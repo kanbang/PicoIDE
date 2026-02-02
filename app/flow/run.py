@@ -83,59 +83,12 @@ async def run_business(business: str, flow: dict, execution_id: str = None, user
 
     await async_start_flow(business, flow, execution_id, user_id)
 
-
-    # 执行完成后，批量将文件信息写入数据库
-    await _batch_save_outputs(execution_id)
+    # 文件入库已移至 flow 执行完成时的回调中自动处理（engine_manager._on_execution_done）
+    # 这样确保在文件产生后才入库，避免在 flow 执行期间就尝试入库
 
     return execution_id
 
 
-async def _batch_save_outputs(execution_id: str):
-    """
-    批量保存输出文件到数据库
-
-    Args:
-        execution_id: 执行ID
-    """
-
-    # 只在启用数据库时才执行批量入库
-    if not settings.ENABLE_DB_WRITE:
-        return
-
-    # 获取该执行的所有文件信息
-    files = file_collector.get_files(execution_id)
-
-    if not files:
-        return
-
-    # 批量插入数据库（使用切片方式，每次插入配置的批次大小）
-    batch_size = settings.BATCH_SIZE
-    for i in range(0, len(files), batch_size):
-        batch = files[i : i + batch_size]
-
-        # 创建 Output 对象
-        output_objects = [
-            Output(
-                file_id=f["file_id"],
-                execution_id=f["execution_id"],
-                filename=f["filename"],
-                file_path=f["file_path"],
-                file_type=f["file_type"],
-                file_size=f["file_size"],
-                block_name=f["block_name"],
-                block_id=f["block_id"],
-                description=f.get("description"),
-                metadata=f.get("metadata"),
-                is_deleted=False,
-            )
-            for f in batch
-        ]
-
-        # 批量插入
-        await Output.bulk_create(output_objects)
-
-    # 清除收集器中的数据
-    file_collector.clear_execution(execution_id)
 
 
 # 注册业务：Demo（包含所有内置节点）

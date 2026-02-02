@@ -7,15 +7,17 @@ LastEditors: zhai
 LastEditTime: 2026-01-30 10:33:50
 '''
 """
-文件信息收集器 - 用于批量入库和实时推送
+文件信息收集器 - 用于实时入库和推送
 
 在执行过程中收集文件信息，并即时通过事件总线推送给前端
+如果启用了数据库写入，会在文件产生时立即入库
 """
 
 from typing import Dict, List, Any, Optional, Callable
 from threading import Lock
 from datetime import datetime
 from flow.setting import settings
+import asyncio
 
 
 class FileCollector:
@@ -47,7 +49,7 @@ class FileCollector:
 
     def add_file(self, execution_id: str, file_info: Dict[str, Any]):
         """
-        添加文件信息（添加时即时触发事件推送）
+        添加文件信息（添加时即时触发事件推送和数据库入库）
 
         Args:
             execution_id: 执行ID
@@ -71,6 +73,31 @@ class FileCollector:
             # 即时触发事件推送（在锁外执行，避免死锁）
         if self._event_callback:
             self._event_callback(execution_id, file_info)
+
+        # 如果启用了数据库写入，立即入库（异步）
+        if settings.ENABLE_DB_WRITE:
+            asyncio.create_task(self._save_file_to_db(execution_id, file_info))
+
+    async def _save_file_to_db(self, execution_id: str, file_info: Dict[str, Any]):
+        """异步保存单个文件到数据库"""
+        try:
+            from db import Output
+            await Output.create(
+                file_id=file_info.get("file_id"),
+                execution_id=execution_id,
+                filename=file_info.get("filename"),
+                file_path=file_info.get("file_path"),
+                file_type=file_info.get("file_type"),
+                file_size=file_info.get("file_size"),
+                block_name=file_info.get("block_name"),
+                block_id=file_info.get("block_id"),
+                description=file_info.get("description"),
+                metadata=file_info.get("metadata"),
+                is_deleted=False,
+            )
+        except Exception as e:
+            # 入库失败不影响主流程，仅记录日志
+            print(f"保存文件到数据库失败: {e}")
 
     def get_files(self, execution_id: str) -> List[Dict[str, Any]]:
         """
