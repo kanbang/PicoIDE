@@ -302,12 +302,16 @@ class BaseBlock(Block):
                     "metadata": metadata or {},
                     "original_name": filename,
                 }
-                file_collector.add_file(execution_id, file_info)
+                # 使用 asyncio.create_task 异步调用 add_file
+                asyncio.create_task(file_collector.add_file(execution_id, file_info))
                 if not unique:
                     self._file_ids[file_key] = file_id
             else:
-                # Append: Emit update event
+                # Append: Emit update event and update database
                 file_id = self._file_ids[file_key]
+                # 更新数据库中的文件大小
+                asyncio.create_task(file_collector.update_file(execution_id, file_id, file_size))
+                # 发出事件通知
                 asyncio.create_task(
                     self.event_bus.emit(
                         RuntimeEvent(

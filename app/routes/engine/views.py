@@ -189,7 +189,7 @@ async def execute(
                 )
             else:
                 # 从文件收集器获取（轻量化模式）
-                output_files = file_collector.get_files(execution_id)
+                output_files = await file_collector.get_files(execution_id)
 
             # 更新 Execution 状态为完成
             if execution:
@@ -338,7 +338,7 @@ async def sync_execute_saved(
                 )
             else:
                 # 从文件收集器获取（轻量化模式）
-                output_files = file_collector.get_files(execution_id)
+                output_files = await file_collector.get_files(execution_id)
 
             # 更新 Execution 状态为完成
             if execution:
@@ -490,7 +490,7 @@ async def execute_saved(
                     )
                 else:
                     # 从文件收集器获取（轻量化模式）
-                    output_files = file_collector.get_files(execution_id)
+                    output_files = await file_collector.get_files(execution_id)
 
                 # 更新 Execution 状态为完成
                 if execution:
@@ -640,7 +640,7 @@ async def get_output_files(
         else:
             # 从收集器获取（轻量化模式）
             if execution_id:
-                files = file_collector.get_files(execution_id)
+                files = await file_collector.get_files(execution_id)
             else:
                 # 如果没有指定 execution_id，获取所有执行的文件
                 # 注意：收集器不支持跨执行查询，这里只返回空列表
@@ -681,7 +681,7 @@ async def get_output_file(file_id: str):
             parts = file_id.rsplit("_", 1)
             if len(parts) == 2:
                 execution_id = parts[0]
-                files = file_collector.get_files(execution_id)
+                files = await file_collector.get_files(execution_id)
                 for f in files:
                     if f["file_id"] == file_id:
                         file_info = f
@@ -748,7 +748,7 @@ async def delete_output_file(file_id: str) -> Dict[str, Any]:
             parts = file_id.rsplit("_", 1)
             if len(parts) == 2:
                 execution_id = parts[0]
-                files = file_collector.get_files(execution_id)
+                files = await file_collector.get_files(execution_id)
                 # 从收集器中移除该文件
                 file_collector._files[execution_id] = [
                     f for f in files if f["file_id"] != file_id
