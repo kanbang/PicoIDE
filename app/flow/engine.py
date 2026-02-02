@@ -56,14 +56,14 @@ class Execution:
             await block.async_on_compute(self.id)
             await self.engine.event_bus.emit(
                 RuntimeEvent(
-                    self.id, RuntimeEventType.LOG, n_id, f"Node {n_id} completed"
+                    self.id, RuntimeEventType.LOG, block.NAME, f"Node {n_id} completed"
                 )
             )
             await self._trigger_successors(n_id)
         except asyncio.CancelledError:
             await self.engine.event_bus.emit(
                 RuntimeEvent(
-                    self.id, RuntimeEventType.ERROR, n_id, f"Node {n_id} cancelled"
+                    self.id, RuntimeEventType.ERROR, block.NAME, f"Node {n_id} cancelled"
                 )
             )
             raise
@@ -75,7 +75,7 @@ class Execution:
                 RuntimeEvent(
                     self.id,
                     RuntimeEventType.ERROR,
-                    n_id,
+                    block.NAME,
                     f"Node {n_id} failed: {str(e)}",
                 )
             )
@@ -121,16 +121,11 @@ class Execution:
                 self.engine.logger.error(f"Source {n_id} error: {e}")
                 await asyncio.sleep(1)
 
-    def _task_done(self, task: asyncio.Task):  
+    def _task_done(self, task: asyncio.Task):
         # callback不能await，用loop.create_task(self.engine._complete_execution(...))
         self.running_tasks.discard(task)
         if not self.running_tasks:
-            asyncio.create_task(self.engine._complete_execution(self.id, self.shutdown_event.is_set()))  # 改成create_task
-
-    def _task_done(self, task: asyncio.Task):
-        self.running_tasks.discard(task)
-        if not self.running_tasks:
-            self.engine._complete_execution(self.id, self.shutdown_event.is_set())
+            asyncio.create_task(self.engine._complete_execution(self.id, self.shutdown_event.is_set()))
 
     async def run(self):
         if self.status != EngineStatus.IDLE:
@@ -233,7 +228,7 @@ class ComputeEngine:
             )
         self.logger.info(f"Flow compiled: {len(flow['nodes'])} nodes.")
 
-    def _on_file_generated(self, execution_id: str, file_info: Dict[str, Any]):
+    def _on_file_generated(self, execution_id: str, node_type: str, file_info: Dict[str, Any]):
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
@@ -241,8 +236,8 @@ class ComputeEngine:
             asyncio.set_event_loop(loop)
         file_event = RuntimeEvent(
             execution_id=execution_id,
-            type=RuntimeEventType.DATA,
-            source="output_file",
+            type=RuntimeEventType.FILE,
+            source=node_type,
             message=f"Generated file: {file_info['filename']}",
             payload={"file": file_info},
             ts=time.time(),

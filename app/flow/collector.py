@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-19 16:15:36
 LastEditors: zhai
-LastEditTime: 2026-01-30 10:33:50
+LastEditTime: 2026-02-02 12:49:15
 '''
 """
 文件信息收集器 - 用于实时入库和推送
@@ -39,16 +39,17 @@ class FileCollector:
         设置事件回调函数，当添加文件时即时触发
 
         Args:
-            callback: 回调函数，签名为 callback(execution_id: str, file_info: Dict)
+            callback: 回调函数，签名为 callback(execution_id: str, node_type: str, file_info: Dict)
         """
         self._event_callback = callback
 
-    async def add_file(self, execution_id: str, file_info: Dict[str, Any]):
+    async def add_file(self, execution_id: str, node_type: str, file_info: Dict[str, Any]):
         """
         添加文件信息（添加时即时触发事件推送和数据库入库）
 
         Args:
             execution_id: 执行ID
+            node_type: 节点类型（block.NAME）
             file_info: 文件信息字典
         """
         async with self._lock:
@@ -60,6 +61,7 @@ class FileCollector:
             file_type = file_info.get("file_type", "unknown")
             file_info["can_open"] = file_type in settings.BROWSER_OPENABLE
             file_info["can_download"] = True
+            file_info["node_type"] = node_type  # 添加节点类型
 
             if "created_at" not in file_info:
                 file_info["created_at"] = datetime.now().isoformat()
@@ -68,7 +70,7 @@ class FileCollector:
 
         # 即时触发事件推送
         if self._event_callback:
-            self._event_callback(execution_id, file_info)
+            self._event_callback(execution_id, node_type, file_info)
 
         # 如果启用了数据库写入，立即入库（异步）
         if settings.ENABLE_DB_WRITE:

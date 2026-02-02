@@ -13,6 +13,7 @@ class RuntimeEventType(str, Enum):
     INFO = "info"
     ERROR = "error"
     DATA = "data"  # 节点输出数据
+    FILE = "file"  # 节点生成文件
     STATUS = "status"  # 引擎/节点状态
     # 引擎状态
     EXECUTION_COMPLETED = "execution_completed"
@@ -23,7 +24,7 @@ class RuntimeEventType(str, Enum):
 class RuntimeEvent:
     execution_id: str
     type: RuntimeEventType
-    source: str  # engine / block_id
+    source: str  # engine / block type
     message: str
     payload: Optional[Any] = None
     ts: float = field(default_factory=time.time)  # 使用 default_factory 确保每次实例化时生成新时间戳

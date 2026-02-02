@@ -5,7 +5,6 @@ import { ref, watch, onUnmounted, nextTick } from 'vue';
 export interface SSEEvent {
   type: string;
   source?: string;
-  node_id?: string;
   message?: string;
   timestamp?: string;
   data?: any;
@@ -240,7 +239,6 @@ defineExpose({
             <div class="event-header">
               <span class="event-type">{{ event.type || 'INFO' }}</span>
               <span v-if="event.source" class="event-source">{{ event.source }}</span>
-              <span v-if="event.node_id" class="event-node">{{ event.node_id }}</span>
               <span class="event-time">{{ formatTime(event.timestamp || '') }}</span>
             </div>
             <div v-if="event.message" class="event-message">{{ event.message }}</div>
@@ -519,7 +517,7 @@ defineExpose({
   color: #888;
 }
 
-.event-node {
+.event-source {
   font-size: 10px;
   color: #007acc;
   background: rgba(0, 122, 204, 0.15);
@@ -527,7 +525,7 @@ defineExpose({
   border-radius: 3px;
 }
 
-.event-source {
+.event-source2 {
   font-size: 10px;
   color: #666;
   background: #333;

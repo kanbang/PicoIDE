@@ -303,7 +303,7 @@ class BaseBlock(Block):
                     "original_name": filename,
                 }
                 # 使用 asyncio.create_task 异步调用 add_file
-                asyncio.create_task(file_collector.add_file(execution_id, file_info))
+                asyncio.create_task(file_collector.add_file(execution_id, self.NAME, file_info))
                 if not unique:
                     self._file_ids[file_key] = file_id
             else:

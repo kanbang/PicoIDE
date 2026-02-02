@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-17 17:01:06
  * @LastEditors: zhai
- * @LastEditTime: 2026-01-30 17:42:44
+ * @LastEditTime: 2026-02-02 12:42:05
 -->
 <template>
   <div class="nodeflow-container">
@@ -454,7 +454,6 @@ function connectSSE(executionId: string) {
           const sseEvent: SSEEvent = {
             type: eventData.type || 'info',
             source: eventData.source,
-            node_id: eventData.source,
             message: eventData.message,
             timestamp: eventData.ts ? new Date(eventData.ts * 1000).toISOString() : new Date().toISOString(),
             data: eventData.payload !== undefined ? eventData.payload : eventData.data
