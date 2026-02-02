@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted, nextTick } from 'vue';
+import { ref, watch, onUnmounted, nextTick, computed } from 'vue';
 
 // SSE Event Type
 export interface SSEEvent {
   type: string;
   source?: string;
+  node_type?: string;
   message?: string;
   timestamp?: string;
   data?: any;
+  expanded?: boolean;
 }
 
 interface Props {
@@ -18,17 +20,32 @@ interface Props {
 
 const props = defineProps<Props>();
 
-// 状态
 const visible = ref(props.isVisible || false);
 const events = ref<SSEEvent[]>([]);
 const containerRef = ref<HTMLElement | null>(null);
 
-// 监听 props.isVisible 变化
+const selectedType = ref<string>('all');
+const uniqueTypes = computed(() => {
+  const types = new Set<string>();
+  events.value.forEach(e => {
+    if (e.type && !['log', 'info'].includes(e.type)) {
+      types.add(e.type);
+    }
+  });
+  return ['all', ...Array.from(types).sort()];
+});
+
+const filteredEvents = computed(() => {
+  if (selectedType.value === 'all') {
+    return events.value;
+  }
+  return events.value.filter(e => e.type === selectedType.value);
+});
+
 watch(() => props.isVisible, (newValue) => {
   visible.value = newValue;
 });
 
-// 显示/隐藏功能
 function toggle() {
   visible.value = !visible.value;
 }
@@ -42,13 +59,14 @@ function hide() {
   visible.value = false;
 }
 
-// 添加事件（由父组件调用）
 function addEvent(event: SSEEvent) {
+  if (event.type === 'data') {
+    event.expanded = false;
+  }
   events.value.push(event);
   nextTick(() => scrollToBottom());
 }
 
-// 批量添加事件
 function setEvents(newEvents: SSEEvent[]) {
   events.value = newEvents;
   nextTick(() => scrollToBottom());
@@ -64,13 +82,11 @@ function scrollToBottom() {
   }
 }
 
-// 格式化时间
 function formatTime(isoString: string): string {
   const date = new Date(isoString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
 
-  // 如果差异很小，直接显示时间
   if (diffMs < 1000) {
     return date.toLocaleTimeString('zh-CN', {
       hour: '2-digit',
@@ -87,57 +103,74 @@ function formatTime(isoString: string): string {
   });
 }
 
-// 获取事件类型图标
-function getEventIcon(event: SSEEvent) {
-  const type = event.type?.toLowerCase() || 'info';
-
-  switch (type) {
-    case 'status':
-      return {
-        svg: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="16" x2="12" y2="12"/>
-          <line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>`,
-        color: '#888'
-      };
-    case 'node_start':
-      return {
-        svg: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="5 3 19 12 5 21 5 3"/>
-        </svg>`,
-        color: '#4caf50'
-      };
-    case 'node_complete':
-      return {
-        svg: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>`,
-        color: '#4caf50'
-      };
-    case 'node_error':
-    case 'error':
-      return {
-        svg: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>`,
-        color: '#f44336'
-      };
-    default:
-      return {
-        svg: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>`,
-        color: '#888'
-      };
+function toggleDataExpand(event: SSEEvent) {
+  if (event.type === 'data') {
+    event.expanded = !event.expanded;
   }
 }
 
-// 格式化数据展示
+function getEventIcon(event: SSEEvent) {
+  const type = event.type?.toLowerCase() || 'info';
+
+  const icons: Record<string, { svg: string; color: string }> = {
+    status: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="8"/>
+        <line x1="12" y1="6" x2="12" y2="12" stroke-linecap="round"/>
+      </svg>`,
+      color: '#4caf50'
+    },
+    log: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>`,
+      color: '#4caf50'
+    },
+    info: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="8" stroke="none" fill="currentColor" fill-opacity="0.2"/>
+        <circle cx="12" cy="12" r="4" fill="currentColor"/>
+      </svg>`,
+      color: '#2196f3'
+    },
+    data: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="4" y="5" width="16" height="14" rx="2" fill="currentColor" fill-opacity="0.2"/>
+        <line x1="12" y1="16" x2="12" y2="9" stroke-linecap="round"/>
+      </svg>`,
+      color: '#2196f3'
+    },
+    node_start: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M5 3l14 9-14 9V3z" fill="currentColor" fill-opacity="0.2"/>
+      </svg>`,
+      color: '#4caf50'
+    },
+    node_complete: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20 6L9 17l-5-5" />
+      </svg>`,
+      color: '#4caf50'
+    },
+    node_error: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 18L18 6M6 6l12 12" />
+      </svg>`,
+      color: '#f44336'
+    },
+    error: {
+      svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="8" fill="none"/>
+        <line x1="12" y1="6" x2="12" y2="12" stroke-linecap="round"/>
+        <circle cx="12" cy="16" r="0.5" fill="currentColor"/>
+      </svg>`,
+      color: '#f44336'
+    }
+  };
+
+  return icons[type] || icons.info;
+}
+
 function formatData(data: any): string {
   if (data === null || data === undefined) return '';
   if (typeof data === 'string') return data;
@@ -146,38 +179,44 @@ function formatData(data: any): string {
   return JSON.stringify(data, null, 2);
 }
 
-// 清理
 onUnmounted(() => {
-  // 清理逻辑
 });
 
-// 暴露方法供父组件调用
 defineExpose({
   addEvent,
   setEvents,
-  clear: clearEvents,
   clearEvents,
   show,
   hide,
   toggle,
   visible,
-  events,
+  events: filteredEvents,
+  selectedType
 });
 </script>
 
 <template>
   <div class="console-panel" :class="{ visible }">
-    <!-- 面板头部 -->
     <div class="panel-header">
       <div class="header-left">
-        <svg class="header-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <svg class="header-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
         </svg>
         <span class="header-title">执行日志</span>
         <span v-if="events.length > 0" class="event-count">{{ events.length }}</span>
       </div>
       <div class="header-right">
-        <!-- 连接状态 -->
+        <div class="type-filter">
+          <span
+            v-for="type in uniqueTypes"
+            :key="type"
+            class="filter-tag"
+            :class="{ active: selectedType === type }"
+            @click="selectedType = type"
+          >
+            {{ type === 'all' ? '全部' : type.toUpperCase() }}
+          </span>
+        </div>
         <div class="connection-status" :class="{ connected: isConnected, connecting: isConnecting }">
           <span v-if="isConnecting" class="status-dot connecting"></span>
           <span v-else-if="isConnected" class="status-dot connected"></span>
@@ -186,14 +225,12 @@ defineExpose({
             {{ isConnecting ? '连接中...' : isConnected ? '已连接' : '未连接' }}
           </span>
         </div>
-        <!-- 清空按钮 -->
         <button @click="clearEvents" class="header-btn" title="清空日志">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
           </svg>
         </button>
-        <!-- 关闭按钮 -->
         <button @click="hide" class="header-btn close-btn" title="关闭">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -203,10 +240,8 @@ defineExpose({
       </div>
     </div>
 
-    <!-- 事件列表 -->
     <div class="panel-body" ref="containerRef">
-      <!-- 空状态 -->
-      <div v-if="events.length === 0" class="empty-state">
+      <div v-if="filteredEvents.length === 0" class="empty-state">
         <div class="empty-icon">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
             <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
@@ -219,31 +254,36 @@ defineExpose({
         <div class="empty-text">等待执行...</div>
         <div class="empty-hint">点击运行按钮开始执行，日志将实时显示</div>
       </div>
-
-      <!-- 加载状态 -->
       <div v-else-if="isConnecting" class="loading-state">
         <div class="spinner"></div>
         <div class="loading-text">连接中...</div>
       </div>
-
-      <!-- 事件列表 -->
       <div v-else class="event-list">
         <div
-          v-for="(event, index) in events"
+          v-for="(event, index) in filteredEvents"
           :key="index"
           class="event-item"
-          :class="[event.type?.toLowerCase()]"
+          :class="[event.type?.toLowerCase(), { 'is-data': event.type === 'data' }]"
         >
-          <div class="event-icon" :style="{ color: getEventIcon(event).color }" v-html="getEventIcon(event).svg"></div>
+          <div class="event-icon" :style="{ color: getEventIcon(event).color }">
+            <span v-html="getEventIcon(event).svg"></span>
+          </div>
           <div class="event-content">
             <div class="event-header">
               <span class="event-type">{{ event.type || 'INFO' }}</span>
-              <span v-if="event.source" class="event-source">{{ event.source }}</span>
+              <span v-if="event.node_type" class="event-node">{{ event.node_type }}</span>
               <span class="event-time">{{ formatTime(event.timestamp || '') }}</span>
             </div>
-            <div v-if="event.message" class="event-message">{{ event.message }}</div>
-            <div v-if="event.data" class="event-data">
+            <div class="event-message" v-if="event.message">{{ event.message }}</div>
+            <div class="event-data" v-if="event.data && event.type === 'data' && event.expanded">
               <pre>{{ formatData(event.data) }}</pre>
+            </div>
+            <div class="data-toggle" v-if="event.type === 'data'" @click="toggleDataExpand(event)">
+              <span class="toggle-text">{{ event.expanded ? '收起' : '展开' }}</span>
+              <svg class="toggle-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline v-if="!event.expanded" points="6 9 12 15 18 9" />
+                <polyline v-else points="6 15 12 9 18 15" />
+              </svg>
             </div>
           </div>
         </div>
@@ -263,7 +303,6 @@ defineExpose({
   overflow: hidden;
 }
 
-/* 面板头部 */
 .panel-header {
   height: 40px;
   background: #252526;
@@ -286,18 +325,18 @@ defineExpose({
 }
 
 .header-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  color: #ccc;
+  color: #e0e0e0;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .event-count {
-  background: #333;
-  color: #aaa;
+  background: #374151;
+  color: #fff;
   font-size: 10px;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 10px;
   min-width: 18px;
   text-align: center;
@@ -306,29 +345,56 @@ defineExpose({
 .header-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
-/* 连接状态 */
+.type-filter {
+  display: flex;
+  gap: 4px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.filter-tag {
+  font-size: 10px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  background: #374151;
+  color: #aaa;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.filter-tag:hover {
+  background: #2e7d32;
+  color: #fff;
+}
+
+.filter-tag.active {
+  background: #4caf50;
+  color: #fff;
+}
+
 .connection-status {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 4px;
   background: #2d2d30;
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: #666;
 }
 
 .status-dot.connecting {
   background: #ffa726;
-  animation: pulse 1s infinite;
+  animation: pulse 1.5s infinite;
 }
 
 .status-dot.connected {
@@ -341,19 +407,13 @@ defineExpose({
 
 .status-text {
   font-size: 11px;
-  color: #888;
+  color: #aaa;
 }
 
 .connection-status.connected .status-text {
   color: #4caf50;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* 头部按钮 */
 .header-btn {
   background: transparent;
   border: none;
@@ -369,7 +429,7 @@ defineExpose({
 }
 
 .header-btn:hover {
-  background: #37373d;
+  background: #374151;
   color: #fff;
 }
 
@@ -378,7 +438,6 @@ defineExpose({
   color: #fff;
 }
 
-/* 面板主体 */
 .panel-body {
   flex: 1;
   overflow-y: auto;
@@ -386,7 +445,6 @@ defineExpose({
   background: #1e1e1e;
 }
 
-/* 空状态 */
 .empty-state {
   height: 100%;
   display: flex;
@@ -398,7 +456,7 @@ defineExpose({
 }
 
 .empty-icon {
-  opacity: 0.2;
+  opacity: 0.3;
   margin-bottom: 16px;
 }
 
@@ -414,7 +472,6 @@ defineExpose({
   max-width: 260px;
 }
 
-/* 加载状态 */
 .loading-state {
   height: 100%;
   display: flex;
@@ -428,7 +485,7 @@ defineExpose({
   width: 24px;
   height: 24px;
   border: 2px solid #333;
-  border-top-color: #007acc;
+  border-top-color: #4caf50;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 12px;
@@ -443,11 +500,10 @@ defineExpose({
   font-size: 12px;
 }
 
-/* 事件列表 */
 .event-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .event-item {
@@ -455,86 +511,121 @@ defineExpose({
   gap: 10px;
   padding: 8px 10px;
   background: #252526;
-  border-radius: 6px;
+  border-radius: 4px;
   border: 1px solid transparent;
   transition: all 0.2s;
+  align-items: flex-start;
 }
 
 .event-item:hover {
   background: #2d2d30;
-  border-color: #3e3e40;
+  border-color: #3e4040;
 }
 
+/* 事件类型样式 */
 .event-item.status {
-  background: rgba(0, 122, 204, 0.1);
+  padding-left: 8px;
+  border-left: 3px solid #4caf50;
 }
 
 .event-item.node_start {
-  background: rgba(76, 175, 80, 0.1);
+  padding-left: 8px;
+  border-left: 3px solid #4caf50;
 }
 
 .event-item.node_complete {
-  background: rgba(76, 175, 80, 0.1);
+  padding-left: 8px;
+  border-left: 3px solid #4caf50;
 }
 
 .event-item.node_error {
-  background: rgba(244, 67, 54, 0.1);
-  border-color: rgba(244, 67, 54, 0.3);
+  padding-left: 8px;
+  border-left: 3px solid #f44336;
 }
 
 .event-item.error {
-  background: rgba(244, 67, 54, 0.1);
-  border-color: rgba(244, 67, 54, 0.3);
+  padding-left: 8px;
+  border-left: 3px solid #f44336;
+}
+
+.event-item.data {
+  padding-left: 8px;
+  border-left: 3px solid #2196f3;
+}
+
+.event-item.is-data {
+  flex-direction: column;
+  align-items: stretch;
+  padding-left: 8px;
+  border-left: 3px solid #2196f3;
 }
 
 .event-icon {
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 2px;
 }
 
 .event-content {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .event-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
   flex-wrap: wrap;
+  margin-bottom: 4px;
 }
 
 .event-type {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  color: #888;
-}
-
-.event-source {
-  font-size: 10px;
-  color: #007acc;
-  background: rgba(0, 122, 204, 0.15);
-  padding: 1px 6px;
+  padding: 2px 6px;
   border-radius: 3px;
+  background: #374151;
+  color: #fff;
 }
 
-.event-source2 {
-  font-size: 10px;
-  color: #666;
-  background: #333;
-  padding: 1px 6px;
+.event-item.status .event-type {
+  background: #4caf50;
+}
+
+.event-item.node_start .event-type,
+.event-item.node_complete .event-type {
+  background: #4caf50;
+}
+
+.event-item.node_error .event-type {
+  background: #f44336;
+}
+
+.event-item.error .event-type {
+  background: #f44336;
+}
+
+.event-item.data .event-type {
+  background: #2196f3;
+}
+
+.event-node {
+  font-size: 11px;
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.15);
+  padding: 2px 6px;
   border-radius: 3px;
 }
 
 .event-time {
-  font-size: 10px;
+  font-size: 11px;
   color: #666;
   margin-left: auto;
 }
@@ -546,12 +637,21 @@ defineExpose({
   word-break: break-word;
 }
 
+.event-item.data .event-message {
+  display: none;
+}
+
 .event-data {
   margin-top: 6px;
   padding: 8px;
-  background: #1a1a1a;
+  background: #1a231e;
   border-radius: 4px;
-  border: 1px solid #333;
+  border: 1px solid #3e4040;
+  overflow-x: auto;
+}
+
+.event-item.is-data .event-data {
+  display: block;
 }
 
 .event-data pre {
@@ -561,13 +661,46 @@ defineExpose({
   font-family: 'Consolas', 'Monaco', monospace;
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 150px;
+  max-height: 100px;
   overflow-y: auto;
+}
+
+/* 数据切换按钮 */
+.data-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  color: #ccc;
+  transition: all 0.2s;
+  margin-top: 4px;
+}
+
+.data-toggle:hover {
+  background: #2d2d30;
+  color: #4caf50;
+}
+
+.toggle-text {
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.toggle-icon {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+  background: #1e1e1e;
+  border-radius: 2px;
 }
 
 /* 滚动条美化 */
 .panel-body::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 .panel-body::-webkit-scrollbar-track {
@@ -576,11 +709,11 @@ defineExpose({
 
 .panel-body::-webkit-scrollbar-thumb {
   background: #333;
-  border-radius: 4px;
+  border-radius: 3px;
   border: 2px solid #1e1e1e;
 }
 
 .panel-body::-webkit-scrollbar-thumb:hover {
-  background: #444;
+  background: #4caf50;
 }
 </style>
