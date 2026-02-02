@@ -587,7 +587,6 @@ defineExpose({
 }
 
 .event-item.is-data {
-  flex-direction: column;
   align-items: stretch;
   padding-left: 8px;
   border-left: 3px solid #2196f3;
