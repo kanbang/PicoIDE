@@ -319,27 +319,12 @@ defineExpose({
       return;
     }
 
-    // 处理数据事件（主要是文件）
-    if (eventData.type === 'data') {
-      // 处理单个文件事件（新格式）
-      if (eventData.payload?.file) {
-        const newFile = eventData.payload.file;
-        // 避免重复添加相同文件（通过 file_id 判断）
-        if (!outputFiles.value.some(f => f.file_id === newFile.file_id)) {
-          outputFiles.value = [...outputFiles.value, newFile];
-          show();
-        }
-      } else if (eventData.payload?.files) {
-        // 处理多个文件事件（兼容旧格式）
-        const newFiles = eventData.payload.files;
-        newFiles.forEach((newFile: OutputFile) => {
-          if (!outputFiles.value.some(f => f.file_id === newFile.file_id)) {
-            outputFiles.value = [...outputFiles.value, newFile];
-          }
-        });
-        if (newFiles.length > 0) {
-          show();
-        }
+    // 处理文件事件
+    if (eventData.type === 'file' && eventData.payload?.file) {
+      const newFile = eventData.payload.file;
+      if (!outputFiles.value.some(f => f.file_id === newFile.file_id)) {
+        outputFiles.value = [...outputFiles.value, newFile];
+        show();
       }
       return;
     }
@@ -406,11 +391,11 @@ defineExpose({
                   d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
               </svg>
               <svg v-else-if="executionStatus === 'completed'" width="18" height="18" viewBox="0 0 24 24"
-                stroke="currentColor">
+                fill="none" stroke="currentColor">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
               <svg v-else width="18" height="18" viewBox="0 0 24 24" stroke="currentColor">
-                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="10" fill="none" />
                 <line x1="12" y1="8" x2="12" y2="12" />
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
@@ -665,6 +650,37 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ccc;
+}
+
+.status-banner.running .status-indicator {
+  color: #007acc;
+  background: rgba(0, 122, 204, 0.15);
+}
+
+.status-banner.completed .status-indicator {
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.15);
+}
+
+.status-banner.failed .status-indicator {
+  color: #f44336;
+  background: rgba(244, 67, 54, 0.15);
+}
+
+.status-indicator svg {
+  width: 18px;
+  height: 18px;
 }
 
 .status-info {
