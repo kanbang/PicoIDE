@@ -1,35 +1,48 @@
-'''
-Descripttion: 
-version: 0.x
-Author: zhai
-Date: 2026-01-19 21:04:47
-LastEditors: zhai
-LastEditTime: 2026-01-19 21:06:34
-'''
-"""
-Node 模块 - 统一的节点管理
-
-提供：
-- settings: 全局配置
-- output_file_manager: 输出文件管理器
-- file_collector: 文件信息收集器
-- config: 配置接口（兼容旧代码）
-"""
-
-from flow.output import output_file_manager
-from flow.collector import file_collector
-from .utils import SseLogger, ConsoleLogger
+from .utils import SseLogger, ConsoleLogger, ConstantBlock
 from .file import CsvDictWriterBlock, CsvXyWriterBlock
+from .iot import IOT_BLOCKS
+from .daq import DAQ_BLOCKS
+from .chart import (
+    LineChartViewer,
+    BarChartViewer,
+    ScatterChartViewer,
+    TrajectoryChartViewer,
+    OrderMapChartViewer,
+)
 
-base_blocks = [
-    SseLogger,
-    ConsoleLogger,
+
+file_blocks = [
     CsvDictWriterBlock,
     CsvXyWriterBlock,
 ]
 
+utils_blocks = [
+    ConstantBlock,
+    SseLogger,
+    ConsoleLogger,
+]
+
+chart_blocks = [
+    LineChartViewer,
+    BarChartViewer,
+    ScatterChartViewer,
+    TrajectoryChartViewer,
+    OrderMapChartViewer,
+]
+
+# 数据采集相关 blocks
+DAQ_BLOCKS_ALL = [
+    *DAQ_BLOCKS,
+    *utils_blocks,
+    *file_blocks,
+    *chart_blocks,
+]
+
+# 物联网相关 blocks
+IOT_BLOCKS_ALL = [*IOT_BLOCKS, *utils_blocks, *file_blocks, LineChartViewer]
+
+
 __all__ = [
-    "output_file_manager",
-    "file_collector",
-    "base_blocks",
+    "DAQ_BLOCKS_ALL",
+    "IOT_BLOCKS_ALL",
 ]

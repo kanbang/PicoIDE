@@ -60,14 +60,14 @@ class CsvDictWriterBlock(BaseBlock):
         write_mode = "a" if append_mode else "w"
         include_header = self.get_option("include_header")
 
-        def write_csv(full_path: Path):
+        def write_csv(full_path: Path, mode: str):
             # 是否需要写表头
             header_needed = (
                 include_header
-                and (write_mode == "w" or not full_path.exists())
+                and (mode == "w" or not full_path.exists())
             )
 
-            with open(full_path, write_mode, newline="", encoding="utf-8") as f:
+            with open(full_path, mode, newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=self._fieldnames)
                 if header_needed:
                     writer.writeheader()
@@ -139,12 +139,12 @@ class CsvXyWriterBlock(BaseBlock):
 
         df = pd.DataFrame({"x": x, "y": y})
 
-        def write_csv(full_path: Path):
+        def write_csv(full_path: Path, mode: str):
             # Pandas 的 header 逻辑与 append 一致
-            header = include_header and write_mode == "w"
+            header = include_header and mode == "w"
             df.to_csv(
                 full_path,
-                mode=write_mode,
+                mode=mode,
                 header=header,
                 index=False,
                 encoding="utf-8",

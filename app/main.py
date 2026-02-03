@@ -41,12 +41,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from flow.blocks_manager import register_static_blocks
-from node.daq import DAQ_BLOCKS
 from db import init_db, close_db, ensure_root_directory
 from routes.vfs.views import router as vfs_router
 from routes.engine.views import router as engine_router
 from routes.flow.views import router as flow_router
-from node.iot import IOT_BLOCKS
+from node import IOT_BLOCKS_ALL, DAQ_BLOCKS_ALL
 
 DB_PATH = "vfs.db"
 USER_ID = "default"
@@ -83,7 +82,7 @@ if __name__ == "__main__":
     # ==================== 初始化注册 ====================
 
     # 应用启动时注册所有预定义的业务类型
-    register_static_blocks("WAVE", DAQ_BLOCKS)
-    register_static_blocks("IOT", IOT_BLOCKS)
+    register_static_blocks("WAVE", DAQ_BLOCKS_ALL)
+    register_static_blocks("IOT", IOT_BLOCKS_ALL)
 
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,100 +1,110 @@
 import json
+import os
+from typing import Optional, Dict, Any, Tuple
 from flow.block import BaseBlock
 
 
 class BaseChartViewer(BaseBlock):
     """
     图表查看器基类
-
-    功能：
-    - 生成交互式HTML图表
-    - 支持多种图表类型
-    - 可配置样式和交互
+    支持追加模式：在同一HTML文件中累加数据（适合多次执行、流式更新）
+    使用占位符方式插入初始数据，避免位置查找错误
     """
-
     NAME = "BaseChartViewer"
     CATEGORY = "输出"
 
+    # 图表类型配置（消除重复赋值）
+    CHART_CONFIGS = {
+        "line": {
+            "border_color": "#3b82f6",
+            "background_color": "rgba(59, 130, 246, 0.05)",
+            "tension": 0.15,
+            "point_radius": 1.5,
+        },
+        "bar": {
+            "border_color": "#3b82f6",
+            "background_color": "rgba(59, 130, 246, 0.7)",
+            "tension": 0,
+            "point_radius": 0,
+        },
+        "scatter": {
+            "border_color": "rgba(59, 130, 246, 0.4)",
+            "background_color": "#3b82f6",
+            "tension": 0,
+            "point_radius": 5,
+        }
+    }
+
     def __init__(self, default_type: str = "line"):
         super().__init__()
-
         self.add_input("I-List-XY")
 
-        # 使用统一的输出目录
         default_filename = f"{self.NAME.lower().replace('viewer', '')}_chart.html"
         self.add_text_input_option("文件路径", default=default_filename)
-        self.add_text_input_option(
-            "标题", default=f"{self.NAME.replace('Viewer', '')} Chart"
-        )
+        self.add_text_input_option("标题", default=f"{self.NAME.replace('Viewer', '')} Chart")
         self.add_integer_option("宽度 (px)", default=1200, min_val=800, max_val=2000)
         self.add_integer_option("高度 (px)", default=700, min_val=500, max_val=1200)
         self.add_checkbox_option("显示网格", default=True)
         self.add_checkbox_option("显示图例", default=True)
         self.add_checkbox_option("启用滚轮缩放", default=True)
         self.add_checkbox_option("启用拖拽平移", default=True)
+        self.add_checkbox_option("使用追加模式", default=False)
 
         self.chart_type = default_type
+        if self.chart_type not in self.CHART_CONFIGS:
+            raise ValueError(f"不支持的图表类型: {self.chart_type}")
 
-    def _generate_chart(self, execution_id: str = None):
-        """生成图表"""
+    def _prepare_data(self, i_data: Dict) -> Tuple[list, list, str]:
+        """统一提取和处理X/Y数据，返回 (x_data, y_data, x_label)"""
+        inner = i_data.get("data", {})
+        x_raw = inner.get("x", [])
+        y_raw = inner.get("y", [])
+
+        if not y_raw:
+            self._logger.warning("Y数据为空")
+            return [], [], ""
+
+        # 补齐X轴
+        if not x_raw:
+            x_raw = list(range(len(y_raw)))
+
+        # X轴标签
+        typ = i_data.get("type", "")
+        x_label = (
+            "Time (s)" if typ in ["channel", "filtered", "envelope"] else
+            "Frequency (Hz)" if typ == "fourier" else
+            "Order" if typ == "order" else "X"
+        )
+
+        # 类型特定校验与调整
+        x_data = x_raw
+        y_data = y_raw
+
+        if self.chart_type == "scatter" and len(x_raw) != len(y_raw):
+            self._logger.warning("Scatter图需要完整的X/Y坐标")
+            return [], [], ""
+
+        if self.chart_type == "bar" and len(x_raw) != len(y_raw):
+            x_data = list(range(len(y_raw)))
+
+        return x_data, y_data, x_label
+
+    def _get_full_path(self, filename: str, execution_id: Optional[str]) -> str:
+        # 如果框架有统一的路径处理逻辑，可在此扩展
+        # 暂时直接返回（可根据需要加目录、execution_id后缀等）
+        return filename
+
+    def _generate_chart(self, execution_id: Optional[str] = None):
         try:
             i_data = self.get_interface("I-List-XY")
-
             if not self._validate_input_data(i_data):
                 return
 
-            # 直接从SignalData格式中提取数据
-            inner = i_data.get("data", {})
-            x_raw = inner.get("x", [])
-            y_raw = inner.get("y", [])
-
-            # 如果x为空但y不为空，生成索引作为x
-            if not x_raw and y_raw:
-                x_raw = list(range(len(y_raw)))
-
-            if len(y_raw) == 0:
-                self._logger.warning("Y数据为空")
+            x_data, y_data, x_label = self._prepare_data(i_data)
+            if not y_data:
                 return
 
-            # 根据图表类型处理数据
-            if self.chart_type == "bar":
-                if len(x_raw) == 0 or len(x_raw) != len(y_raw):
-                    x_data = list(range(len(y_raw)))
-                else:
-                    x_data = x_raw
-                y_data = y_raw
-                border_color = "#3b82f6"
-                background_color = "rgba(59, 130, 246, 0.7)"
-                tension = 0
-                point_radius = 0
-
-            elif self.chart_type == "scatter":
-                if len(x_raw) == 0 or len(x_raw) != len(y_raw):
-                    self._logger.warning("Scatter图需要完整的X/Y坐标")
-                    return
-                x_data = x_raw
-                y_data = y_raw
-                border_color = "rgba(59, 130, 246, 0.4)"
-                background_color = "#3b82f6"
-                tension = 0
-                point_radius = 5
-
-            else:  # line
-                if len(x_raw) == 0 or len(x_raw) != len(y_raw):
-                    x_data = list(range(len(y_raw)))
-                else:
-                    x_data = x_raw
-                y_data = y_raw
-                border_color = "#3b82f6"
-                background_color = "rgba(59, 130, 246, 0.05)"
-                tension = 0.15
-                point_radius = 1.5
-
-            # 生成JSON
-            x_json = json.dumps(x_data)
-            y_json = json.dumps(y_data)
-
-            # 获取配置
+            config = self.CHART_CONFIGS[self.chart_type]
             file_path = self.get_option("文件路径")
             title = self.get_option("标题")
             width = self.get_option("宽度 (px)")
@@ -103,78 +113,119 @@ class BaseChartViewer(BaseBlock):
             show_legend = self.get_option("显示图例")
             enable_wheel = self.get_option("启用滚轮缩放")
             enable_drag = self.get_option("启用拖拽平移")
+            append_mode = self.get_option("使用追加模式")
 
-            # 确定X轴标签
-            typ = i_data.get("type", "")
-            x_label = (
-                "Time (s)"
-                if typ in ["channel", "filtered", "envelope"]
-                else (
-                    "Frequency (Hz)"
-                    if typ == "fourier"
-                    else "Order" if typ == "order" else "X"
+            full_path = self._get_full_path(file_path, execution_id)
+            x_json = json.dumps(x_data)
+            y_json = json.dumps(y_data)
+
+            # 生成基础HTML模板（带占位符）
+            html = self._generate_base_html(
+                title=title,
+                width=width,
+                height=height,
+                x_label=x_label,
+                border_color=config["border_color"],
+                background_color=config["background_color"],
+                tension=config["tension"],
+                point_radius=config["point_radius"],
+                show_grid=show_grid,
+                show_legend=show_legend,
+                enable_wheel=enable_wheel,
+                enable_drag=enable_drag,
+                append_mode=append_mode,  # 用于提示文本
+            )
+
+            if not os.path.exists(full_path):
+                # 文件不存在：替换占位符为初始数据，然后写入
+                html = html.replace('INITIAL_LABELS', x_json)
+                html = html.replace('INITIAL_DATA', y_json)
+
+                def write_html(path, mode: str):
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(html)
+                    self._logger.info(f"图表HTML已创建（含初始数据）: {path}")
+
+                self._write_file(
+                    filename=file_path,
+                    write_func=write_html,
+                    execution_id=execution_id,
+                    description=f"{title}图表（初始）",
+                    metadata={
+                        "chart_type": self.chart_type,
+                        "title": title,
+                        "width": width,
+                        "height": height,
+                        "append_mode": append_mode,
+                    },
                 )
-            )
 
-            # 生成HTML
-            html_content = self._generate_html(
-                title,
-                width,
-                height,
-                x_label,
-                x_json,
-                y_json,
-                border_color,
-                background_color,
-                tension,
-                point_radius,
-                show_grid,
-                show_legend,
-                enable_wheel,
-                enable_drag,
-            )
+            else:
+                if append_mode:
+                    # 追加模式：只追加更新脚本
+                    append_script = (
+                        f"<script>\n"
+                        f"labels = labels.concat({x_json});\n"
+                        f"dataValues = dataValues.concat({y_json});\n"
+                        f"chart.data.labels = labels;\n"
+                        f"chart.data.datasets[0].data = dataValues;\n"
+                        f"chart.update();\n"
+                        f"</script>\n"
+                    )
+                    with open(full_path, "a", encoding="utf-8") as f:
+                        f.write(append_script)
+                    self._logger.info(f"数据已追加到: {full_path}")
+                else:
+                    # 非追加模式：覆盖重写，替换占位符为当前数据
+                    html = html.replace('INITIAL_LABELS', x_json)
+                    html = html.replace('INITIAL_DATA', y_json)
 
-            # 使用通用文件写入方法
-            def write_html(full_path, mode: str):
-                with open(full_path, "w", encoding="utf-8") as f:
-                    f.write(html_content)
-                self._logger.info(f"图表已生成: {full_path}")
+                    def write_html(path, mode: str):
+                        with open(path, "w", encoding="utf-8") as f:
+                            f.write(html)
+                        self._logger.info(f"图表已覆盖生成: {path}")
 
-            self._write_file(
-                filename=file_path,
-                write_func=write_html,
-                execution_id=execution_id,
-                description=f"{title}图表",
-                metadata={
-                    "chart_type": self.chart_type,
-                    "title": title,
-                    "width": width,
-                    "height": height,
-                },
-            )
+                    self._write_file(
+                        filename=file_path,
+                        write_func=write_html,
+                        execution_id=execution_id,
+                        description=f"{title}图表（覆盖）",
+                        metadata={
+                            "chart_type": self.chart_type,
+                            "title": title,
+                            "width": width,
+                            "height": height,
+                            "append_mode": append_mode,
+                        },
+                    )
 
         except Exception as e:
             self._log_error(e, "图表生成")
             raise
 
-    def _generate_html(
+    def _generate_base_html(
         self,
-        title,
-        width,
-        height,
-        x_label,
-        x_json,
-        y_json,
-        border_color,
-        background_color,
-        tension,
-        point_radius,
-        show_grid,
-        show_legend,
-        enable_wheel,
-        enable_drag,
+        title: str,
+        width: int,
+        height: int,
+        x_label: str,
+        border_color: str,
+        background_color: str,
+        tension: float,
+        point_radius: float,
+        show_grid: bool,
+        show_legend: bool,
+        enable_wheel: bool,
+        enable_drag: bool,
+        append_mode: bool,
     ) -> str:
-        """生成HTML内容"""
+        """统一的HTML模板，使用 INITIAL_LABELS 和 INITIAL_DATA 占位符"""
+        hint_text = (
+            "交互提示：滚轮缩放 · 左键拖拽平移 · 双击重置 · 刷新页面查看最新数据（追加模式）"
+            if append_mode else
+            "交互提示：滚轮缩放 · 左键拖拽平移 · 双击重置"
+        )
+
         return f"""
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -192,11 +243,8 @@ class BaseChartViewer(BaseBlock):
                       box-shadow: 0 10px 30px rgba(0,0,0,0.1); overflow: hidden; }}
         header {{ background: #2563eb; color: white; padding: 20px; text-align: center; }}
         h1 {{ margin: 0; font-weight: 500; font-size: 1.8em; }}
-        .hint {{ 
-            text-align: center; color: #64748b; font-size: 0.85em; 
-            margin: 8px 0 12px 0; padding: 6px 0;
-            background: rgba(37, 99, 235, 0.05); border-radius: 6px;
-        }}
+        .hint {{ text-align: center; color: #64748b; font-size: 0.85em; margin: 8px 0 12px 0; padding: 6px 0;
+                 background: rgba(37, 99, 235, 0.05); border-radius: 6px; }}
         .chart-wrapper {{ position: relative; height: {height}px; padding: 20px; cursor: default; }}
         .chart-wrapper:hover {{ cursor: grab; }}
         .chart-wrapper:active {{ cursor: grabbing; }}
@@ -205,23 +253,22 @@ class BaseChartViewer(BaseBlock):
 <body>
     <div class="container">
         <header><h1>{title}</h1></header>
-        <div class="hint">
-            交互提示：滚轮缩放 · 左键拖拽平移 · 双击重置
-        </div>
+        <div class="hint">{hint_text}</div>
         <div class="chart-wrapper">
             <canvas id="chart"></canvas>
         </div>
     </div>
-
     <script>
         const ctx = document.getElementById('chart').getContext('2d');
+        let labels = INITIAL_LABELS;
+        let dataValues = INITIAL_DATA;
         const chart = new Chart(ctx, {{
             type: '{self.chart_type}',
-            data: {{ 
-                labels: {x_json}, 
+            data: {{
+                labels: labels,
                 datasets: [{{
                     label: '{title}',
-                    data: {y_json},
+                    data: dataValues,
                     borderColor: '{border_color}',
                     backgroundColor: '{background_color}',
                     borderWidth: 2,
@@ -235,8 +282,8 @@ class BaseChartViewer(BaseBlock):
                 maintainAspectRatio: false,
                 animation: {{ duration: 800 }},
                 interaction: {{ intersect: false, mode: 'index' }},
-plugins: {{
-                    legend: {{ display: false }},
+                plugins: {{
+                    legend: {{ display: {str(show_legend).lower()} }},
                     tooltip: {{
                         backgroundColor: 'rgba(0,0,0,0.8)',
                         cornerRadius: 8,
@@ -269,7 +316,6 @@ plugins: {{
                 }}
             }}
         }});
-
         document.querySelector('canvas').addEventListener('dblclick', (e) => {{
             e.preventDefault();
             chart.resetZoom('none');
@@ -282,7 +328,6 @@ plugins: {{
 
 class LineChartViewer(BaseChartViewer):
     """交互式折线图查看器"""
-
     NAME = "LineChartViewer"
     CATEGORY = "输出"
 
@@ -295,7 +340,6 @@ class LineChartViewer(BaseChartViewer):
 
 class BarChartViewer(BaseChartViewer):
     """交互式柱状图查看器"""
-
     NAME = "BarChartViewer"
     CATEGORY = "输出"
 
@@ -308,7 +352,6 @@ class BarChartViewer(BaseChartViewer):
 
 class ScatterChartViewer(BaseChartViewer):
     """交互式散点图查看器"""
-
     NAME = "ScatterChartViewer"
     CATEGORY = "输出"
 
@@ -317,7 +360,6 @@ class ScatterChartViewer(BaseChartViewer):
 
     async def on_compute(self, execution_id: Optional[str] = None):
         self._generate_chart(execution_id)
-
 
 class TrajectoryChartViewer(BaseBlock):
     """
@@ -926,3 +968,11 @@ class OrderMapChartViewer(BaseBlock):
 </html>
 """
 
+
+__all__ = [
+    "LineChartViewer",
+    "BarChartViewer",
+    "ScatterChartViewer",
+    "TrajectoryChartViewer",
+    "OrderMapChartViewer",
+]
