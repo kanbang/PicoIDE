@@ -41,7 +41,13 @@ from flow.setting import settings
 from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
 from fastapi.responses import StreamingResponse
 import json
-from flow.engine_manager import EngineManager, async_stop_flow, get_running_flows, async_acquire_flow, async_run_existing_engine
+from flow.engine_manager import (
+    EngineManager,
+    async_stop_flow,
+    get_running_flows,
+    async_acquire_flow,
+    async_run_existing_engine,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -391,6 +397,7 @@ async def sync_execute_saved(
         logger.error(f"从数据库执行失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Execution from DB failed: {str(e)}")
 
+
 @router.post("/execute-saved", response_model=ExecuteResponse)
 async def execute_saved(
     request: ExecuteSavedRequest, business: Annotated[str, Depends(get_business)]
@@ -473,53 +480,43 @@ async def execute_saved(
                 total_nodes=len(graph.get("nodes", [])),
             )
 
-        # 8. 后台异步执行 flow
-        async def _execute_background():
-            """后台执行任务"""
-            start_time = time.time()
-            try:
-                # 执行 flow（传递 execution_id 和 business）
-                result = await run_business(business.upper(), graph, execution_id, USER_ID)
+        start_time = time.time()
 
-                # 收集输出文件
-                # 根据配置决定从数据库还是收集器获取
-                if settings.ENABLE_DB_WRITE:
-                    output_files = await output_file_manager.get_execution_files(
-                        execution_id
-                    )
-                else:
-                    # 从文件收集器获取（轻量化模式）
-                    output_files = await file_collector.get_files(execution_id)
+        async def _on_execution_done(result):
+            # 更新 Execution 状态为完成
+            if execution:
+                execution.status = "completed"
+                execution.end_time = datetime.now()
+                execution.execution_time = time.time() - start_time
+                execution.executed_nodes = execution.total_nodes
+                execution.result = str(result)[:1000] if result else None
+                await execution.save()
 
-                # 更新 Execution 状态为完成
-                if execution:
-                    execution.status = "completed"
-                    execution.end_time = datetime.now()
-                    execution.execution_time = time.time() - start_time
-                    execution.executed_nodes = execution.total_nodes
-                    execution.result = str(result)[:1000] if result else None
-                    await execution.save()
-
-                logger.info(
-                    f"从数据库执行完成，耗时: {time.time() - start_time:.3f}s，输出文件: {len(output_files)}"
+            # 根据配置决定从数据库还是收集器获取
+            if settings.ENABLE_DB_WRITE:
+                output_files = await output_file_manager.get_execution_files(
+                    execution_id
                 )
+            else:
+                # 从文件收集器获取（轻量化模式）
+                output_files = file_collector.get_files(execution_id)
 
-            except Exception as e:
-                # 更新 Execution 状态为失败
-                if execution:
-                    execution.status = "failed"
-                    execution.end_time = datetime.now()
-                    execution.execution_time = time.time() - start_time
-                    execution.result = f"Error: {str(e)}"[:1000]
-                    await execution.save()
-                logger.error(f"后台执行失败: {str(e)}", exc_info=True)
+            logger.info(
+                f"从数据库执行完成，耗时: {time.time() - start_time:.3f}s，输出文件: {len(output_files)}"
+            )
 
-            # 移除 finally 中的 remove_execution，让 callback 处理
-
-        # 启动后台任务，不等待完成
-        background_task = asyncio.create_task(_execute_background())
-
-    
+        try:
+            # 执行 flow（传递 execution_id 和 business）
+            await run_business(business.upper(), graph, execution_id, USER_ID)
+        except Exception as e:
+            # 更新 Execution 状态为失败
+            if execution:
+                execution.status = "failed"
+                execution.end_time = datetime.now()
+                execution.execution_time = time.time() - start_time
+                execution.result = f"Error: {str(e)}"[:1000]
+                await execution.save()
+            logger.error(f"后台执行失败: {str(e)}", exc_info=True)
 
         # 9. 立即返回 execution_id，让前端可以立即订阅 SSE
         return {
@@ -547,6 +544,7 @@ async def execute_saved(
     except Exception as e:
         logger.error(f"从数据库执行失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Execution from DB failed: {str(e)}")
+
 
 @router.get("/running", response_model=Dict[str, Any])
 async def get_running_executions(business: Annotated[str, Depends(get_business)]):

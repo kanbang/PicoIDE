@@ -78,6 +78,7 @@ class EngineManager:
             )
 
     async def remove_execution(self, execution_id: str):
+        self.logger.info(f"移除执行 {execution_id}。")
         async with self._lock:
             if execution_id in self._running_executions:
                 del self._running_executions[execution_id]
