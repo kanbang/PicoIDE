@@ -345,29 +345,3 @@ class BaseBlock(Block):
             self._log_error(e, f"File processing failed: {filename}")
             raise
 
-
-# ==================== DebugBlock Class ====================
-class DebugBlock(BaseBlock):
-    """Block for logging debug information."""
-
-    NAME = "Debug Logger"
-    CATEGORY = "Utilities"
-    STREAMING = False
-
-    def __init__(self):
-        super().__init__()
-        self.add_input("data")  # Input to trigger logging
-
-    async def on_compute(self, execution_id: str = None):
-        """Asynchronously logs input data and emits a debug event."""
-        data = self.get_interface("data")
-        log_msg = f"{data}"
-        await self.event_bus.emit(
-            RuntimeEvent(
-                execution_id,
-                RuntimeEventType.DEBUG,
-                self.NAME,
-                log_msg,
-                payload=data,
-            )
-        )

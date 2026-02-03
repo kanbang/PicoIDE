@@ -228,8 +228,8 @@ class FileSinkBlock(BaseBlock):
 
         filename = self.get_option("filename")
 
-        def write(path: Path):
-            with open(path, "w", encoding="utf-8") as f:
+        def write(path: Path, mode="w"):
+            with open(path, mode, encoding="utf-8") as f:
                 f.write(str(data))
 
         self._write_file(
@@ -259,8 +259,8 @@ class JsonExportBlock(BaseBlock):
 
         filename = self.get_option("filename")
 
-        def write(path: Path):
-            with open(path, "w", encoding="utf-8") as f:
+        def write(path: Path, mode="w"):
+            with open(path, mode, encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
         self._write_file(
