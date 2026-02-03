@@ -3,6 +3,37 @@ from flow.block import BaseBlock
 from flow.runtime_bus import RuntimeEvent, RuntimeEventType
 
 
+class ConstantBlock(BaseBlock):
+    """常量数据源"""
+
+    NAME = "Constant"
+    CATEGORY = "Demo/Source"
+
+    def __init__(self):
+        super().__init__()
+
+        self.add_output("value")
+
+        self.add_select_option(
+            "type", items=["Number", "Integer", "Text"], default="Number"
+        )
+        self.add_number_option("number", default=1.0)
+        self.add_integer_option("integer", default=1)
+        self.add_text_input_option("text", "hello")
+
+    async def on_compute(self, execution_id=None):
+        t = self.get_option("type")
+
+        if t == "Number":
+            value = self.get_option("number")
+        elif t == "Integer":
+            value = self.get_option("integer")
+        else:
+            value = self.get_option("text")
+
+        self.set_interface("value", value)
+
+
 class SseLogger(BaseBlock):
     """Block for logging debug information."""
 
@@ -57,3 +88,10 @@ class ConsoleLogger(BaseBlock):
         except Exception as e:
             self._log_error(e, "日志输出")
             raise
+
+
+__all__ = [
+    "ConstantBlock",
+    "SseLogger",
+    "ConsoleLogger",
+]

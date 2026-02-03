@@ -18,8 +18,18 @@ Node 模块 - 统一的节点管理
 
 from flow.output import output_file_manager
 from flow.collector import file_collector
+from .utils import SseLogger, ConsoleLogger
+from .file import CsvDictWriterBlock, CsvXyWriterBlock
+
+base_blocks = [
+    SseLogger,
+    ConsoleLogger,
+    CsvDictWriterBlock,
+    CsvXyWriterBlock,
+]
 
 __all__ = [
     "output_file_manager",
     "file_collector",
+    "base_blocks",
 ]
