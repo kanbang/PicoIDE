@@ -391,7 +391,6 @@ async def sync_execute_saved(
         logger.error(f"从数据库执行失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Execution from DB failed: {str(e)}")
 
-
 @router.post("/execute-saved", response_model=ExecuteResponse)
 async def execute_saved(
     request: ExecuteSavedRequest, business: Annotated[str, Depends(get_business)]
@@ -515,16 +514,12 @@ async def execute_saved(
                     await execution.save()
                 logger.error(f"后台执行失败: {str(e)}", exc_info=True)
 
-            finally:
-                await engine_manager.remove_execution(execution_id)  # 自动移除
+            # 移除 finally 中的 remove_execution，让 callback 处理
 
         # 启动后台任务，不等待完成
         background_task = asyncio.create_task(_execute_background())
 
-        # 注册到 EngineManager
-        await engine_manager.register_execution(
-            execution_id, background_task, engine_manager, business, USER_ID
-        )
+    
 
         # 9. 立即返回 execution_id，让前端可以立即订阅 SSE
         return {
@@ -552,7 +547,6 @@ async def execute_saved(
     except Exception as e:
         logger.error(f"从数据库执行失败: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Execution from DB failed: {str(e)}")
-
 
 @router.get("/running", response_model=Dict[str, Any])
 async def get_running_executions(business: Annotated[str, Depends(get_business)]):
