@@ -1,7 +1,7 @@
 import json
 import os
 from typing import Optional, Dict, Any, Tuple
-from flow.block import BaseBlock
+from flow.block import BaseBlock, WriteMode
 
 
 class BaseChartViewer(BaseBlock):
@@ -121,15 +121,13 @@ class BaseChartViewer(BaseBlock):
             enable_wheel = self.get_option("启用滚轮缩放")
             enable_drag = self.get_option("启用拖拽平移")
             append_mode = self.get_option("使用追加模式")
-            write_mode = "a" if append_mode else "w"
+            write_mode = WriteMode.APPEND if append_mode else WriteMode.WRITE
 
             x_json = json.dumps(x_data)
             y_json = json.dumps(y_data)
 
             def write_html(full_path, mode: str):
-                append_html = mode == "a" and full_path.exists()
-
-                if append_html:
+                if mode == "a":
                     # 追加模式：只追加更新脚本
                     append_script = (
                         f"<script>\n"
@@ -140,11 +138,10 @@ class BaseChartViewer(BaseBlock):
                         f"chart.update();\n"
                         f"</script>\n"
                     )
-                    with open(full_path, "a", encoding="utf-8") as f:
+                    with open(full_path, mode, encoding="utf-8") as f:
                         f.write(append_script)
-                    self._logger.info(f"数据已追加到: {full_path}")
+                    self._logger.info(f"图表数据已追加到: {full_path}")
                 else:
-                    # 非追加模式
                     html = self._generate_base_html(
                         title=title,
                         width=width,
@@ -163,10 +160,9 @@ class BaseChartViewer(BaseBlock):
                     html = html.replace("INITIAL_LABELS", x_json)
                     html = html.replace("INITIAL_DATA", y_json)
 
-                    with open(full_path, "w", encoding="utf-8") as f:
+                    with open(full_path, mode, encoding="utf-8") as f:
                         f.write(html)
-                    self._logger.info(f"图表已覆盖生成: {full_path}")
-
+                    self._logger.info(f"图表数据已生成: {full_path}")
 
             self._write_file(
                 filename=file_path,

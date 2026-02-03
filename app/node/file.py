@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 import pandas as pd
-from flow.block import BaseBlock
+from flow.block import BaseBlock, WriteMode
 
 
 class CsvDictWriterBlock(BaseBlock):
@@ -26,8 +26,8 @@ class CsvDictWriterBlock(BaseBlock):
         # 配置项
         self.add_text_input_option("file_path", "data_log.csv")
         self.add_checkbox_option("auto_timestamp", True)
-        self.add_checkbox_option("append_mode", False)      # 新增
-        self.add_checkbox_option("include_header", True)    # 新增
+        self.add_checkbox_option("append_mode", False)  # 新增
+        self.add_checkbox_option("include_header", True)  # 新增
 
         # 输入接口
         self.add_input("data")
@@ -57,15 +57,12 @@ class CsvDictWriterBlock(BaseBlock):
 
         filename = self.get_option("file_path")
         append_mode = self.get_option("append_mode")
-        write_mode = "a" if append_mode else "w"
+        write_mode = WriteMode.APPEND if append_mode else WriteMode.WRITE
         include_header = self.get_option("include_header")
 
         def write_csv(full_path: Path, mode: str):
             # 是否需要写表头
-            header_needed = (
-                include_header
-                and (mode == "w" or not full_path.exists())
-            )
+            header_needed = include_header and mode == "w"
 
             with open(full_path, mode, newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=self._fieldnames)
@@ -127,7 +124,7 @@ class CsvXyWriterBlock(BaseBlock):
 
         filename = self.get_option("file_path")
         append_mode = self.get_option("append_mode")
-        write_mode = "a" if append_mode else "w"
+        write_mode = WriteMode.APPEND if append_mode else WriteMode.WRITE
         include_header = self.get_option("include_header")
 
         # 提取 x/y

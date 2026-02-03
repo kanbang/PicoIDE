@@ -2,12 +2,19 @@ import asyncio
 import time
 import uuid
 import logging
+from enum import Enum
 from typing import Dict, List, Any, Optional, Union, Callable, Tuple
 from pathlib import Path
 from flow.setting import settings
 from flow.log import logger
 from flow.collector import file_collector
 from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
+
+
+class WriteMode(Enum):
+    """文件写入模式"""
+    WRITE = "w"   # 覆盖写入
+    APPEND = "a"  # 追加写入
 
 
 # ==================== Option Class ====================
@@ -236,12 +243,12 @@ class BaseBlock(Block):
     def _write_file(
         self,
         filename: str,
-        write_func: Callable[[Path, str], None],  # write_func(full_path, mode)
+        write_func: Callable[[Path, str], None],  # write_func(full_path, effective_mode)
         execution_id: Optional[str],
         description: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         unique: bool = True,
-        mode: str = "w",  # 'w' or 'a'
+        mode: WriteMode = WriteMode.WRITE,
     ) -> str:
         """
         Handles file writing/appending with unique naming, directory management,
@@ -275,7 +282,7 @@ class BaseBlock(Block):
                     unique_filename = self._execution_files[file_key]
 
                 full_path = target_dir / unique_filename
-                effective_mode = "a" if mode == "a" and full_path.exists() else "w"
+                effective_mode = "a" if mode == WriteMode.APPEND and full_path.exists() else "w"
 
             # Build full and relative paths
             full_path = target_dir / unique_filename
