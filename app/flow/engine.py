@@ -9,6 +9,10 @@ from collections import defaultdict
 from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
 from flow.collector import file_collector
 
+class GenerationComplete(Exception):
+    """Custom exception to signal graceful completion of streaming generation."""
+    pass 
+
 class EngineStatus(Enum):
     IDLE = auto()
     RUNNING = auto()
@@ -54,6 +58,14 @@ class Execution:
                 if not (is_source and is_streaming):
                     break
                 await asyncio.sleep(0)  # 或更好：用事件等待新数据
+            except GenerationComplete:
+                # Graceful completion for streaming sources
+                await self.engine.event_bus.emit(
+                    RuntimeEvent(
+                        self.id, RuntimeEventType.LOG, block.NAME, f"Node[{block.NAME}] {n_id} completed gracefully"
+                    )
+                )
+                break
             except asyncio.CancelledError:
                 await self.engine.event_bus.emit(
                     RuntimeEvent(

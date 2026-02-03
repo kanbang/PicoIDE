@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-19 16:03:59
 LastEditors: zhai
-LastEditTime: 2026-02-03 18:38:11
+LastEditTime: 2026-02-03 19:27:45
 '''
 """
 PicoIDE DAQ Node Module - Industrial Grade Data Acquisition and Processing
@@ -37,6 +37,7 @@ from scipy.interpolate import interp1d
 import numpy as np
 import pandas as pd
 import scipy.signal as signal
+from flow.engine import GenerationComplete
 from flow.log import logger
 
 from flow.block import BaseBlock
@@ -608,52 +609,43 @@ class ChannelSource(BaseBlock):
             self._log_error(e, f"通道 {channel_idx}")
             raise
 
+
 class VibrationGenerator(BaseBlock):
     """
     简化版振动信号生成器（流式版本）
-
     功能：
     - 生成纯正弦振动信号（单主频率 + 可选噪声）
     - 流式输出：按“更新周期”逐批生成并输出数据（模拟实时采集）
     - 使用 STREAMING = True，让引擎循环调用 on_compute
     - 内部状态控制：有限总时长时自动停止输出（后续调用快速返回）
     - 不阻塞引擎：on_compute 快速执行 + await sleep 控制速率
-
     输出接口：
     - O-Vibration-XY : 每次输出一批新数据（下游追加显示）
-
     注意：
     - 引擎会因 STREAMING=True 而循环调用 on_compute
-    - 总时长 >0 时，达到后设置 _done=True，后续调用直接返回
+    - 总时长 >0 时，达到后抛出 GenerationComplete 异常停止
     - 总时长 <=0 时无限生成（手动停止执行）
     """
-
     NAME = "VibrationGenerator"
     CATEGORY = "输入"
-    STREAMING = True  # 关键：启用流式，引擎会循环调用 on_compute
+    STREAMING = True
 
     def __init__(self):
         super().__init__()
 
-        # 核心参数（保持精简）
-        self.add_number_option("采样率 (Hz)", default=12800.0, min_val=1000.0, step=100.0)
-        self.add_number_option("总模拟时长 (s)", default=60.0, min_val=0.0, step=5.0)  # 0 表示无限
-        self.add_number_option("更新周期 (s)", default=1.0, min_val=0.01, max_val=10.0, step=0.1)
+        self.add_number_option("采样率 (Hz)", default=1280.0, min_val=1000.0)
+        self.add_number_option("总模拟时长 (s)", default=60.0, min_val=0.0) # 0 表示无限
+        self.add_number_option("更新周期 (s)", default=1.0, min_val=0.1, max_val=10.0)
         self.add_text_input_option("单位", default="μm")
-
-        self.add_number_option("主频率 (Hz)", default=50.0, min_val=0.1, max_val=5000.0, step=1.0)
-        self.add_number_option("主振幅", default=50.0, min_val=0.0, step=1.0)
-
+        self.add_number_option("主频率 (Hz)", default=50.0, min_val=0.1, max_val=5000.0)
+        self.add_number_option("主振幅", default=50.0, min_val=0.0)
         self.add_checkbox_option("添加噪声", default=True)
-        self.add_number_option("噪声标准差", default=2.0, min_val=0.0, step=0.5)
-
+        self.add_number_option("噪声标准差", default=2.0, min_val=0.0)
         # 输出
         self.add_output("O-Vibration-XY")
-
         # 内部状态（在实例中持久化，多次调用共享）
         self._current_time = 0.0
         self._generated_points = 0
-        self._done = False
         self._batch_points = 0
         self._dt = 0.0
         self._fs = 0.0
@@ -663,15 +655,14 @@ class VibrationGenerator(BaseBlock):
 
     def _initialize_once(self):
         """首次调用时初始化固定参数"""
-        if self._fs > 0:  # 已初始化
+        if self._base_meta is not None: # 已初始化
             return
-
+        
         self._fs = float(self.get_option("采样率 (Hz)"))
         self._update_interval = self.get_option("更新周期 (s)")
         self._total_duration = self.get_option("总模拟时长 (s)")
         self._dt = 1.0 / self._fs
         self._batch_points = max(1, int(self._update_interval / self._dt))
-
         self._base_meta = SignalMetadata(
             fs=self._fs,
             unit=self.get_option("单位"),
@@ -681,12 +672,7 @@ class VibrationGenerator(BaseBlock):
         )
 
     async def on_compute(self, execution_id: Optional[str] = None):
-        if self._done:
-            # 已完成：快速返回，不再输出（引擎会继续循环，但空调用很快）
-            return
-
         self._initialize_once()
-
         try:
             # 1. 计算当前批次时间轴
             t_start = self._current_time
@@ -694,23 +680,19 @@ class VibrationGenerator(BaseBlock):
             n_batch = len(t_batch)
             if n_batch == 0:
                 return
-
             # 2. 生成信号
             f_main = self.get_option("主频率 (Hz)")
             amp_main = self.get_option("主振幅")
             phase = 2 * np.pi * f_main * t_batch
             y_batch = amp_main * np.sin(phase)
-
             if self.get_option("添加噪声"):
                 noise_std = self.get_option("噪声标准差")
                 y_batch += np.random.normal(0, noise_std, n_batch)
-
             # 3. 更新元数据（每批记录当前段开始时间）
             meta = SignalMetadata(**self._base_meta.to_dict())
             meta.start_time = t_start
             meta.duration = self._update_interval
             meta.tags = ["real-time", "vibration"]
-
             # 4. 输出当前批次
             signal_batch = SignalData(
                 x=t_batch.tolist(),
@@ -719,26 +701,22 @@ class VibrationGenerator(BaseBlock):
                 type="vibration"
             )
             self.set_interface("O-Vibration-XY", signal_batch.to_dict())
-
             self._logger.debug(
                 f"输出批次: 时间 {t_start:.2f}s ~ {t_start + self._update_interval:.2f}s, 点数={n_batch}"
             )
-
             # 5. 更新状态
             self._current_time += self._update_interval
             self._generated_points += n_batch
-
             # 6. 检查是否完成（有限时长模式）
             if self._total_duration > 0 and self._current_time >= self._total_duration:
-                self._done = True
                 self._logger.info(f"振动生成达到总时长 {self._total_duration}s，已完成")
-
+                raise GenerationComplete()  # Raise custom exception to signal completion
             # 7. 控制更新速率（非阻塞 sleep）
             await asyncio.sleep(self._update_interval)
 
         except Exception as e:
             self._log_error(e, "VibrationGenerator")
-            # 可选：如果想在异常时停止 streaming，可 raise 或 set _done=True
+            # 可选：如果想在异常时停止 streaming，可 raise0
             # 但这里保持继续（引擎会 log 并 retry 如果 source）
             raise
 
@@ -2244,6 +2222,7 @@ class ResultSink(BaseBlock):
 DAQ_BLOCKS = [
     # Source
     ChannelSource,
+    VibrationGenerator,
     TurbineSimulator,
     CSVReader,
     ConstantSource,

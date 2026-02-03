@@ -10,6 +10,7 @@ class BaseChartViewer(BaseBlock):
     支持追加模式：在同一HTML文件中累加数据（适合多次执行、流式更新）
     使用占位符方式插入初始数据，避免位置查找错误
     """
+
     NAME = "BaseChartViewer"
     CATEGORY = "输出"
 
@@ -32,7 +33,7 @@ class BaseChartViewer(BaseBlock):
             "background_color": "#3b82f6",
             "tension": 0,
             "point_radius": 5,
-        }
+        },
     }
 
     def __init__(self, default_type: str = "line"):
@@ -41,7 +42,9 @@ class BaseChartViewer(BaseBlock):
 
         default_filename = f"{self.NAME.lower().replace('viewer', '')}_chart.html"
         self.add_text_input_option("文件路径", default=default_filename)
-        self.add_text_input_option("标题", default=f"{self.NAME.replace('Viewer', '')} Chart")
+        self.add_text_input_option(
+            "标题", default=f"{self.NAME.replace('Viewer', '')} Chart"
+        )
         self.add_integer_option("宽度 (px)", default=1200, min_val=800, max_val=2000)
         self.add_integer_option("高度 (px)", default=700, min_val=500, max_val=1200)
         self.add_checkbox_option("显示网格", default=True)
@@ -71,9 +74,13 @@ class BaseChartViewer(BaseBlock):
         # X轴标签
         typ = i_data.get("type", "")
         x_label = (
-            "Time (s)" if typ in ["channel", "filtered", "envelope"] else
-            "Frequency (Hz)" if typ == "fourier" else
-            "Order" if typ == "order" else "X"
+            "Time (s)"
+            if typ in ["channel", "filtered", "envelope"]
+            else (
+                "Frequency (Hz)"
+                if typ == "fourier"
+                else "Order" if typ == "order" else "X"
+            )
         )
 
         # 类型特定校验与调整
@@ -114,54 +121,15 @@ class BaseChartViewer(BaseBlock):
             enable_wheel = self.get_option("启用滚轮缩放")
             enable_drag = self.get_option("启用拖拽平移")
             append_mode = self.get_option("使用追加模式")
+            write_mode = "a" if append_mode else "w"
 
-            full_path = self._get_full_path(file_path, execution_id)
             x_json = json.dumps(x_data)
             y_json = json.dumps(y_data)
 
-            # 生成基础HTML模板（带占位符）
-            html = self._generate_base_html(
-                title=title,
-                width=width,
-                height=height,
-                x_label=x_label,
-                border_color=config["border_color"],
-                background_color=config["background_color"],
-                tension=config["tension"],
-                point_radius=config["point_radius"],
-                show_grid=show_grid,
-                show_legend=show_legend,
-                enable_wheel=enable_wheel,
-                enable_drag=enable_drag,
-                append_mode=append_mode,  # 用于提示文本
-            )
+            def write_html(full_path, mode: str):
+                append_html = mode == "a" and full_path.exists()
 
-            if not os.path.exists(full_path):
-                # 文件不存在：替换占位符为初始数据，然后写入
-                html = html.replace('INITIAL_LABELS', x_json)
-                html = html.replace('INITIAL_DATA', y_json)
-
-                def write_html(path, mode: str):
-                    with open(path, "w", encoding="utf-8") as f:
-                        f.write(html)
-                    self._logger.info(f"图表HTML已创建（含初始数据）: {path}")
-
-                self._write_file(
-                    filename=file_path,
-                    write_func=write_html,
-                    execution_id=execution_id,
-                    description=f"{title}图表（初始）",
-                    metadata={
-                        "chart_type": self.chart_type,
-                        "title": title,
-                        "width": width,
-                        "height": height,
-                        "append_mode": append_mode,
-                    },
-                )
-
-            else:
-                if append_mode:
+                if append_html:
                     # 追加模式：只追加更新脚本
                     append_script = (
                         f"<script>\n"
@@ -176,28 +144,45 @@ class BaseChartViewer(BaseBlock):
                         f.write(append_script)
                     self._logger.info(f"数据已追加到: {full_path}")
                 else:
-                    # 非追加模式：覆盖重写，替换占位符为当前数据
-                    html = html.replace('INITIAL_LABELS', x_json)
-                    html = html.replace('INITIAL_DATA', y_json)
-
-                    def write_html(path, mode: str):
-                        with open(path, "w", encoding="utf-8") as f:
-                            f.write(html)
-                        self._logger.info(f"图表已覆盖生成: {path}")
-
-                    self._write_file(
-                        filename=file_path,
-                        write_func=write_html,
-                        execution_id=execution_id,
-                        description=f"{title}图表（覆盖）",
-                        metadata={
-                            "chart_type": self.chart_type,
-                            "title": title,
-                            "width": width,
-                            "height": height,
-                            "append_mode": append_mode,
-                        },
+                    # 非追加模式
+                    html = self._generate_base_html(
+                        title=title,
+                        width=width,
+                        height=height,
+                        x_label=x_label,
+                        border_color=config["border_color"],
+                        background_color=config["background_color"],
+                        tension=config["tension"],
+                        point_radius=config["point_radius"],
+                        show_grid=show_grid,
+                        show_legend=show_legend,
+                        enable_wheel=enable_wheel,
+                        enable_drag=enable_drag,
+                        append_mode=append_mode,  # 用于提示文本
                     )
+                    html = html.replace("INITIAL_LABELS", x_json)
+                    html = html.replace("INITIAL_DATA", y_json)
+
+                    with open(full_path, "w", encoding="utf-8") as f:
+                        f.write(html)
+                    self._logger.info(f"图表已覆盖生成: {full_path}")
+
+
+            self._write_file(
+                filename=file_path,
+                write_func=write_html,
+                execution_id=execution_id,
+                description=f"{title}图表",
+                metadata={
+                    "chart_type": self.chart_type,
+                    "title": title,
+                    "width": width,
+                    "height": height,
+                    "append_mode": append_mode,
+                },
+                unique=False,
+                mode=write_mode,
+            )
 
         except Exception as e:
             self._log_error(e, "图表生成")
@@ -222,8 +207,8 @@ class BaseChartViewer(BaseBlock):
         """统一的HTML模板，使用 INITIAL_LABELS 和 INITIAL_DATA 占位符"""
         hint_text = (
             "交互提示：滚轮缩放 · 左键拖拽平移 · 双击重置 · 刷新页面查看最新数据（追加模式）"
-            if append_mode else
-            "交互提示：滚轮缩放 · 左键拖拽平移 · 双击重置"
+            if append_mode
+            else "交互提示：滚轮缩放 · 左键拖拽平移 · 双击重置"
         )
 
         return f"""
@@ -328,6 +313,7 @@ class BaseChartViewer(BaseBlock):
 
 class LineChartViewer(BaseChartViewer):
     """交互式折线图查看器"""
+
     NAME = "LineChartViewer"
     CATEGORY = "输出"
 
@@ -340,6 +326,7 @@ class LineChartViewer(BaseChartViewer):
 
 class BarChartViewer(BaseChartViewer):
     """交互式柱状图查看器"""
+
     NAME = "BarChartViewer"
     CATEGORY = "输出"
 
@@ -352,6 +339,7 @@ class BarChartViewer(BaseChartViewer):
 
 class ScatterChartViewer(BaseChartViewer):
     """交互式散点图查看器"""
+
     NAME = "ScatterChartViewer"
     CATEGORY = "输出"
 
@@ -360,6 +348,7 @@ class ScatterChartViewer(BaseChartViewer):
 
     async def on_compute(self, execution_id: Optional[str] = None):
         self._generate_chart(execution_id)
+
 
 class TrajectoryChartViewer(BaseBlock):
     """
