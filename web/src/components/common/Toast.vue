@@ -39,7 +39,7 @@ const icon = computed(() => {
 
 const style = computed(() => {
   const positions = {
-    'top': 'top: 60px; left: 50%; transform: translateX(-50%);',
+    'top': 'top: 10px; left: 50%; transform: translateX(-50%);',
     'bottom': 'bottom: 20px; left: 50%; transform: translateX(-50%);',
     'top-right': 'top: 20px; right: 20px;',
     'bottom-right': 'bottom: 20px; right: 20px;'

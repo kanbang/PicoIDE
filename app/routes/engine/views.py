@@ -146,7 +146,7 @@ async def execute(
         scripts.extend(scripts_db)
 
         # 3. 注册业务对应的 Block 模板（包含静态和动态 blocks）
-        await register_engine(business.upper(), scripts)
+        await register_business_engine(business.upper(), scripts)
 
         # 4. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
@@ -285,7 +285,7 @@ async def sync_execute_saved(
         logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
 
         # 4. 注册业务对应的 Block 模板（包含静态和动态 blocks）
-        await register_engine(business.upper(), scripts)
+        await register_business_engine(business.upper(), scripts)
 
         # 5. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash

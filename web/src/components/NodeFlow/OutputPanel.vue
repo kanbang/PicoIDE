@@ -74,6 +74,10 @@ const statusText = computed(() => {
       return '执行完成';
     case 'failed':
       return '执行失败';
+    case 'stopping':
+      return '正在停止...';
+    case 'stopped':
+      return '已停止';
     default:
       return '';
   }
@@ -394,6 +398,14 @@ defineExpose({
                 fill="none" stroke="currentColor">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
+              <svg v-else-if="executionStatus === 'stopping'" class="spin" width="18" height="18" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor">
+                <rect x="9" y="9" width="6" height="6" fill="currentColor" />
+              </svg>
+              <svg v-else-if="executionStatus === 'stopped'" width="18" height="18" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor">
+                <rect x="9" y="9" width="6" height="6" fill="currentColor" />
+              </svg>
               <svg v-else width="18" height="18" viewBox="0 0 24 24" stroke="currentColor">
                 <circle cx="12" cy="12" r="10" fill="none" />
                 <line x1="12" y1="8" x2="12" y2="12" />
@@ -646,6 +658,16 @@ defineExpose({
   border-color: #f44336;
 }
 
+.status-banner.stopping {
+  background: rgba(255, 152, 0, 0.15);
+  border-color: #ff9800;
+}
+
+.status-banner.stopped {
+  background: rgba(158, 158, 158, 0.15);
+  border-color: #9e9e9e;
+}
+
 .banner-main {
   display: flex;
   align-items: center;
@@ -676,6 +698,16 @@ defineExpose({
 .status-banner.failed .status-indicator {
   color: #f44336;
   background: rgba(244, 67, 54, 0.15);
+}
+
+.status-banner.stopping .status-indicator {
+  color: #ff9800;
+  background: rgba(255, 152, 0, 0.15);
+}
+
+.status-banner.stopped .status-indicator {
+  color: #9e9e9e;
+  background: rgba(158, 158, 158, 0.15);
 }
 
 .status-indicator svg {

@@ -139,8 +139,6 @@ async function handleRun(id: string, flow: any) {
   try {
     console.log('执行 Flow:', id);
 
-    // 4. 更新 UI 为运行中
-    outputPanel?.setExecutionStatus('running');
 
     // 5. 调用 API (使用 execute-saved 接口)
     const result = await executeSavedFlow(id);
@@ -153,13 +151,13 @@ async function handleRun(id: string, flow: any) {
 
     // 7. 更新输出面板结果
     if (outputPanel) {
-      outputPanel.setExecutionStatus('completed', result.execution_time);
       outputPanel.setOutputFiles(result.output_files || []);
-
-      if (result.output_files?.length > 0) {
-        showSuccess(`执行完成，生成 ${result.output_files.length} 个文件`);
+      if (result.ok) {
+        // 更新 UI 为运行中状态
+        outputPanel.setExecutionStatus('running');
+        showSuccess(`开始执行，执行 ID: ${result.execution_id}`);
       } else {
-        showInfo('执行完成，无输出内容');
+        showInfo('执行请求已发送，但返回失败状态');
       }
     }
 
@@ -187,21 +185,18 @@ async function handleStop(executionId?: string) {
 
     console.log('停止执行:', idToStop);
 
+    // 先设置 stopping 状态（在 API 调用前，避免被 SSE 事件覆盖）
+    const nodeFlowInstance = flowManagerRef.value?.nodeFlowRef;
+    const outputPanel = nodeFlowInstance?.outputPanelRef;
+    if (outputPanel) {
+      outputPanel.setExecutionStatus('stopping');
+    }
+
     // 调用 API 停止执行
     const result = await stopExecution(idToStop);
 
     if (result.ok) {
       showInfo('已发送停止请求');
-
-      // 更新输出面板状态
-      const nodeFlowInstance = flowManagerRef.value?.nodeFlowRef;
-      const outputPanel = nodeFlowInstance?.outputPanelRef;
-      if (outputPanel) {
-        outputPanel.setExecutionStatus('stopping');
-      }
-
-      // 清空当前执行 ID
-      currentExecutionId.value = null;
     } else {
       showError('停止执行失败');
     }
@@ -229,9 +224,9 @@ onMounted(() => {
 
 <template>
   <div class="manager-page-wrapper">
-    <FlowManager ref="flowManagerRef" v-model:flows="flows" v-model:selected-flow-id="selectedFlowId"
-      :blocks="blocks" :show-run="true" @run="handleRun" @stop="handleStop" @executionEnded="handleExecutionEnded" @create="handleCreate" @save="handleSave"
-      @delete="handleDelete" @rename="handleRename" @duplicate="handleDuplicate" />
+    <FlowManager ref="flowManagerRef" v-model:flows="flows" v-model:selected-flow-id="selectedFlowId" :blocks="blocks"
+      :show-run="true" @run="handleRun" @stop="handleStop" @executionEnded="handleExecutionEnded" @create="handleCreate"
+      @save="handleSave" @delete="handleDelete" @rename="handleRename" @duplicate="handleDuplicate" />
   </div>
 </template>
 
