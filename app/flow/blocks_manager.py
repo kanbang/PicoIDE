@@ -36,6 +36,43 @@ STATIC_BLOCKS_MAP: Dict[str, list[type[BaseBlock]]] = {
 }
 
 
+
+def build_blocks_from_scripts(self, scripts: List[str] = None) -> List[type[Block]]:
+    """
+    从脚本动态构建 Block
+
+    Args:
+        scripts: Python 脚本列表
+
+    Returns:
+        动态构建的 Block 类列表
+    """
+    blocks = []
+    if not scripts:
+        return blocks
+
+    for script in scripts:
+        if not script or not script.strip():
+            continue
+
+        try:
+            # 1. 准备命名空间，注入必要的依赖
+            namespace = {"Block": Block, "BaseBlock": BaseBlock, "np": np}
+
+            # 2. 执行脚本
+            exec(script, namespace)
+
+            # 3. 智能发现：遍历命名空间，找到所有 BaseBlock 的子类
+            for name, obj in namespace.items():
+                # 排除 BaseBlock 基类本身，只找子类
+                if inspect.isclass(obj) and issubclass(obj, Block) and obj is not Block and obj is not BaseBlock:
+                    blocks.append(obj)
+                    logger.info(f"成功动态加载节点: {obj.NAME}")
+
+        except Exception as e:
+            logger.error(f"执行脚本失败: {str(e)}")
+
+    return blocks
 # ==================== BlocksRegistry 类 ====================
 
 @singleton
@@ -123,49 +160,6 @@ class BlocksRegistry:
         """
         return list(self._blocks_map.keys())
 
-    def _build_blocks_from_scripts(self, scripts: List[str] = None) -> List[type[Block]]:
-        """
-        从脚本动态构建 Block
-
-        Args:
-            scripts: Python 脚本列表
-
-        Returns:
-            动态构建的 Block 类列表
-
-        Example:
-            ```python
-            registry = BlocksRegistry()
-            dynamic_blocks = registry.build_blocks_from_scripts(scripts)
-            ```
-        """
-        blocks = []
-        if not scripts:
-            return blocks
-
-        for script in scripts:
-            if not script or not script.strip():
-                continue
-
-            try:
-                # 1. 准备命名空间，注入必要的依赖
-                namespace = {"Block": Block, "BaseBlock": BaseBlock, "np": np}
-
-                # 2. 执行脚本
-                exec(script, namespace)
-
-                # 3. 智能发现：遍历命名空间，找到所有 BaseBlock 的子类
-                for name, obj in namespace.items():
-                    # 排除 BaseBlock 基类本身，只找子类
-                    if inspect.isclass(obj) and issubclass(obj, Block) and obj is not Block and obj is not BaseBlock:
-                        blocks.append(obj)
-                        logger.info(f"成功动态加载节点: {obj.NAME}")
-
-            except Exception as e:
-                logger.error(f"执行脚本失败: {str(e)}")
-
-        return blocks
-
     def get_blocks_with_scripts(
         self, business: str, scripts: List[str] = None
     ) -> List[type[Block]]:
@@ -189,7 +183,7 @@ class BlocksRegistry:
         static_blocks = self.get_blocks(business)
 
         # 构建动态 blocks
-        dynamic_blocks = self._build_blocks_from_scripts(scripts)
+        dynamic_blocks = build_blocks_from_scripts(scripts)
 
         # 合并（动态 blocks 优先）
         return dynamic_blocks + static_blocks

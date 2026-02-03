@@ -26,11 +26,13 @@ from flow.demo_blocks import DEMO_BLOCKS
 from .schema import ExecuteRequest, ExecuteResponse, ExecuteSavedRequest
 from routes.dependencies import get_business
 from flow.blocks_manager import blocks_registry
-from flow.run import (
+from flow import (
     create_execution_id,
     get_business_blocks_json,
-    register_engine,
-    run_business,
+    register_business_engine,
+    async_start_flow,
+    async_stop_flow,
+    get_running_flows
 )
 from services import list_dir, read_file, normalize_path
 from routes.flow.service import get_flow
@@ -41,21 +43,12 @@ from flow.setting import settings
 from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
 from fastapi.responses import StreamingResponse
 import json
-from flow.engine_manager import (
-    EngineManager,
-    async_start_flow,
-    async_stop_flow,
-    get_running_flows,
-    async_acquire_flow,
-    async_run_existing_engine,
-)
 
 logger = logging.getLogger(__name__)
 
 USER_ID = "default"
 
 router = APIRouter(prefix="/api/engine", tags=["engine"])
-engine_manager = EngineManager()
 
 
 async def load_scripts_from_db(directory: str, business: str) -> List[str]:
@@ -335,7 +328,9 @@ async def sync_execute_saved(
 
         # 9. 执行 flow（传递 execution_id 和 business）
         try:
-            result = await run_business(business.upper(), graph, execution_id, USER_ID)
+            result = await async_start_engine(
+                business.upper(), graph, execution_id, USER_ID
+            )
 
             # 收集输出文件
             # 根据配置决定从数据库还是收集器获取
@@ -443,7 +438,7 @@ async def execute_saved(
         logger.info(f"从数据库加载了 {len(scripts)} 个脚本")
 
         # 4. 注册业务对应的 Block 模板（包含静态和动态 blocks）
-        await register_engine(business.upper(), scripts)
+        await register_business_engine(business.upper(), scripts)
 
         # 5. 计算脚本哈希
         from utils.helpers import calculate_scripts_hash
@@ -507,7 +502,9 @@ async def execute_saved(
             )
 
         try:
-            await async_start_flow(business, graph, execution_id, USER_ID, _on_execution_done)
+            await async_start_flow(
+                business, graph, execution_id, USER_ID, _on_execution_done
+            )
         except Exception as e:
             # 更新 Execution 状态为失败
             if execution:
