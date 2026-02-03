@@ -9,9 +9,11 @@ from flow.log import logger
 from flow.collector import file_collector
 from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
 
+
 # ==================== Option Class ====================
 class Option:
     """Represents an option with type-specific attributes."""
+
     __slots__ = ("name", "type", "value", "items", "min", "max")
 
     def __init__(
@@ -48,9 +50,11 @@ class Option:
 
         return result
 
+
 # ==================== Block Class ====================
 class Block:
     """Base class for blocks in the flow system."""
+
     NAME = "Block"
     CATEGORY = "General"
     STREAMING = False
@@ -155,13 +159,9 @@ class Block:
         self._inputs = {key: None for key in self._inputs}
         self._outputs = {key: None for key in self._outputs}
 
-    def on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: str = None):
         """To be overridden by subclasses for computation logic."""
         pass
-
-    async def async_on_compute(self, execution_id: str = None):
-        """Asynchronous wrapper for on_compute."""
-        await asyncio.to_thread(self.on_compute, execution_id)
 
     def export_config(self) -> Dict[str, Any]:
         """Exports the block configuration."""
@@ -173,6 +173,7 @@ class Block:
             "options": [opt.to_dict() for opt in self._options.values()],
         }
 
+
 # ==================== BaseBlock Class ====================
 class BaseBlock(Block):
     """Extended block with logging, metrics, and file handling."""
@@ -183,15 +184,21 @@ class BaseBlock(Block):
         self._compute_count = 0
         self._error_count = 0
         self._last_compute_time = 0.0
-        self._execution_files: Dict[Tuple[str, str], str] = {}  # (filename, execution_id) -> unique_filename
-        self._file_ids: Dict[Tuple[str, str], str] = {}  # (filename, execution_id) -> file_id
+        self._execution_files: Dict[Tuple[str, str], str] = (
+            {}
+        )  # (filename, execution_id) -> unique_filename
+        self._file_ids: Dict[Tuple[str, str], str] = (
+            {}
+        )  # (filename, execution_id) -> file_id
         self.event_bus = RuntimeEventBus()  # Singleton for emitting events
 
     def _log_compute_start(self, execution_id: str = ""):
         """Logs the start of computation."""
         self._last_compute_time = time.time()
         self._compute_count += 1
-        self._logger.debug(f"[{execution_id}] Starting computation (#{self._compute_count})")
+        self._logger.debug(
+            f"[{execution_id}] Starting computation (#{self._compute_count})"
+        )
 
     def _log_compute_end(self):
         """Logs the end of computation with elapsed time."""
@@ -215,11 +222,11 @@ class BaseBlock(Block):
             return False
         return True
 
-    def safe_compute(self, execution_id: str = None) -> bool:
+    async def safe_compute(self, execution_id: str = None) -> bool:
         """Safely executes on_compute with logging."""
         self._log_compute_start(execution_id)
         try:
-            self.on_compute(execution_id=execution_id)
+            await self.on_compute(execution_id=execution_id)
             self._log_compute_end()
             return True
         except Exception as e:
@@ -253,7 +260,9 @@ class BaseBlock(Block):
 
             # Determine unique filename and mode
             if unique:
-                unique_filename = f"{path_obj.stem}_{timestamp}_{unique_suffix}{path_obj.suffix}"
+                unique_filename = (
+                    f"{path_obj.stem}_{timestamp}_{unique_suffix}{path_obj.suffix}"
+                )
                 effective_mode = "w"
                 file_key = None
             else:
@@ -303,14 +312,18 @@ class BaseBlock(Block):
                     "original_name": filename,
                 }
                 # 使用 asyncio.create_task 异步调用 add_file
-                asyncio.create_task(file_collector.add_file(execution_id, self.NAME, file_info))
+                asyncio.create_task(
+                    file_collector.add_file(execution_id, self.NAME, file_info)
+                )
                 if not unique:
                     self._file_ids[file_key] = file_id
             else:
                 # Append: Emit update event and update database
                 file_id = self._file_ids[file_key]
                 # 更新数据库中的文件大小
-                asyncio.create_task(file_collector.update_file(execution_id, file_id, file_size))
+                asyncio.create_task(
+                    file_collector.update_file(execution_id, file_id, file_size)
+                )
                 # 发出事件通知
                 asyncio.create_task(
                     self.event_bus.emit(
@@ -332,9 +345,11 @@ class BaseBlock(Block):
             self._log_error(e, f"File processing failed: {filename}")
             raise
 
+
 # ==================== DebugBlock Class ====================
 class DebugBlock(BaseBlock):
     """Block for logging debug information."""
+
     NAME = "Debug Logger"
     CATEGORY = "Utilities"
     STREAMING = False
@@ -342,9 +357,8 @@ class DebugBlock(BaseBlock):
     def __init__(self):
         super().__init__()
         self.add_input("data")  # Input to trigger logging
-        self.event_bus = RuntimeEventBus()  # Singleton
 
-    async def async_on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: str = None):
         """Asynchronously logs input data and emits a debug event."""
         data = self.get_interface("data")
         log_msg = f"{data}"
@@ -352,7 +366,7 @@ class DebugBlock(BaseBlock):
             RuntimeEvent(
                 execution_id,
                 RuntimeEventType.DEBUG,
-                self.NAME,  # Fixed: Use self.NAME instead of undefined instance_id
+                self.NAME,
                 log_msg,
                 payload=data,
             )

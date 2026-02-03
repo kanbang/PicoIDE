@@ -172,7 +172,7 @@ class MqttPublishBlock(BaseBlock):
         # 定义输出（可选，用于输出发送状态）
         self.add_output("status")
 
-    def on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         # 1. 获取配置
         host = self.get_option("host")
         port = self.get_option("port")
@@ -244,7 +244,7 @@ class MqttSubscribeBlock(BaseBlock):
         # 使用之前保存的 loop 引用，安全地跨线程调度
         self._loop.call_soon_threadsafe(self._msg_queue.put_nowait, data)
 
-    async def async_on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: str = None):
         if self._loop is None:
             self._loop = asyncio.get_running_loop()
 

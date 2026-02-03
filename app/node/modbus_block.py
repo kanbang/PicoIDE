@@ -52,7 +52,7 @@ class ModbusReadBlock(BaseBlock):
         self.add_integer_option("bytesize", default=8)
         self.add_integer_option("stopbits", default=1)
 
-    async def async_on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: str = None):
         config = ModbusConfig(
             type=self.get_option("conn_type"),
             host=self.get_option("host"),
@@ -118,7 +118,7 @@ class ModbusWriteBlock(BaseBlock):
         self.add_integer_option("bytesize", default=8)
         self.add_integer_option("stopbits", default=1)
 
-    async def async_on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: str = None):
         config = ModbusConfig(
             type=self.get_option("conn_type"),
             host=self.get_option("host"),
@@ -195,7 +195,7 @@ class ModbusSubscribeBlock(BaseBlock):
     async def _on_update(self, val, meta):
         await self._update_queue.put({"addr": meta["addr"], "val": val, "ts": meta["ts"]})
 
-    async def async_on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: str = None):
         config = ModbusConfig(
             type=self.get_option("conn_type"),
             host=self.get_option("host"),

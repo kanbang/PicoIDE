@@ -573,7 +573,7 @@ class ChannelSource(BaseBlock):
             "通道", items=[f"Channel {i}" for i in range(8)], default="Channel 0"
         )
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         if not self.get_option("启用"):
             self._logger.debug("通道未启用，跳过计算")
@@ -643,7 +643,7 @@ class TurbineSimulator(BaseBlock):
         self.add_output("O-VibrationY-XY")  # 径向振动Y方向（与X正交）
         self.add_output("O-Torsional-XY")  # 扭振交流分量
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         try:
             # 1. 参数获取
             rpm_nom = self.get_option("额定转速 (RPM)")
@@ -872,7 +872,7 @@ class CSVReader(BaseBlock):
         self.add_checkbox_option("有表头", default=True)
         self.add_output("O-List-XY")
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             file_path = self.get_option("文件路径")
@@ -945,7 +945,7 @@ class ConstantSource(BaseBlock):
         self.add_text_input_option("常量值", default="0.0")
         self.add_output("O-Value")
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             value_str = self.get_option("常量值")
@@ -982,7 +982,7 @@ class XYSplitter(BaseBlock):
         self.add_output("O-List-X")
         self.add_output("O-List-Y")
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             data_packet = self.get_interface("I-List-XY")
@@ -1026,7 +1026,7 @@ class XYMerger(BaseBlock):
         self.add_input("I-List-Y")
         self.add_output("O-List-XY")
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data_x = self.get_interface("I-List-X")
@@ -1121,7 +1121,7 @@ class TimeWindow(BaseBlock):
         else:
             return np.ones(n)
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -1243,7 +1243,7 @@ class SignalFilter(BaseBlock):
         self.add_text_input_option("截止频率 (Hz, 用逗号分隔带通)", default="1000")
         self.add_integer_option("阶数", default=4, min_val=1, max_val=12)
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -1324,7 +1324,7 @@ class EnvelopeDetector(BaseBlock):
         self.add_input("I-List-XY")
         self.add_output("O-List-XY")
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -1387,7 +1387,7 @@ class FFT(BaseBlock):
 
         self.add_checkbox_option("幅值修正", default=True)
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -1477,7 +1477,7 @@ class SpectralAverager(BaseBlock):
             "平均方式", items=["线性", "RMS", "峰值保持"], default="线性"
         )
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-Spectrum-List")
@@ -1544,7 +1544,7 @@ class Stats(BaseBlock):
         self.add_input("I-List-XY")
         self.add_output("O-Dict")
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -1606,7 +1606,7 @@ class TachoToRPM(BaseBlock):
         self.add_number_option("脉冲阈值 (V)", default=2.5)
         self.add_integer_option("滑动脉冲数", default=1, min_val=1)
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-Pulse-XY")
@@ -1696,7 +1696,7 @@ class AngularResampler(BaseBlock):
         self.add_integer_option("每转采样点数", default=1024, min_val=16, max_val=4096)
         self.add_number_option("脉冲触发阈值 (V)", default=2.5)
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             vib_data = self.get_interface("I-Vibration-XY")
@@ -1826,7 +1826,7 @@ class RPMTrackedFFT(BaseBlock):
         self.add_number_option("转速带宽 (RPM)", default=50)
         self.add_number_option("窗口转数", default=10)
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             sig = self.get_interface("I-Signal-XY")
@@ -1930,7 +1930,7 @@ class OrderMap(BaseBlock):
         self.add_integer_option("每帧转数", default=1)  # 工业上非常重要
         self.add_integer_option("转速插值点", default=4096)
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         try:
             sig = self.get_interface("I-Signal-XY")
             spd = self.get_interface("I-Speed-XY")
@@ -2066,7 +2066,7 @@ class ResultSink(BaseBlock):
         self.add_select_option("类型", items=["时域", "频域", "FREE"], default="时域")
         self.add_text_input_option("名称", default="New Plot")
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("List-XY")
@@ -2116,7 +2116,7 @@ class CSVSink(BaseBlock):
         self.add_checkbox_option("追加模式", default=False)
         self.add_checkbox_option("包含表头", default=True)
 
-    def on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-List-XY")
@@ -2292,7 +2292,7 @@ class BaseChartViewer(BaseBlock):
             )
 
             # 使用通用文件写入方法
-            def write_html(full_path):
+            def write_html(full_path, mode: str):
                 with open(full_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
                 self._logger.info(f"图表已生成: {full_path}")
@@ -2446,7 +2446,7 @@ class LineChartViewer(BaseChartViewer):
     def __init__(self):
         super().__init__(default_type="line")
 
-    def on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         self._generate_chart(execution_id)
 
 
@@ -2459,7 +2459,7 @@ class BarChartViewer(BaseChartViewer):
     def __init__(self):
         super().__init__(default_type="bar")
 
-    def on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         self._generate_chart(execution_id)
 
 
@@ -2472,7 +2472,7 @@ class ScatterChartViewer(BaseChartViewer):
     def __init__(self):
         super().__init__(default_type="scatter")
 
-    def on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         self._generate_chart(execution_id)
 
 
@@ -2514,7 +2514,7 @@ class TrajectoryChartViewer(BaseBlock):
         self.add_number_option("线条宽度", default=2.0, min_val=0.5, max_val=5.0)
         self.add_select_option("配色方案", items=["彩虹", "热力"], default="彩虹")
 
-    def on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             data_x = self.get_interface("I-List-X")
@@ -2790,7 +2790,7 @@ class TrajectoryChartViewer(BaseBlock):
 """
 
             # 使用通用文件写入方法
-            def write_html(full_path):
+            def write_html(full_path, mode: str):
                 with open(full_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
                 self._logger.info(f"轨迹图已生成: {full_path}")
@@ -2837,7 +2837,7 @@ class OrderMapChartViewer(BaseBlock):
         self.add_checkbox_option("显示颜色条", default=True)
         self.add_checkbox_option("反转Y轴", default=False)
 
-    def on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """生成阶次图"""
         try:
             i_data = self.get_interface("I-OrderMap")
@@ -2889,7 +2889,7 @@ class OrderMapChartViewer(BaseBlock):
             )
 
             # 使用通用文件写入方法
-            def write_html(full_path):
+            def write_html(full_path, mode: str):
                 with open(full_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
                 self._logger.info(f"阶次图已生成: {full_path}")
@@ -3109,7 +3109,7 @@ class MQTTPublisher(BaseBlock):
         self.add_text_input_option("用户名 (可选)", default="")
         self.add_text_input_option("密码 (可选)", default="")
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             i_data = self.get_interface("I-Any")
@@ -3159,7 +3159,7 @@ class Logger(BaseBlock):
         self.add_input("I-Any")
         self.add_text_input_option("前缀", default="LOG:")
 
-    def on_compute(self, execution_id: Optional[str] = None):
+    async def on_compute(self, execution_id: Optional[str] = None):
         """执行计算"""
         try:
             data = self.get_interface("I-Any")

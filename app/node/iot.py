@@ -37,7 +37,7 @@ class ConstantBlock(BaseBlock):
         self.add_integer_option("integer", default=1)
         self.add_text_input_option("text", "hello")
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         t = self.get_option("type")
 
         if t == "Number":
@@ -62,7 +62,7 @@ class CsvRecorderBlock(BaseBlock):
         self.add_input("data")  # 接收要保存的字典或字符串
         self._fieldnames = None
 
-    async def async_on_compute(self, execution_id: str = None):
+    async def on_compute(self, execution_id: str = None):
         data = self.get_interface("data")
         if data is None:
             return

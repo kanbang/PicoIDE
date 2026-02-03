@@ -37,37 +37,45 @@ class Execution:
                 if k in inst._options:
                     inst.set_option(k, v.get("value"))
 
-    async def _execute_node(self, n_id: str):
+    async def _execute_node(self, n_id: str, is_source: bool = False):
         if self.shutdown_event.is_set():
             return
         block = self.instances[n_id]
-        try:
-            await block.async_on_compute(self.id)
-            await self.engine.event_bus.emit(
-                RuntimeEvent(
-                    self.id, RuntimeEventType.LOG, block.NAME, f"Node {n_id} completed"
+        is_streaming = getattr(block, "STREAMING", False)
+        while not self.shutdown_event.is_set():
+            try:
+                await block.on_compute(self.id)  # 假设统一为 async_on_compute
+                await self.engine.event_bus.emit(
+                    RuntimeEvent(
+                        self.id, RuntimeEventType.LOG, block.NAME, f"Node[{block.NAME}] {n_id} completed"
+                    )
                 )
-            )
-            await self._trigger_successors(n_id)
-        except asyncio.CancelledError:
-            await self.engine.event_bus.emit(
-                RuntimeEvent(
-                    self.id, RuntimeEventType.ERROR, block.NAME, f"Node {n_id} cancelled"
+                await self._trigger_successors(n_id)
+                if not (is_source and is_streaming):
+                    break
+                await asyncio.sleep(0)  # 或更好：用事件等待新数据
+            except asyncio.CancelledError:
+                await self.engine.event_bus.emit(
+                    RuntimeEvent(
+                        self.id, RuntimeEventType.ERROR, block.NAME, f"Node[{block.NAME}] {n_id} cancelled"
+                    )
                 )
-            )
-            raise
-        except Exception as e:
-            self.engine.logger.error(
-                f"Node {n_id} [{block.NAME}] execution failed: {e}", exc_info=True
-            )
-            await self.engine.event_bus.emit(
-                RuntimeEvent(
-                    self.id,
-                    RuntimeEventType.ERROR,
-                    block.NAME,
-                    f"Node {n_id} failed: {str(e)}",
+                raise
+            except Exception as e:
+                self.engine.logger.error(
+                    f"Node {n_id} [{block.NAME}] execution failed: {e}", exc_info=True
                 )
-            )
+                await self.engine.event_bus.emit(
+                    RuntimeEvent(
+                        self.id,
+                        RuntimeEventType.ERROR,
+                        block.NAME,
+                        f"Node[{block.NAME}] {n_id} failed: {str(e)}",
+                    )
+                )
+                if not is_source:  # 只源节点重试
+                    break
+                await asyncio.sleep(1)  # 重试延迟
 
     async def _trigger_successors(self, n_id: str):
         if self.shutdown_event.is_set():
@@ -89,23 +97,6 @@ class Execution:
                     self.running_tasks.add(task)
                     task.add_done_callback(self._task_done)
 
-    async def _source_worker(self, n_id: str):
-        block = self.instances[n_id]
-        is_streaming = getattr(block, "STREAMING", False)
-        while not self.shutdown_event.is_set():
-            try:
-                await block.async_on_compute(self.id)
-                trigger_task = asyncio.create_task(self._trigger_successors(n_id))
-                self.running_tasks.add(trigger_task)
-                trigger_task.add_done_callback(self._task_done)
-                if not is_streaming:
-                    break
-                await asyncio.sleep(0)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.engine.logger.error(f"Source {n_id} error: {e}", exc_info=True)
-                await asyncio.sleep(1)
 
     def _task_done(self, task: asyncio.Task):
         self.running_tasks.discard(task)
@@ -150,7 +141,7 @@ class Execution:
             self.status = EngineStatus.IDLE
             return
         for n_id in sources:
-            task = asyncio.create_task(self._source_worker(n_id))
+            task = asyncio.create_task(self._execute_node(n_id, is_source=True))
             self.running_tasks.add(task)
             task.add_done_callback(self._task_done)
 

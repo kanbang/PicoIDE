@@ -41,7 +41,7 @@ class ConstantBlock(BaseBlock):
         self.add_integer_option("integer", default=1)
         self.add_text_input_option("text", "hello")
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         t = self.get_option("type")
 
         if t == "Number":
@@ -71,7 +71,7 @@ class AddBlock(BaseBlock):
         self.add_input("b")
         self.add_output("sum")
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         a = self.get_interface("a")
         b = self.get_interface("b")
 
@@ -96,7 +96,7 @@ class NormalizeBlock(BaseBlock):
         self.add_number_option("min", 0.0)
         self.add_number_option("max", 1.0)
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         v = self.get_interface("value")
         if v is None:
             return
@@ -134,7 +134,7 @@ class CompareBlock(BaseBlock):
             ">"
         )
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         a = self.get_interface("a")
         b = self.get_interface("b")
 
@@ -172,7 +172,7 @@ class GateBlock(BaseBlock):
         self.add_input("enable")
         self.add_output("out")
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         data = self.get_interface("data")
         enable = self.get_interface("enable")
 
@@ -198,7 +198,7 @@ class DelayBlock(BaseBlock):
 
         self.add_integer_option("delay_ms", 1000, min_val=0)
 
-    async def async_on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         data = self.get_interface("data")
         if data is None:
             return
@@ -221,7 +221,7 @@ class FileSinkBlock(BaseBlock):
         self.add_input("data")
         self.add_text_input_option("filename", "output.txt")
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         data = self.get_interface("data")
         if data is None:
             return
@@ -252,7 +252,7 @@ class JsonExportBlock(BaseBlock):
         self.add_input("data")
         self.add_text_input_option("filename", "data.json")
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         data = self.get_interface("data")
         if data is None:
             return
@@ -287,7 +287,7 @@ class LoggerBlock(BaseBlock):
         self.add_input("data")
         self.add_checkbox_option("print", True)
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         data = self.get_interface("data")
         if data is None:
             return
@@ -311,7 +311,7 @@ class CounterBlock(BaseBlock):
 
         self._count = 0
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         if self.get_interface("tick") is not None:
             self._count += 1
 
@@ -331,7 +331,7 @@ class InspectorBlock(BaseBlock):
         self.add_output("type")
         self.add_output("repr")
 
-    def on_compute(self, execution_id=None):
+    async def on_compute(self, execution_id=None):
         data = self.get_interface("data")
         if data is None:
             return
