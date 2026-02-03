@@ -43,6 +43,7 @@ from fastapi.responses import StreamingResponse
 import json
 from flow.engine_manager import (
     EngineManager,
+    async_start_flow,
     async_stop_flow,
     get_running_flows,
     async_acquire_flow,
@@ -506,8 +507,7 @@ async def execute_saved(
             )
 
         try:
-            # 执行 flow（传递 execution_id 和 business）
-            await run_business(business.upper(), graph, execution_id, USER_ID)
+            await async_start_flow(business, graph, execution_id, USER_ID, _on_execution_done)
         except Exception as e:
             # 更新 Execution 状态为失败
             if execution:
