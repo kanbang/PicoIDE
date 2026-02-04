@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-17 17:01:06
  * @LastEditors: zhai
- * @LastEditTime: 2026-02-04 14:49:32
+ * @LastEditTime: 2026-02-04 15:44:57
 -->
 <template>
   <div class="nodeflow-container">
@@ -188,17 +188,19 @@ const SeparatorIcon = markRaw(defineComponent({
 }));
 
 // 使用动态按钮，根据运行状态显示不同图标和标题
-const RunStopButtonIcon = markRaw(defineComponent({
-  setup: () => () => h('div', {
-    style: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: '100%',
-      height: '100%'
-    }
-  }, [h(isRunning.value ? StopIcon : RunIcon, { isRunning: isRunning.value })])
-}));
+const RunStopButtonIcon = computed(() => markRaw(defineComponent({
+  setup: () => {
+    return () => h('div', {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        height: '100%'
+      }
+    }, [h(isRunning.value ? StopIcon : RunIcon, { isRunning: isRunning.value })]);
+  }
+})));
 
 // --- 注册命令 ---
 function registerCustomCommands(): void {
@@ -305,10 +307,10 @@ function updateBlocks(newBlocks: BlockDefinition[]) {
   if (currentFlow.value) loadFlow(currentFlow.value);
 }
 
+
 function registerFixedNodeTypes(): void {
   baklava.editor.registerNodeType(TestNode, { category: "Tests" });
 }
-
 // --- 变化检测监听 ---
 const graphEvents = ['addNode', 'removeNode', 'addConnection', 'removeConnection'];
 const nodeEvents = ['update', 'titleChanged'];
@@ -362,9 +364,11 @@ function loadFlow(newFlow: any) {
   }
 }
 
+
 // --- 生命周期 ---
 onMounted(() => {
   registerCustomCommands();
+
   // registerFixedNodeTypes();
   registerBlocks(props.blocks || []);
 

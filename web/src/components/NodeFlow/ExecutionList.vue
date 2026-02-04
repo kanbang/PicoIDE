@@ -2,21 +2,8 @@
 import { ref, watch, onMounted } from 'vue';
 import { getFlowExecutions } from '@/api/execute';
 import { showError, showSuccess } from '@/utils/toast';
-
-export interface OutputFile {
-  file_id: string;
-  filename: string;
-  file_path: string;
-  file_type: string;
-  file_size: number;
-  created_at: string;
-  block_name?: string;
-  block_id?: string;
-  description?: string;
-  metadata?: any;
-  can_open: boolean;
-  can_download: boolean;
-}
+import { formatTime, getStatusText } from '@/utils/formatters';
+import type { OutputFile } from '@/api/execute';
 
 export interface ExecutionRecord {
   execution_id: string;
@@ -85,36 +72,6 @@ function selectExecution(execution: ExecutionRecord) {
 function deleteExecution(execution: ExecutionRecord, event: Event) {
   event.stopPropagation(); // 阻止点击事件冒泡
   emit('delete', execution.execution_id);
-}
-
-function formatTime(isoString: string): string {
-  const date = new Date(isoString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  
-  if (diffMs < 60000) return '刚刚';
-  if (diffMs < 3600000) return Math.floor(diffMs / 60000) + '分钟前';
-  if (diffMs < 86400000) return Math.floor(diffMs / 3600000) + '小时前';
-  
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
-
-function getStatusText(status: string): string {
-  switch (status) {
-    case 'running':
-      return '运行中';
-    case 'completed':
-      return '完成';
-    case 'failed':
-      return '失败';
-    default:
-      return status;
-  }
 }
 
 watch(() => props.flowId, () => {

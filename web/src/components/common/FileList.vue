@@ -5,8 +5,8 @@
  * @Date: 2026-02-04
 -->
 <script setup lang="ts">
-import { ref } from 'vue';
-import type { OutputFile } from './types';
+import { formatFileSize, formatAbsoluteTime } from '@/utils/formatters';
+import type { OutputFile } from '@/api/execute';
 
 interface Props {
   files: OutputFile[];
@@ -26,21 +26,6 @@ const emit = defineEmits<{
   download: [file: OutputFile];
   delete: [file: OutputFile];
 }>();
-
-// 格式化文件大小
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-}
-
-// 格式化时间
-function formatTime(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toLocaleString('zh-CN');
-}
 
 // 打开文件
 function openFile(file: OutputFile) {
@@ -134,7 +119,7 @@ function deleteFile(file: OutputFile) {
               <span class="divider">·</span>
               <span class="source">{{ file.block_name || '系统输出' }}</span>
               <span class="divider">·</span>
-              <span>{{ formatTime(file.created_at) }}</span>
+              <span>{{ formatAbsoluteTime(file.created_at) }}</span>
             </div>
           </div>
 

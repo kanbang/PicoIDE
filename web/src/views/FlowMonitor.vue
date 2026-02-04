@@ -19,6 +19,7 @@ import LogViewer from '@/components/common/LogViewer.vue';
 import FileList from '@/components/common/FileList.vue';
 import type { LogEvent } from '@/components/common/types';
 import { toLogEvent } from '@/components/common/types';
+import { formatAbsoluteTime } from '@/utils/formatters';
 
 // 当前 tab
 const currentTab = ref<'logs' | 'outputs'>('logs');
@@ -36,7 +37,6 @@ const executionOutputs = ref<OutputFile[]>([]);
 
 // SSE 连接管理
 const sseConnections = new Map<string, EventSource>();
-const refreshInterval = ref<number | null>(null);
 
 // 计算属性
 const hasRunningFlows = computed(() => runningExecutions.value.length > 0);
@@ -174,12 +174,6 @@ async function handleStop(executionId: string) {
   }
 }
 
-// 格式化时间
-function formatTime(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toLocaleString('zh-CN');
-}
-
 // 格式化执行时间
 function formatExecutionTime(seconds: number): string {
   if (seconds < 60) {
@@ -209,20 +203,10 @@ function deleteFile() {
 // 组件挂载
 onMounted(() => {
   loadRunningFlows();
-  // 定时刷新运行列表
-  // refreshInterval.value = window.setInterval(() => {
-  //   if (!loading.value) {
-  //     loadRunningFlows();
-  //   }
-  // }, 3000); // 每3秒刷新一次
 });
 
 // 组件卸载
 onUnmounted(() => {
-  // 清除定时器
-  if (refreshInterval.value) {
-    clearInterval(refreshInterval.value);
-  }
   // 关闭所有 SSE 连接
   sseConnections.forEach((es) => es.close());
   sseConnections.clear();
@@ -265,7 +249,7 @@ onUnmounted(() => {
             </div>
             <div class="execution-meta">
               <span>节点: {{ exec.executed_nodes }}/{{ exec.total_nodes }}</span>
-              <span>{{ formatTime(exec.start_time) }}</span>
+              <span>{{ formatAbsoluteTime(exec.start_time) }}</span>
             </div>
             <div v-if="exec.tag" class="execution-tag">
               标签: {{ exec.tag }}
@@ -300,11 +284,11 @@ onUnmounted(() => {
           <div class="execution-details">
             <div class="detail-row">
               <span class="label">开始时间:</span>
-              <span class="value">{{ formatTime(selectedExecution.start_time) }}</span>
+              <span class="value">{{ formatAbsoluteTime(selectedExecution.start_time) }}</span>
             </div>
             <div class="detail-row">
               <span class="label">结束时间:</span>
-              <span class="value">{{ selectedExecution.end_time ? formatTime(selectedExecution.end_time) : '-' }}</span>
+              <span class="value">{{ selectedExecution.end_time ? formatAbsoluteTime(selectedExecution.end_time) : '-' }}</span>
             </div>
             <div class="detail-row">
               <span class="label">执行时长:</span>

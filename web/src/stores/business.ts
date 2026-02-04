@@ -30,9 +30,6 @@ export const useBusinessStore = defineStore('business', () => {
   });
 
   return {
-    business,
-    setBusiness: (value: string) => {
-      business.value = value;
-    }
+    business
   };
 });

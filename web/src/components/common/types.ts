@@ -24,18 +24,6 @@ export interface LogEvent {
   expanded?: boolean;
 }
 
-// 输出文件类型
-export interface OutputFile {
-  file_id: string;
-  filename: string;
-  file_type: string;
-  file_size: number;
-  created_at: string;
-  block_name?: string;
-  can_open: boolean;
-  can_download: boolean;
-}
-
 // 执行状态类型
 export type ExecutionStatus = 'running' | 'completed' | 'failed' | 'stopping' | 'stopped' | null;
 

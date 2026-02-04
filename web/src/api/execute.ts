@@ -39,10 +39,11 @@ export interface ExecuteResponse {
 export interface OutputFile {
   file_id: string;
   filename: string;
-  file_path: string;
+  file_path?: string;
   file_type: string;
   file_size: number;
   created_at: string;
+  block_name?: string;
   can_open: boolean;
   can_download: boolean;
 }

@@ -7,7 +7,7 @@
  * @LastEditTime: 2026-02-04 14:48:40
 -->
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import LogViewer from '../common/LogViewer.vue';
 import type { LogEvent } from '../common/types';
 
@@ -20,24 +20,7 @@ interface Props {
 
 const props = defineProps<Props>();
 
-const visible = ref(props.isVisible || false);
 const events = ref<LogEvent[]>([]);
-
-watch(() => props.isVisible, (newValue) => {
-  visible.value = newValue;
-});
-
-function toggle() {
-  visible.value = !visible.value;
-}
-
-function show() {
-  visible.value = true;
-}
-
-function hide() {
-  visible.value = false;
-}
 
 function addEvent(event: LogEvent) {
   if (event.type === 'data') {
@@ -54,23 +37,16 @@ function clearEvents() {
   events.value = [];
 }
 
-onUnmounted(() => {
-});
-
 defineExpose({
   addEvent,
   setEvents,
   clearEvents,
-  show,
-  hide,
-  toggle,
-  visible,
   events,
 });
 </script>
 
 <template>
-  <div class="console-panel" :class="{ visible }">
+  <div class="console-panel" :class="{ visible: isVisible }">
     <LogViewer
       :events="events"
       :is-loading="isConnecting"

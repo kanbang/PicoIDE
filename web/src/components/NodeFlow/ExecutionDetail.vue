@@ -2,7 +2,9 @@
 import { ref, watch, nextTick } from 'vue';
 import { getExecutionOutputs } from '@/api/execute';
 import { showError } from '@/utils/toast';
-import type { ExecutionRecord, OutputFile } from './ExecutionList.vue';
+import { formatFileSize, formatTime, getStatusText } from '@/utils/formatters';
+import type { ExecutionRecord } from './ExecutionList.vue';
+import type { OutputFile } from '@/api/execute';
 
 interface Props {
   executionId?: string;
@@ -61,44 +63,6 @@ async function loadOutputs() {
     showError('加载输出文件失败');
   } finally {
     loading.value = false;
-  }
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-}
-
-function formatTime(isoString: string): string {
-  const date = new Date(isoString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-
-  if (diffMs < 60000) return '刚刚';
-  if (diffMs < 3600000) return Math.floor(diffMs / 60000) + '分钟前';
-  if (diffMs < 86400000) return Math.floor(diffMs / 3600000) + '小时前';
-
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
-
-function getStatusText(status: string): string {
-  switch (status) {
-    case 'running':
-      return '运行中';
-    case 'completed':
-      return '完成';
-    case 'failed':
-      return '失败';
-    default:
-      return status;
   }
 }
 

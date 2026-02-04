@@ -5,7 +5,8 @@ import FileList from '../common/FileList.vue';
 import ExecutionList from './ExecutionList.vue';
 import ExecutionDetail from './ExecutionDetail.vue';
 import type { ExecutionRecord } from './ExecutionList.vue';
-import type { OutputFile, ExecutionStatus } from '../common/types';
+import type { OutputFile } from '@/api/execute';
+import type { ExecutionStatus } from '../common/types';
 
 const props = defineProps<{
   executionId?: string;
