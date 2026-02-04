@@ -371,36 +371,51 @@ onUnmounted(() => {
 }
 
 .sidebar-header {
-  padding: 12px 16px;
+  height: 48px;
+  padding: 0 16px;
   border-bottom: 1px solid #3c3c3c;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .sidebar-header h3 {
   margin: 0;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #eee;
+  font-weight: 600;
 }
 
 .refresh-btn {
-  padding: 4px 12px;
-  background: #3c3c3c;
-  border: 1px solid #4a4a4a;
-  color: #e0e0e0;
-  border-radius: 3px;
-  font-size: 12px;
+  background: transparent;
+  border: none;
+  color: #888;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.2s;
+  padding: 0;
 }
 
 .refresh-btn:hover:not(:disabled) {
-  background: #4a4a4a;
+  background: #37373d;
+  color: #fff;
+}
+
+.refresh-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .refresh-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -408,6 +423,7 @@ onUnmounted(() => {
   padding: 16px;
   color: #f44336;
   text-align: center;
+  font-size: 13px;
 }
 
 .empty-state {
@@ -416,46 +432,67 @@ onUnmounted(() => {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  text-align: center;
+  padding: 40px;
   color: #666;
 }
 
 .empty-icon {
   font-size: 48px;
-  margin-bottom: 12px;
+  margin-bottom: 20px;
+  opacity: 0.2;
+}
+
+.empty-state p {
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .execution-list {
   flex: 1;
   overflow-y: auto;
+  padding: 12px;
 }
 
 .execution-item {
-  padding: 12px 16px;
-  border-bottom: 1px solid #3c3c3c;
+  background: #252526;
+  border: 1px solid #333;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  gap: 6px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
-  transition: background 0.2s;
+  margin-bottom: 8px;
 }
 
 .execution-item:hover {
   background: #2d2d30;
+  border-color: #444;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
 .execution-item.active {
-  background: #37373d;
-  border-left: 3px solid #4caf50;
+  background: #2d2d30;
+  border-left: 4px solid #4caf50;
+  border-right: none;
+  border-top: none;
+  border-bottom: none;
 }
 
 .execution-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
 }
 
 .execution-id {
   font-family: 'Consolas', monospace;
-  font-size: 12px;
+  font-size: 13px;
   color: #9cdcfe;
+  font-weight: 500;
 }
 
 .execution-status {
@@ -465,16 +502,30 @@ onUnmounted(() => {
 
 .execution-meta {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   font-size: 11px;
   color: #888;
 }
 
+.execution-meta > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .execution-tag {
-  margin-top: 4px;
+  margin-top: 2px;
   font-size: 11px;
   color: #4caf50;
+  font-weight: 500;
 }
+
+/* 滚动条美化 */
+.execution-list::-webkit-scrollbar { width: 10px; }
+.execution-list::-webkit-scrollbar-track { background: transparent; }
+.execution-list::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; border: 3px solid #252526; }
+.execution-list::-webkit-scrollbar-thumb:hover { background: #444; }
 
 /* 右侧详情面板 */
 .detail-panel {
