@@ -232,7 +232,7 @@ class FileSinkBlock(BaseBlock):
             with open(path, mode, encoding="utf-8") as f:
                 f.write(str(data))
 
-        self._write_file(
+        await self._write_file(
             filename=filename,
             write_func=write,
             execution_id=execution_id,
@@ -263,7 +263,7 @@ class JsonExportBlock(BaseBlock):
             with open(path, mode, encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
-        self._write_file(
+        await self._write_file(
             filename=filename,
             write_func=write,
             execution_id=execution_id,

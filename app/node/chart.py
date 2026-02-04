@@ -103,7 +103,7 @@ class BaseChartViewer(BaseBlock):
         # 暂时直接返回（可根据需要加目录、execution_id后缀等）
         return filename
 
-    def _generate_chart(self, execution_id: Optional[str] = None):
+    async def _generate_chart(self, execution_id: Optional[str] = None):
         try:
             i_data = self.get_interface("I-List-XY")
             if not self._validate_input_data(i_data):
@@ -166,7 +166,7 @@ class BaseChartViewer(BaseBlock):
                         f.write(html)
                     self._logger.info(f"图表数据已生成: {full_path}")
 
-            self._write_file(
+            await self._write_file(
                 filename=file_path,
                 write_func=write_html,
                 execution_id=execution_id,
@@ -319,7 +319,7 @@ class LineChartViewer(BaseChartViewer):
         super().__init__(default_type="line")
 
     async def on_compute(self, execution_id: Optional[str] = None):
-        self._generate_chart(execution_id)
+        await self._generate_chart(execution_id)
 
 
 class BarChartViewer(BaseChartViewer):
@@ -332,7 +332,7 @@ class BarChartViewer(BaseChartViewer):
         super().__init__(default_type="bar")
 
     async def on_compute(self, execution_id: Optional[str] = None):
-        self._generate_chart(execution_id)
+        await self._generate_chart(execution_id)
 
 
 class ScatterChartViewer(BaseChartViewer):
@@ -345,7 +345,7 @@ class ScatterChartViewer(BaseChartViewer):
         super().__init__(default_type="scatter")
 
     async def on_compute(self, execution_id: Optional[str] = None):
-        self._generate_chart(execution_id)
+        await self._generate_chart(execution_id)
 
 
 class TrajectoryChartViewer(BaseBlock):
@@ -667,7 +667,7 @@ class TrajectoryChartViewer(BaseBlock):
                     f.write(html_content)
                 self._logger.info(f"轨迹图已生成: {full_path}")
 
-            self._write_file(
+            await self._write_file(
                 filename=file_path,
                 write_func=write_html,
                 execution_id=execution_id,
@@ -766,7 +766,7 @@ class OrderMapChartViewer(BaseBlock):
                     f.write(html_content)
                 self._logger.info(f"阶次图已生成: {full_path}")
 
-            self._write_file(
+            await self._write_file(
                 filename=file_path,
                 write_func=write_html,
                 execution_id=execution_id,

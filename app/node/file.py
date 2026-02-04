@@ -71,7 +71,7 @@ class CsvDictWriterBlock(BaseBlock):
                 writer.writerow(row)
 
         try:
-            self._write_file(
+            await self._write_file(
                 filename=filename,
                 write_func=write_csv,
                 execution_id=execution_id,
@@ -149,7 +149,7 @@ class CsvXyWriterBlock(BaseBlock):
             self._logger.debug(f"Data saved to: {full_path}")
 
         try:
-            self._write_file(
+            await self._write_file(
                 filename=filename,
                 write_func=write_csv,
                 execution_id=execution_id,

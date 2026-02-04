@@ -13,7 +13,8 @@ from flow.runtime_bus import RuntimeEventBus, RuntimeEvent, RuntimeEventType
 
 class WriteMode(Enum):
     """文件写入模式"""
-    WRITE = "w"   # 覆盖写入
+
+    WRITE = "w"  # 覆盖写入
     APPEND = "a"  # 追加写入
 
 
@@ -240,10 +241,12 @@ class BaseBlock(Block):
             self._log_error(e, "in on_compute")
             return False
 
-    def _write_file(
+    async def _write_file(
         self,
         filename: str,
-        write_func: Callable[[Path, str], None],  # write_func(full_path, effective_mode)
+        write_func: Callable[
+            [Path, str], None
+        ],  # write_func(full_path, effective_mode)
         execution_id: Optional[str],
         description: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -282,7 +285,9 @@ class BaseBlock(Block):
                     unique_filename = self._execution_files[file_key]
 
                 full_path = target_dir / unique_filename
-                effective_mode = "a" if mode == WriteMode.APPEND and full_path.exists() else "w"
+                effective_mode = (
+                    "a" if mode == WriteMode.APPEND and full_path.exists() else "w"
+                )
 
             # Build full and relative paths
             full_path = target_dir / unique_filename
@@ -318,32 +323,42 @@ class BaseBlock(Block):
                     "metadata": metadata or {},
                     "original_name": filename,
                 }
-                # 使用 asyncio.create_task 异步调用 add_file
-                asyncio.create_task(
-                    file_collector.add_file(execution_id, self.NAME, file_info)
+
+                await file_collector.add_file(execution_id, self.NAME, file_info)
+
+                # 发出文件创建事件
+                await self.event_bus.emit(
+                    RuntimeEvent(
+                        execution_id,
+                        RuntimeEventType.FILE,
+                        self.NAME,
+                        f"Created file: {unique_filename}",
+                        data={
+                            "file_id": file_id,
+                            "action": "create",
+                        },
+                    )
                 )
+
                 if not unique:
                     self._file_ids[file_key] = file_id
             else:
                 # Append: Emit update event and update database
                 file_id = self._file_ids[file_key]
                 # 更新数据库中的文件大小
-                asyncio.create_task(
-                    file_collector.update_file(execution_id, file_id, file_size)
-                )
+                await file_collector.update_file(execution_id, file_id, file_size)
+                
                 # 发出事件通知
-                asyncio.create_task(
-                    self.event_bus.emit(
-                        RuntimeEvent(
-                            execution_id,
-                            RuntimeEventType.DATA,
-                            self.NAME,
-                            f"Appended to file: {unique_filename}",
-                            data={
-                                "file_id": file_id,
-                                "action": "append",
-                            },
-                        )
+                await self.event_bus.emit(
+                    RuntimeEvent(
+                        execution_id,
+                        RuntimeEventType.FILE,
+                        self.NAME,
+                        f"Appended to file: {unique_filename}",
+                        data={
+                            "file_id": file_id,
+                            "action": "append",
+                        },
                     )
                 )
 
@@ -351,4 +366,3 @@ class BaseBlock(Block):
         except Exception as e:
             self._log_error(e, f"File processing failed: {filename}")
             raise
-
