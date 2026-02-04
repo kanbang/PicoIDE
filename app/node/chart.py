@@ -1,6 +1,8 @@
 import json
 import os
 from typing import Optional, Dict, Any, Tuple
+
+import numpy as np
 from flow.block import BaseBlock, WriteMode
 
 
