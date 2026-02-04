@@ -10,11 +10,12 @@ import { useBusinessStore } from '@/stores/business';
 import SingleNodeFlow from '@/views/NodeFlowDemo.vue';
 import SchemaManagerExample from '@/views/FlowManagerApiDemo.vue';
 import TinyCode from '@/views/TinyCode.vue';
+import FlowMonitor from '@/views/FlowMonitor.vue';
 
 const TAB_STORAGE_KEY = 'picoide_active_tab';
 
 // 当前激活的标签页
-const activeTab = ref<'single' | 'manager' | 'tinycode'>('single');
+const activeTab = ref<'single' | 'manager' | 'tinycode' | 'monitor'>('single');
 
 // 使用 Pinia store
 const businessStore = useBusinessStore();
@@ -22,13 +23,13 @@ const businessStore = useBusinessStore();
 // 从 localStorage 恢复 tab 状态
 function restoreTabFromStorage() {
   const savedTab = localStorage.getItem(TAB_STORAGE_KEY);
-  if (savedTab && ['single', 'manager', 'tinycode'].includes(savedTab)) {
-    activeTab.value = savedTab as 'single' | 'manager' | 'tinycode';
+  if (savedTab && ['single', 'manager', 'tinycode', 'monitor'].includes(savedTab)) {
+    activeTab.value = savedTab as 'single' | 'manager' | 'tinycode' | 'monitor';
   }
 }
 
 // 切换标签页
-function switchTab(tab: 'single' | 'manager' | 'tinycode') {
+function switchTab(tab: 'single' | 'manager' | 'tinycode' | 'monitor') {
   activeTab.value = tab;
   localStorage.setItem(TAB_STORAGE_KEY, tab);
 }
@@ -58,6 +59,9 @@ onMounted(() => {
         <button :class="['tab-button', { active: activeTab === 'tinycode' }]" @click="switchTab('tinycode')">
           Block Builder
         </button>
+        <button :class="['tab-button', { active: activeTab === 'monitor' }]" @click="switchTab('monitor')">
+          Running Flows
+        </button>
       </div>
       
       <!-- Business 选择框 -->
@@ -76,6 +80,7 @@ onMounted(() => {
       <SingleNodeFlow v-if="activeTab === 'single'" />
       <SchemaManagerExample v-else-if="activeTab === 'manager'" />
       <TinyCode v-else-if="activeTab === 'tinycode'" />
+      <FlowMonitor v-else-if="activeTab === 'monitor'" />
     </div>
   </div>
 </template>

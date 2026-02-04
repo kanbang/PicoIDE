@@ -21,7 +21,11 @@ export {
   executeSavedFlow,
   getFlowExecutions,
   getExecutionOutputs,
-  stopExecution
+  stopExecution,
+  getRunningFlows,
+  getExecution,
+  streamExecutionEvents,
+  getExecutions
 } from './execute';
 export type { 
   ExecuteRequest, 

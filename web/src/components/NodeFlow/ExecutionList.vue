@@ -3,6 +3,21 @@ import { ref, watch, onMounted } from 'vue';
 import { getFlowExecutions } from '@/api/execute';
 import { showError, showSuccess } from '@/utils/toast';
 
+export interface OutputFile {
+  file_id: string;
+  filename: string;
+  file_path: string;
+  file_type: string;
+  file_size: number;
+  created_at: string;
+  block_name?: string;
+  block_id?: string;
+  description?: string;
+  metadata?: any;
+  can_open: boolean;
+  can_download: boolean;
+}
+
 export interface ExecutionRecord {
   execution_id: string;
   flow_id: string;
@@ -16,6 +31,8 @@ export interface ExecutionRecord {
   tag: string | null;
   scripts_path: string;
   scripts_hash: string;
+  output_files?: OutputFile[];
+  output_files_count?: number;
 }
 
 interface Props {

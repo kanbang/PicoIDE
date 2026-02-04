@@ -142,12 +142,31 @@ export async function getFlowExecutions(
  */
 export async function getExecutionOutputs(executionId: string): Promise<{
   execution_id: string;
-  outputs: OutputFile[];
+  output_files: OutputFile[];
 }> {
-  const result = await api.get(`/engine/executions/${executionId}/outputs`);
+  const result = await api.get(`/engine/executions/${executionId}/outputs`) as any;
+  console.log('getExecutionOutputs - API返回:', result);
+  console.log('getExecutionOutputs - result.outputs:', result.outputs);
+  console.log('getExecutionOutputs - result.outputs类型:', typeof result.outputs);
+  console.log('getExecutionOutputs - result.outputs是否为数组:', Array.isArray(result.outputs));
+  console.log('getExecutionOutputs - result.outputs长度:', result.outputs?.length);
+
+  // 处理 Python dict 转换的类数组对象，确保是真正的数组
+  let outputs: OutputFile[] = [];
+  if (result.outputs) {
+    if (Array.isArray(result.outputs)) {
+      outputs = result.outputs;
+    } else if (typeof result.outputs === 'object') {
+      // 如果是类数组对象（如 Python dict），转换为数组
+      outputs = Object.values(result.outputs).filter((v: any) => v != null) as OutputFile[];
+    }
+  }
+  console.log('getExecutionOutputs - 处理后的 outputs:', outputs);
+  console.log('getExecutionOutputs - 处理后的 outputs.length:', outputs.length);
+
   return {
     execution_id: result.execution_id,
-    output_files: result.outputs || []
+    output_files: outputs
   };
 }
 
@@ -156,6 +175,86 @@ export async function getExecutionOutputs(executionId: string): Promise<{
  */
 export async function deleteExecution(executionId: string): Promise<any> {
   return await api.delete(`/engine/executions/${executionId}`);
+}
+
+/**
+ * 获取正在运行的 flows
+ */
+export async function getRunningFlows(): Promise<{
+  ok: boolean;
+  running_executions: string[];
+  count: number;
+}> {
+  return await api.get('/engine/running');
+}
+
+/**
+ * 获取执行详情
+ */
+export async function getExecution(executionId: string): Promise<ExecutionRecord> {
+  return await api.get(`/engine/executions/${executionId}`);
+}
+
+/**
+ * 流式获取执行事件 (SSE)
+ */
+export function streamExecutionEvents(executionId: string, onMessage: (event: RuntimeEvent) => void, onError?: (error: string) => void, onEnd?: () => void): EventSource {
+  const url = `/api/engine/stream/${executionId}`;
+  const eventSource = new EventSource(url);
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.error) {
+        onError?.(data.error);
+        return;
+      }
+      onMessage(data);
+    } catch (e) {
+      console.error('Failed to parse SSE event:', e);
+    }
+  };
+
+  eventSource.addEventListener('end', () => {
+    onEnd?.();
+    eventSource.close();
+  });
+
+  eventSource.onerror = () => {
+    onError?.('SSE connection error');
+    eventSource.close();
+  };
+
+  return eventSource;
+}
+
+/**
+ * 获取所有执行历史
+ */
+export async function getExecutions(params?: {
+  status?: string;
+  source?: string;
+  tag?: string;
+  flow_id?: string;
+  scripts_hash?: string;
+  include_outputs?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  executions: ExecutionRecord[];
+  count: number;
+  limit: number;
+  offset: number;
+}> {
+  const queryParams = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) {
+        queryParams.append(key, String(value));
+      }
+    });
+  }
+  return await api.get(`/engine/executions?${queryParams.toString()}`);
 }
 
 // ==================== 类型定义 ====================

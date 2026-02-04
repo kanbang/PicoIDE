@@ -1,19 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import { getExecutionOutputs } from '@/api/execute';
 import { showError } from '@/utils/toast';
-import type { ExecutionRecord } from './ExecutionList.vue';
-
-export interface OutputFile {
-  file_id: string;
-  filename: string;
-  file_type: string;
-  file_size: number;
-  created_at: string;
-  block_name?: string;
-  can_open: boolean;
-  can_download: boolean;
-}
+import type { ExecutionRecord, OutputFile } from './ExecutionList.vue';
 
 interface Props {
   executionId?: string;
@@ -29,14 +18,26 @@ const emit = defineEmits<Emits>();
 
 const outputFiles = ref<OutputFile[]>([]);
 const loading = ref(false);
+// 记录上次加载的 executionId，避免重复加载
+const lastLoadedExecutionId = ref<string | null>(null);
 
 async function loadOutputs() {
   if (!props.executionId) return;
 
   // 如果 execution 对象中已经有 output_files，直接使用
-  if (props.execution?.output_files) {
+  if (props.execution?.output_files && props.execution.output_files.length > 0) {
     console.log('ExecutionDetail - 使用 execution 中的 output_files:', props.execution.output_files.length);
-    outputFiles.value = props.execution.output_files;
+    // 使用 [...xxx] 确保响应式更新
+    outputFiles.value = [...props.execution.output_files];
+    lastLoadedExecutionId.value = props.executionId;
+    // 使用 nextTick 确保 DOM 更新
+    await nextTick();
+    return;
+  }
+
+  // 避免重复加载同一个 executionId（且没有内置 output_files 的情况）
+  if (lastLoadedExecutionId.value === props.executionId && outputFiles.value.length > 0) {
+    console.log('ExecutionDetail - 已加载过此 execution 的输出文件，跳过');
     return;
   }
 
@@ -46,8 +47,15 @@ async function loadOutputs() {
     console.log('ExecutionDetail - loadOutputs called, executionId:', props.executionId);
     const result = await getExecutionOutputs(props.executionId);
     console.log('ExecutionDetail - API返回结果:', result);
-    outputFiles.value = result.output_files;
-    console.log('ExecutionDetail - output_files:', outputFiles.value);
+    console.log('ExecutionDetail - result.output_files:', result.output_files);
+    console.log('ExecutionDetail - result.output_files.length:', result.output_files?.length);
+    // 使用 [...xxx] 确保响应式更新
+    outputFiles.value = [...(result.output_files || [])];
+    console.log('ExecutionDetail - outputFiles.value after assign:', outputFiles.value);
+    console.log('ExecutionDetail - outputFiles.value.length after assign:', outputFiles.value.length);
+    lastLoadedExecutionId.value = props.executionId;
+    // 使用 nextTick 确保 DOM 更新
+    await nextTick();
   } catch (error) {
     console.error('加载执行输出文件失败:', error);
     showError('加载输出文件失败');
@@ -123,15 +131,28 @@ async function downloadFile(file: OutputFile) {
   }
 }
 
-watch(() => props.executionId, (newId) => {
-  console.log('ExecutionDetail - executionId changed:', newId);
-  if (newId) {
-    loadOutputs();
-  }
-});
+// 监听 executionId 和 execution 变化
+watch(() => [props.executionId, props.execution] as const, (current, prev) => {
+  console.log('ExecutionDetail - watch triggered');
+  console.log('ExecutionDetail - current executionId:', current[0]);
+  console.log('ExecutionDetail - current execution:', current[1]);
+  console.log('ExecutionDetail - prev executionId:', prev?.[0]);
+  console.log('ExecutionDetail - prev execution:', prev?.[1]);
 
-onMounted(() => {
-  if (props.executionId) {
+  // 如果 executionId 为空，跳过
+  if (!current[0]) {
+    console.log('ExecutionDetail - executionId 为空，跳过');
+    return;
+  }
+
+  // 检查是否需要重新加载
+  const shouldReload = !prev ||
+    prev[0] !== current[0] || // executionId 变化
+    (prev[1]?.execution_id !== current[1]?.execution_id) || // execution 对象变化
+    (prev[1]?.status !== current[1]?.status && current[1]?.status === 'completed'); // 从 running 变为 completed
+  console.log('ExecutionDetail - shouldReload:', shouldReload);
+
+  if (shouldReload) {
     loadOutputs();
   }
 });
