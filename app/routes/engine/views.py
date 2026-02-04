@@ -1027,6 +1027,8 @@ async def delete_tag_execution(tag: str) -> Dict[str, Any]:
 @router.get("/stream/{exec_id}")
 async def stream_events(exec_id: str, request: Request):
     bus = RuntimeEventBus()
+    client_host = request.client.host if request.client else "unknown"
+    logger.info(f"SSE 连接建立 - 执行ID: {exec_id}, 客户端: {client_host}")
 
     async def event_generator():
         try:
@@ -1038,10 +1040,13 @@ async def stream_events(exec_id: str, request: Request):
                     RuntimeEventType.EXECUTION_FAILED,
                     RuntimeEventType.EXECUTION_STOPPED,
                 ):
+                    logger.info(f"SSE 流正常结束 - 执行ID: {exec_id}, 客户端: {client_host}")
                     yield "event: end\ndata: {}\n\n"
                     break
         except Exception as e:
             logger.error(f"SSE stream error for {exec_id}: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            logger.info(f"SSE 连接断开 - 执行ID: {exec_id}, 客户端: {client_host}")
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

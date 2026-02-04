@@ -95,7 +95,15 @@ async function loadExecutionOutputs(executionId: string) {
 
 // 订阅执行事件
 function subscribeToExecution(executionId: string) {
-  // 关闭之前的连接
+  // 关闭所有之前的 SSE 连接（防止切换执行时连接堆积）
+  sseConnections.forEach((es, id) => {
+    if (id !== executionId) {
+      es.close();
+      sseConnections.delete(id);
+    }
+  });
+
+  // 如果已经有当前执行的连接，先关闭
   if (sseConnections.has(executionId)) {
     sseConnections.get(executionId)?.close();
   }
