@@ -522,14 +522,14 @@ defineExpose({
 .panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: 0;
+  padding: 10px;
 }
 
 /* 运行状态横幅 */
 .status-banner {
   border-radius: 6px;
-  padding: 10px 14px;
-  margin: 12px 12px 12px 12px;
+  padding: 12px 12px;
+  margin: 0;
   border-left: 4px solid transparent;
 }
 

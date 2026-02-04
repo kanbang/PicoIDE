@@ -18,7 +18,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   showHeader: true,
   headerTitle: '输出文件',
-  showDelete: true
+  showDelete: true,
 });
 
 const emit = defineEmits<{
@@ -59,7 +59,7 @@ function deleteFile(file: OutputFile) {
     </div>
 
     <!-- 内容区域 -->
-    <div class="file-body">
+    <div class="file-body" >
       <!-- 空状态 -->
       <div v-if="files.length === 0" class="empty-state">
         <div class="empty-illustration">
@@ -191,7 +191,7 @@ function deleteFile(file: OutputFile) {
 .file-body {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 12px 0px;
 }
 
 .empty-state {

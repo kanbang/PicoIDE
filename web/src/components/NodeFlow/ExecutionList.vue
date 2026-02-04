@@ -98,25 +98,27 @@ defineExpose({
       <div class="spinner"></div>
       <p>加载中...</p>
     </div>
-    
+
     <div v-else-if="executions.length > 0" class="execution-list">
-      <div 
-        v-for="exec in executions" 
+      <div
+        v-for="exec in executions"
         :key="exec.execution_id"
         class="execution-item"
       >
         <div class="execution-icon" :class="exec.status">
-          <svg v-if="exec.status === 'running'" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <svg v-if="exec.status === 'running'" class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
           </svg>
-          <svg v-else-if="exec.status === 'completed'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <svg v-else-if="exec.status === 'completed'" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <polyline points="20 6 9 17 4 12" />
           </svg>
-          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
         </div>
-        
+
         <div class="execution-content" @click="selectExecution(exec)">
           <div class="execution-time">{{ formatTime(exec.start_time) }}</div>
           <div class="execution-status">
@@ -132,27 +134,29 @@ defineExpose({
             <span v-if="exec.tag" class="tag">{{ exec.tag }}</span>
           </div>
         </div>
-        
+
         <div class="execution-actions">
           <button @click="deleteExecution(exec, $event)" class="delete-btn" title="删除记录">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
             </svg>
           </button>
           <div class="execution-arrow">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="9 18 15 12 9 6" />
             </svg>
           </div>
         </div>
       </div>
     </div>
-    
+
     <div v-else class="empty-state">
       <div class="empty-illustration">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-          <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 1118 0"/><circle cx="12" cy="13" r="3"/><path d="M9 13h6"/>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 1118 0" />
+          <circle cx="12" cy="13" r="3" />
+          <path d="M9 13h6" />
         </svg>
       </div>
       <h4>{{ flowId ? '暂无执行记录' : '未提供 Flow ID' }}</h4>
@@ -173,13 +177,13 @@ defineExpose({
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  padding: 48px 24px;
   color: #888;
 }
 
 .spinner {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border: 2px solid #333;
   border-top-color: #4caf50;
   border-radius: 50%;
@@ -200,74 +204,115 @@ defineExpose({
 
 .execution-item {
   background: #252526;
-  border: 1px solid #333;
+  border: 1px solid #3a3a3a;
   border-radius: 6px;
   display: flex;
   align-items: center;
-  padding: 10px;
-  gap: 12px;
+  padding: 8px 10px;
+  gap: 10px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .execution-item:hover {
   background: #2d2d30;
-  border-color: #444;
-  transform: translateX(4px);
+  border-color: #4a4a4a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
 }
 
 .execution-icon {
-  width: 32px;
-  height: 32px;
-  background: #333;
+  width: 28px;
+  height: 28px;
+  background: #2a2a2a;
   border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #888;
   flex-shrink: 0;
 }
 
-.execution-icon.running { color: #007acc; }
-.execution-icon.completed { color: #4caf50; }
-.execution-icon.failed { color: #f44336; }
+.execution-icon.running {
+  color: #007acc;
+  background: rgba(0, 122, 204, 0.12);
+}
 
-.execution-icon svg { width: 16px; height: 16px; stroke-width: 1.5; }
+.execution-icon.completed {
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.12);
+}
+
+.execution-icon.failed {
+  color: #f44336;
+  background: rgba(244, 67, 54, 0.12);
+}
+
+.execution-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
 
 .execution-content {
   flex: 1;
   min-width: 0;
-  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .execution-time {
-  font-size: 11px;
+  font-size: 10px;
   color: #888;
-  margin-bottom: 2px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
 }
 
 .execution-status {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 2px;
 }
 
-.status-running { color: #007acc; }
-.status-completed { color: #4caf50; }
-.status-failed { color: #f44336; }
+.status-running {
+  color: #007acc;
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.status-completed {
+  color: #4caf50;
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.status-failed {
+  color: #f44336;
+  font-weight: 500;
+  font-size: 11px;
+}
 
 .execution-duration {
-  font-size: 11px;
-  color: #777;
+  font-size: 10px;
+  color: #666;
+  background: #2a2a2a;
+  padding: 0 5px;
+  border-radius: 3px;
 }
 
 .execution-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 11px;
+  gap: 8px;
+  font-size: 9px;
   color: #777;
+  flex-wrap: wrap;
+}
+
+.execution-meta > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .failed-count {
@@ -276,31 +321,43 @@ defineExpose({
 }
 
 .tag {
-  background: #3c3c3c;
-  padding: 1px 4px;
+  background: #3a3a3a;
+  padding: 1px 5px;
   border-radius: 3px;
-  color: #aaa;
+  color: #bbb;
+  font-size: 9px;
 }
 
 .file-count-badge {
   color: #4caf50;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.file-count-badge::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #4caf50;
 }
 
 .execution-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .delete-btn {
-  background: #333;
+  background: transparent;
   border: none;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
-  color: #888;
+  color: #666;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -318,12 +375,24 @@ defineExpose({
   color: #fff;
 }
 
+.delete-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
 .execution-arrow {
-  color: #666;
+  color: #555;
   flex-shrink: 0;
 }
 
-.spin { animation: spin 2s linear infinite; }
+.execution-arrow svg {
+  width: 13px;
+  height: 13px;
+}
+
+.spin {
+  animation: spin 1.5s linear infinite;
+}
 
 .empty-state {
   flex: 1;
@@ -332,24 +401,31 @@ defineExpose({
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 40px;
+  padding: 48px 24px;
   color: #666;
 }
 
 .empty-illustration {
-  margin-bottom: 20px;
-  opacity: 0.2;
+  margin-bottom: 24px;
+  opacity: 0.15;
 }
 
-.empty-state h4 { 
-  color: #888; 
-  margin: 0 0 8px 0; 
-  font-size: 16px; 
+.empty-illustration svg {
+  width: 72px;
+  height: 72px;
 }
 
-.empty-state p { 
-  font-size: 12px; 
-  line-height: 1.6; 
-  max-width: 260px; 
+.empty-state h4 {
+  color: #888;
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.empty-state p {
+  font-size: 12px;
+  line-height: 1.6;
+  max-width: 240px;
+  color: #777;
 }
 </style>
