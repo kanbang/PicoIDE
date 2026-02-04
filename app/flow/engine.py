@@ -135,7 +135,7 @@ class Execution:
                 RuntimeEventType.STATUS,
                 "engine",
                 "Execution started",
-                payload={"status": "running"},
+                data={"status": "running"},
             )
         )
         sources = [n for n, d in self.engine._graph.in_degree() if d == 0]
@@ -212,7 +212,7 @@ class ComputeEngine:
             type=RuntimeEventType.FILE,
             source=node_type,
             message=f"Generated file: {file_info['filename']}",
-            payload={"file": file_info},
+            data={"file": file_info},
             ts=time.time(),
         )
         asyncio.create_task(self.event_bus.emit(file_event))
@@ -252,7 +252,7 @@ class ComputeEngine:
             message = "Execution stopped by user" if is_stopped else "Execution completed"
             await self.event_bus.emit(
                 RuntimeEvent(
-                    exec_id, event_type, "engine", message, payload={"duration": duration}
+                    exec_id, event_type, "engine", message, data={"duration": duration}
                 )
             )
             if is_stopped:

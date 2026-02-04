@@ -339,7 +339,7 @@ class BaseBlock(Block):
                             RuntimeEventType.DATA,
                             self.NAME,
                             f"Appended to file: {unique_filename}",
-                            payload={
+                            data={
                                 "file_id": file_id,
                                 "action": "append",
                             },

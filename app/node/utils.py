@@ -55,7 +55,7 @@ class SseLogger(BaseBlock):
                 RuntimeEventType.DEBUG,
                 self.NAME,
                 log_msg,
-                payload=data,
+                data=data,
             )
         )
 

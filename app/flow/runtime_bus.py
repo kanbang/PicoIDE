@@ -1,3 +1,11 @@
+'''
+Descripttion: 
+version: 0.x
+Author: zhai
+Date: 2026-02-02 09:12:09
+LastEditors: zhai
+LastEditTime: 2026-02-04 15:12:04
+'''
 from enum import Enum
 from dataclasses import dataclass, field
 import time
@@ -26,7 +34,7 @@ class RuntimeEvent:
     type: RuntimeEventType
     source: str  # engine / block type
     message: str
-    payload: Optional[Any] = None
+    data: Optional[Any] = None
     ts: float = field(default_factory=time.time)  # 使用 default_factory 确保每次实例化时生成新时间戳
 
 @singleton

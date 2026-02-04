@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-17 17:01:06
  * @LastEditors: zhai
- * @LastEditTime: 2026-02-02 12:42:05
+ * @LastEditTime: 2026-02-04 14:49:32
 -->
 <template>
   <div class="nodeflow-container">
@@ -49,7 +49,8 @@ import { BuildBlock } from './BlockBuilder';
 import TestNode from './TestNode';
 import OutputPanel from './OutputPanel.vue';
 import ConsolePanel from './ConsolePanel.vue';
-import type { SSEEvent } from './ConsolePanel.vue';
+import { toLogEvent } from '../common/types';
+
 import SplitPane from '@/components/common/Splitter.vue';
 import SplitterVertical from '@/components/common/SplitterVertical.vue';
 import "@baklavajs/themes/dist/syrup-dark.css";
@@ -444,29 +445,23 @@ function connectSSE(executionId: string) {
           }
           // 添加到 OutputPanel
           if (outputPanelRef.value) {
-            outputPanelRef.value.handleSSEEvent({
+            outputPanelRef.value.handleLogEvent({
               type: 'error',
               message: eventData.error
             });
           }
         } else {
-          // 构造 SSEEvent 对象
-          const sseEvent: SSEEvent = {
-            type: eventData.type || 'info',
-            source: eventData.source,
-            message: eventData.message,
-            timestamp: eventData.ts ? new Date(eventData.ts * 1000).toISOString() : new Date().toISOString(),
-            data: eventData.payload !== undefined ? eventData.payload : eventData.data
-          };
+          // 构造 LogEvent 对象
+          const logEvent = toLogEvent(eventData);
 
           // 添加到 ConsolePanel
           if (consolePanelRef.value) {
-            consolePanelRef.value.addEvent(sseEvent);
+            consolePanelRef.value.addEvent(logEvent);
           }
 
           // 同时分发到 OutputPanel
           if (outputPanelRef.value) {
-            outputPanelRef.value.handleSSEEvent(eventData);
+            outputPanelRef.value.handleLogEvent(eventData);
           }
         }
       } catch (error) {

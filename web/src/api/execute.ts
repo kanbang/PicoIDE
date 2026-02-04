@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-12 20:11:28
  * @LastEditors: zhai
- * @LastEditTime: 2026-01-19 20:32:09
+ * @LastEditTime: 2026-02-04 15:02:50
  */
 /**
  * Blocks 相关 API
@@ -145,29 +145,7 @@ export async function getExecutionOutputs(executionId: string): Promise<{
   output_files: OutputFile[];
 }> {
   const result = await api.get(`/engine/executions/${executionId}/outputs`) as any;
-  console.log('getExecutionOutputs - API返回:', result);
-  console.log('getExecutionOutputs - result.outputs:', result.outputs);
-  console.log('getExecutionOutputs - result.outputs类型:', typeof result.outputs);
-  console.log('getExecutionOutputs - result.outputs是否为数组:', Array.isArray(result.outputs));
-  console.log('getExecutionOutputs - result.outputs长度:', result.outputs?.length);
-
-  // 处理 Python dict 转换的类数组对象，确保是真正的数组
-  let outputs: OutputFile[] = [];
-  if (result.outputs) {
-    if (Array.isArray(result.outputs)) {
-      outputs = result.outputs;
-    } else if (typeof result.outputs === 'object') {
-      // 如果是类数组对象（如 Python dict），转换为数组
-      outputs = Object.values(result.outputs).filter((v: any) => v != null) as OutputFile[];
-    }
-  }
-  console.log('getExecutionOutputs - 处理后的 outputs:', outputs);
-  console.log('getExecutionOutputs - 处理后的 outputs.length:', outputs.length);
-
-  return {
-    execution_id: result.execution_id,
-    output_files: outputs
-  };
+  return result;
 }
 
 /**

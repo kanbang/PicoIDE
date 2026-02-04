@@ -5,7 +5,7 @@
  * @Date: 2026-02-04
 -->
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import {
   getRunningFlows,
   getExecution,
@@ -15,18 +15,10 @@ import {
   type ExecutionRecord,
   type OutputFile
 } from '@/api';
-
-// 全局类型定义
-export interface RuntimeEvent {
-  type: string;
-  execution_id: string;
-  timestamp: string;
-  data?: any;
-  node_id?: string;
-  node_name?: string;
-  message?: string;
-  error?: string;
-}
+import LogViewer from '@/components/common/LogViewer.vue';
+import FileList from '@/components/common/FileList.vue';
+import type { LogEvent } from '@/components/common/types';
+import { toLogEvent } from '@/components/common/types';
 
 // 当前 tab
 const currentTab = ref<'logs' | 'outputs'>('logs');
@@ -39,7 +31,7 @@ const error = ref<string | null>(null);
 // 当前选中的执行
 const selectedExecutionId = ref<string | null>(null);
 const selectedExecution = ref<ExecutionRecord | null>(null);
-const executionLogs = ref<RuntimeEvent[]>([]);
+const executionLogs = ref<LogEvent[]>([]);
 const executionOutputs = ref<OutputFile[]>([]);
 
 // SSE 连接管理
@@ -134,15 +126,8 @@ function subscribeToExecution(executionId: string) {
 
   const eventSource = streamExecutionEvents(
     executionId,
-    (event: RuntimeEvent) => {
-      executionLogs.value.push(event);
-      // 滚动到底部
-      nextTick(() => {
-        const container = document.querySelector('.logs-container');
-        if (container) {
-          container.scrollTop = container.scrollHeight;
-        }
-      });
+    (event: any) => {
+      executionLogs.value.push(toLogEvent(event));
     },
     (errorMsg: string) => {
       console.error('SSE error:', errorMsg);
@@ -189,28 +174,6 @@ async function handleStop(executionId: string) {
   }
 }
 
-// 打开输出文件
-function openOutputFile(file: OutputFile) {
-  window.open(`/api/engine/output-files/${file.file_id}`, '_blank');
-}
-
-// 下载输出文件
-function downloadOutputFile(file: OutputFile) {
-  const link = document.createElement('a');
-  link.href = `/api/engine/output-files/${file.file_id}`;
-  link.download = file.filename;
-  link.click();
-}
-
-// 格式化文件大小
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-}
-
 // 格式化时间
 function formatTime(isoString: string): string {
   const date = new Date(isoString);
@@ -235,6 +198,12 @@ function formatExecutionTime(seconds: number): string {
 // 清空日志
 function clearLogs() {
   executionLogs.value = [];
+}
+
+// 删除文件
+function deleteFile() {
+  // FlowMonitor 中文件只读，不支持删除
+  console.warn('FlowMonitor only supports viewing files, deletion is not supported');
 }
 
 // 组件挂载
@@ -277,7 +246,7 @@ onUnmounted(() => {
         </div>
 
         <div v-else-if="!hasRunningFlows && !loading" class="empty-state">
-          <div class="empty-icon">🚫</div>
+          <div class="empty-icon">📭</div>
           <p>暂无正在运行的 Flow</p>
         </div>
 
@@ -369,7 +338,7 @@ onUnmounted(() => {
               :class="['tab-btn', { active: currentTab === 'logs' }]"
               @click="currentTab = 'logs'"
             >
-              实时日志
+              实时日志 ({{ executionLogs.length }})
             </button>
             <button
               :class="['tab-btn', { active: currentTab === 'outputs' }]"
@@ -381,65 +350,26 @@ onUnmounted(() => {
 
           <!-- 实时日志 -->
           <div v-if="currentTab === 'logs'" class="logs-panel">
-            <div class="logs-header">
-              <span>实时输出</span>
-              <button class="clear-btn" @click="clearLogs">清空</button>
-            </div>
-            <div class="logs-container">
-              <div v-if="executionLogs.length === 0" class="logs-empty">
-                等待日志输出...
-              </div>
-              <div v-else class="log-list">
-                <div
-                  v-for="(log, index) in executionLogs"
-                  :key="index"
-                  :class="['log-entry', `log-${log.type}`]"
-                >
-                  <span class="log-time">{{ formatTime(log.timestamp) }}</span>
-                  <span v-if="log.node_name" class="log-node">{{ log.node_name }}</span>
-                  <span v-if="log.message" class="log-message">{{ log.message }}</span>
-                  <span v-if="log.error" class="log-error">{{ log.error }}</span>
-                  <pre v-if="log.data" class="log-data">{{ JSON.stringify(log.data, null, 2) }}</pre>
-                </div>
-              </div>
-            </div>
+            <LogViewer
+              :events="executionLogs"
+              :is-loading="loading"
+              :show-filter="true"
+              :show-header="true"
+              @clear="clearLogs"
+            />
           </div>
 
           <!-- 输出文件 -->
           <div v-else class="outputs-panel">
-            <div v-if="executionOutputs.length === 0" class="outputs-empty">
-              暂无输出文件
-            </div>
-            <div v-else class="outputs-list">
-              <div
-                v-for="file in executionOutputs"
-                :key="file.file_id"
-                class="output-item"
-              >
-                <div class="output-info">
-                  <div class="output-filename">{{ file.filename }}</div>
-                  <div class="output-meta">
-                    <span>{{ formatFileSize(file.file_size) }}</span>
-                    <span>{{ formatTime(file.created_at) }}</span>
-                  </div>
-                </div>
-                <div class="output-actions">
-                  <button
-                    v-if="file.can_open"
-                    class="open-btn"
-                    @click="openOutputFile(file)"
-                  >
-                    打开
-                  </button>
-                  <button
-                    class="download-btn"
-                    @click="downloadOutputFile(file)"
-                  >
-                    下载
-                  </button>
-                </div>
-              </div>
-            </div>
+            <FileList
+              :files="executionOutputs"
+              :show-header="false"
+              header-title="输出文件"
+              :show-delete="false"
+              @open="() => {}"
+              @download="() => {}"
+              @delete="deleteFile"
+            />
           </div>
         </template>
 
@@ -699,166 +629,14 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.logs-header {
-  padding: 8px 20px;
-  background: #252526;
-  border-bottom: 1px solid #3c3c3c;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.logs-header span {
-  font-size: 12px;
-  color: #888;
-}
-
-.clear-btn {
-  padding: 4px 12px;
-  background: #3c3c3c;
-  border: 1px solid #4a4a4a;
-  color: #e0e0e0;
-  border-radius: 3px;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.clear-btn:hover {
-  background: #4a4a4a;
-}
-
-.logs-container {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 20px;
-  font-family: 'Consolas', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.logs-empty {
-  color: #666;
-  text-align: center;
-  padding: 40px;
-}
-
-.log-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.log-entry {
-  padding: 8px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.log-time {
-  color: #666;
-  margin-right: 8px;
-}
-
-.log-node {
-  color: #4ec9b0;
-  margin-right: 8px;
-}
-
-.log-message {
-  color: #d4d4d4;
-}
-
-.log-error {
-  color: #f44336;
-}
-
-.log-data {
-  margin: 8px 0 0 0;
-  padding: 8px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 3px;
-  color: #9cdcfe;
-  font-size: 11px;
-  overflow-x: auto;
+  background: #1e1e1e;
 }
 
 /* 输出文件面板 */
 .outputs-panel {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px;
-}
-
-.outputs-empty {
-  color: #666;
-  text-align: center;
-  padding: 40px;
-}
-
-.outputs-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.output-item {
-  padding: 12px;
-  background: #2d2d30;
-  border: 1px solid #3c3c3c;
-  border-radius: 4px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.output-info {
-  flex: 1;
-}
-
-.output-filename {
-  font-size: 13px;
-  color: #e0e0e0;
-  margin-bottom: 4px;
-}
-
-.output-meta {
-  display: flex;
-  gap: 12px;
-  font-size: 11px;
-  color: #888;
-}
-
-.output-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.open-btn,
-.download-btn {
-  padding: 6px 12px;
-  background: #3c3c3c;
-  border: 1px solid #4a4a4a;
-  color: #e0e0e0;
-  border-radius: 3px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.open-btn:hover,
-.download-btn:hover {
-  background: #4a4a4a;
-}
-
-.open-btn {
-  border-color: #4caf50;
-  color: #4caf50;
-}
-
-.open-btn:hover {
-  background: rgba(76, 175, 80, 0.1);
+  background: #1e1e1e;
 }
 
 /* 未选择时的提示 */
