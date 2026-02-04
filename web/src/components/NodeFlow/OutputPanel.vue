@@ -215,8 +215,8 @@ defineExpose({
     if (eventData.type === 'execution_completed') {
       executionStatus.value = 'completed';
       // 使用后端的 ts 计算耗时，避免前后端时间不一致
-      if (eventData.payload?.duration !== undefined) {
-        executionDuration.value = eventData.payload.duration;
+      if (eventData.data?.duration !== undefined) {
+        executionDuration.value = eventData.data.duration;
       } else if (eventData.ts && executionStartTime !== null) {
         // 如果没有 payload.duration，使用后端 ts 计算（ts 是秒，startTime 也是秒）
         executionDuration.value = eventData.ts - executionStartTime;
@@ -229,8 +229,8 @@ defineExpose({
     if (eventData.type === 'execution_failed') {
       executionStatus.value = 'failed';
       // 使用后端的 ts 计算耗时
-      if (eventData.payload?.duration !== undefined) {
-        executionDuration.value = eventData.payload.duration;
+      if (eventData.data?.duration !== undefined) {
+        executionDuration.value = eventData.data.duration;
       } else if (eventData.ts && executionStartTime !== null) {
         executionDuration.value = eventData.ts - executionStartTime;
       }
@@ -244,8 +244,8 @@ defineExpose({
     if (eventData.type === 'execution_stopped') {
       executionStatus.value = 'stopped';
       // 使用后端的 ts 计算耗时
-      if (eventData.payload?.duration !== undefined) {
-        executionDuration.value = eventData.payload.duration;
+      if (eventData.data?.duration !== undefined) {
+        executionDuration.value = eventData.data.duration;
       } else if (eventData.ts && executionStartTime !== null) {
         executionDuration.value = eventData.ts - executionStartTime;
       }
@@ -256,7 +256,7 @@ defineExpose({
 
     // 处理状态事件
     if (eventData.type === 'status') {
-      const status = eventData.payload?.status;
+      const status = eventData.data?.status;
       if (status === 'running') {
         executionStatus.value = 'running';
         // 使用后端的 ts 作为开始时间（秒）
@@ -266,8 +266,8 @@ defineExpose({
         show();
       } else if (status === 'completed') {
         executionStatus.value = 'completed';
-        if (eventData.payload?.duration !== undefined) {
-          executionDuration.value = eventData.payload.duration;
+        if (eventData.data?.duration !== undefined) {
+          executionDuration.value = eventData.data.duration;
         }
       } else if (status === 'failed') {
         executionStatus.value = 'failed';
@@ -276,8 +276,8 @@ defineExpose({
     }
 
     // 处理文件事件
-    if (eventData.type === 'file' && eventData.payload?.file) {
-      const newFile = eventData.payload.file;
+    if (eventData.type === 'file' && eventData.data?.file) {
+      const newFile = eventData.data.file;
       if (!outputFiles.value.some(f => f.file_id === newFile.file_id)) {
         outputFiles.value = [...outputFiles.value, newFile];
         show();

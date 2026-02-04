@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { getExecutionOutputs } from '@/api/execute';
 import { showError } from '@/utils/toast';
-import { formatFileSize, formatTime, getStatusText } from '@/utils/formatters';
+import { formatFileSize, formatAbsoluteTime, getStatusText } from '@/utils/formatters';
 import type { ExecutionRecord } from './ExecutionList.vue';
 import type { OutputFile } from '@/api/execute';
 
@@ -11,53 +11,27 @@ interface Props {
   execution?: ExecutionRecord;
 }
 
-interface Emits {
+const emit = defineEmits<{
   (e: 'back'): void;
-}
+}>();
 
 const props = defineProps<Props>();
-const emit = defineEmits<Emits>();
-
 const outputFiles = ref<OutputFile[]>([]);
 const loading = ref(false);
-// 记录上次加载的 executionId，避免重复加载
-const lastLoadedExecutionId = ref<string | null>(null);
 
 async function loadOutputs() {
   if (!props.executionId) return;
 
-  // 如果 execution 对象中已经有 output_files，直接使用
-  if (props.execution?.output_files && props.execution.output_files.length > 0) {
-    console.log('ExecutionDetail - 使用 execution 中的 output_files:', props.execution.output_files.length);
-    // 使用 [...xxx] 确保响应式更新
+  // 使用 execution 中的 output_files 或从 API 加载
+  if (props.execution?.output_files) {
     outputFiles.value = [...props.execution.output_files];
-    lastLoadedExecutionId.value = props.executionId;
-    // 使用 nextTick 确保 DOM 更新
-    await nextTick();
     return;
   }
 
-  // 避免重复加载同一个 executionId（且没有内置 output_files 的情况）
-  if (lastLoadedExecutionId.value === props.executionId && outputFiles.value.length > 0) {
-    console.log('ExecutionDetail - 已加载过此 execution 的输出文件，跳过');
-    return;
-  }
-
-  // 否则从 API 加载
   loading.value = true;
   try {
-    console.log('ExecutionDetail - loadOutputs called, executionId:', props.executionId);
     const result = await getExecutionOutputs(props.executionId);
-    console.log('ExecutionDetail - API返回结果:', result);
-    console.log('ExecutionDetail - result.output_files:', result.output_files);
-    console.log('ExecutionDetail - result.output_files.length:', result.output_files?.length);
-    // 使用 [...xxx] 确保响应式更新
-    outputFiles.value = [...(result.output_files || [])];
-    console.log('ExecutionDetail - outputFiles.value after assign:', outputFiles.value);
-    console.log('ExecutionDetail - outputFiles.value.length after assign:', outputFiles.value.length);
-    lastLoadedExecutionId.value = props.executionId;
-    // 使用 nextTick 确保 DOM 更新
-    await nextTick();
+    outputFiles.value = result.output_files || [];
   } catch (error) {
     console.error('加载执行输出文件失败:', error);
     showError('加载输出文件失败');
@@ -66,64 +40,12 @@ async function loadOutputs() {
   }
 }
 
-async function openFile(file: OutputFile) {
-  try {
-    const baseUrl = window.location.origin;
-    const fileUrl = `${baseUrl}/api/engine/output-files/${file.file_id}`;
-    window.open(fileUrl, '_blank', 'noopener,noreferrer');
-  } catch (error) {
-    console.error('打开文件失败:', error);
-    showError('打开文件失败');
-  }
-}
-
-async function downloadFile(file: OutputFile) {
-  try {
-    const { getOutputFile } = await import('@/api/execute');
-    const blob = await getOutputFile(file.file_id);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = file.filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error('下载文件失败:', error);
-    showError('下载文件失败');
-  }
-}
-
-// 监听 executionId 和 execution 变化
-watch(() => [props.executionId, props.execution] as const, (current, prev) => {
-  console.log('ExecutionDetail - watch triggered');
-  console.log('ExecutionDetail - current executionId:', current[0]);
-  console.log('ExecutionDetail - current execution:', current[1]);
-  console.log('ExecutionDetail - prev executionId:', prev?.[0]);
-  console.log('ExecutionDetail - prev execution:', prev?.[1]);
-
-  // 如果 executionId 为空，跳过
-  if (!current[0]) {
-    console.log('ExecutionDetail - executionId 为空，跳过');
-    return;
-  }
-
-  // 检查是否需要重新加载
-  const shouldReload = !prev ||
-    prev[0] !== current[0] || // executionId 变化
-    (prev[1]?.execution_id !== current[1]?.execution_id) || // execution 对象变化
-    (prev[1]?.status !== current[1]?.status && current[1]?.status === 'completed'); // 从 running 变为 completed
-  console.log('ExecutionDetail - shouldReload:', shouldReload);
-
-  if (shouldReload) {
+onMounted(() => {
+  if (props.executionId) {
     loadOutputs();
   }
 });
 
-defineExpose({
-  loadOutputs
-});
 </script>
 
 <template>
@@ -145,7 +67,7 @@ defineExpose({
         </div>
         <div class="info-item">
           <span class="label">执行时间</span>
-          <span class="value">{{ formatTime(execution.start_time) }}</span>
+          <span class="value">{{ formatAbsoluteTime(execution.start_time) }}</span>
         </div>
         <div class="info-item">
           <span class="label">执行时长</span>
@@ -154,7 +76,7 @@ defineExpose({
         <div class="info-item">
           <span class="label">状态</span>
           <span class="value" :class="`status-${execution.status}`">
-            {{ getStatusText(execution.status) }}
+            {{ getStatusText(execution.status).text }}
           </span>
         </div>
         <div class="info-item">
@@ -182,30 +104,19 @@ defineExpose({
     </div>
 
     <div v-else-if="outputFiles.length > 0" class="file-grid">
-      <div v-for="file in outputFiles" :key="file.file_id" class="file-card" :class="file.file_type">
+      <a
+        v-for="file in outputFiles"
+        :key="file.file_id"
+        class="file-card"
+        :href="`/api/engine/output-files/${file.file_id}`"
+        target="_blank"
+      >
         <div class="card-icon" :data-type="file.file_type">
-          <template v-if="file.file_type === 'html'">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-          </template>
-          <template v-else-if="file.file_type === 'csv'">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <line x1="8" y1="13" x2="16" y2="13" />
-              <line x1="8" y1="17" x2="16" y2="17" />
-            </svg>
-          </template>
-          <template v-else>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-              <polyline points="13 2 13 9 20 9" />
-            </svg>
-          </template>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+            <polyline points="13 2 13 9 20 9" />
+          </svg>
         </div>
-
         <div class="card-content">
           <div class="name-row">
             <span class="name" :title="file.filename">{{ file.filename }}</span>
@@ -217,27 +128,15 @@ defineExpose({
             <span class="source">{{ file.block_name || '系统输出' }}</span>
           </div>
         </div>
-
-        <div class="card-actions">
-          <button v-if="file.can_open" @click="openFile(file)" class="icon-btn highlight" title="预览">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          </button>
-          <button @click="downloadFile(file)" class="icon-btn" title="下载">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          </button>
-        </div>
-      </div>
+      </a>
     </div>
 
     <div v-else class="empty-state">
-      <h4>此执行无输出文件</h4>
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+      <p>此执行无输出文件</p>
     </div>
   </div>
 </template>
@@ -381,6 +280,8 @@ defineExpose({
   align-items: center;
   padding: 10px;
   gap: 12px;
+  text-decoration: none;
+  color: inherit;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -400,16 +301,6 @@ defineExpose({
   justify-content: center;
   color: #888;
   flex-shrink: 0;
-}
-
-.file-card.html .card-icon {
-  color: #007acc;
-  background: rgba(0, 122, 204, 0.1);
-}
-
-.file-card.csv .card-icon {
-  color: #4caf50;
-  background: rgba(76, 175, 80, 0.1);
 }
 
 .card-icon svg {
@@ -454,55 +345,22 @@ defineExpose({
   gap: 6px;
 }
 
-.card-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0.4;
-  transition: opacity 0.2s;
-}
-
-.file-card:hover .card-actions {
-  opacity: 1;
-}
-
-.icon-btn {
-  background: #333;
-  border: none;
-  width: 30px;
-  height: 30px;
-  border-radius: 4px;
-  color: #ccc;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.icon-btn:hover {
-  background: #444;
-  color: #fff;
-}
-
-.icon-btn.highlight {
-  color: #007acc;
-}
-
-.icon-btn.highlight:hover {
-  background: #007acc;
-  color: #fff;
-}
-
 .empty-state {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 12px;
   color: #666;
   min-height: 200px;
 }
 
-.empty-state h4 {
+.empty-state svg {
+  color: #444;
+}
+
+.empty-state p {
   margin: 0;
   font-size: 14px;
   color: #888;

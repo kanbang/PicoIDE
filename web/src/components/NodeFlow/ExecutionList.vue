@@ -120,7 +120,7 @@ defineExpose({
         <div class="execution-content" @click="selectExecution(exec)">
           <div class="execution-time">{{ formatTime(exec.start_time) }}</div>
           <div class="execution-status">
-            <span :class="`status-${exec.status}`">{{ getStatusText(exec.status) }}</span>
+            <span :class="`status-${exec.status}`">{{ getStatusText(exec.status).text }}</span>
             <span class="execution-duration">{{ exec.execution_time.toFixed(2) }}s</span>
           </div>
           <div class="execution-meta">

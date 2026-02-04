@@ -19,7 +19,7 @@ import LogViewer from '@/components/common/LogViewer.vue';
 import FileList from '@/components/common/FileList.vue';
 import type { LogEvent } from '@/components/common/types';
 import { toLogEvent } from '@/components/common/types';
-import { formatAbsoluteTime } from '@/utils/formatters';
+import { formatAbsoluteTime, getStatusText } from '@/utils/formatters';
 
 // 当前 tab
 const currentTab = ref<'logs' | 'outputs'>('logs');
@@ -40,28 +40,6 @@ const sseConnections = new Map<string, EventSource>();
 
 // 计算属性
 const hasRunningFlows = computed(() => runningExecutions.value.length > 0);
-
-// 获取状态显示文本
-function getStatusText(status: string): string {
-  const statusMap: Record<string, string> = {
-    'running': '运行中',
-    'completed': '已完成',
-    'failed': '失败',
-    'stopped': '已停止'
-  };
-  return statusMap[status] || status;
-}
-
-// 获取状态颜色
-function getStatusColor(status: string): string {
-  const colorMap: Record<string, string> = {
-    'running': '#4caf50',
-    'completed': '#2196f3',
-    'failed': '#f44336',
-    'stopped': '#ff9800'
-  };
-  return colorMap[status] || '#999';
-}
 
 // 加载正在运行的 flows
 async function loadRunningFlows() {
@@ -243,8 +221,8 @@ onUnmounted(() => {
           >
             <div class="execution-header">
               <span class="execution-id">{{ exec.execution_id }}</span>
-              <span class="execution-status" :style="{ color: getStatusColor(exec.status) }">
-                {{ getStatusText(exec.status) }}
+              <span class="execution-status" :style="{ color: getStatusText(exec.status).color }">
+                {{ getStatusText(exec.status).text }}
               </span>
             </div>
             <div class="execution-meta">
@@ -265,8 +243,8 @@ onUnmounted(() => {
           <div class="detail-header">
             <div class="execution-info">
               <h2>{{ selectedExecution.execution_id }}</h2>
-              <span :class="['status-badge', selectedExecution.status]" :style="{ background: getStatusColor(selectedExecution.status) }">
-                {{ getStatusText(selectedExecution.status) }}
+              <span :class="['status-badge', selectedExecution.status]" :style="{ background: getStatusText(selectedExecution.status).color }">
+                {{ getStatusText(selectedExecution.status).text }}
               </span>
             </div>
             <div class="execution-actions">
