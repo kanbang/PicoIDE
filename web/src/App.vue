@@ -71,6 +71,7 @@ onMounted(() => {
           <option value="DEMO">DEMO</option>
           <option value="WAVE">WAVE</option>
           <option value="IOT">IOT</option>
+          <option value="AI">AI</option>
         </select>
       </div>
     </div>

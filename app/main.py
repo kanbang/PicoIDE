@@ -1,3 +1,11 @@
+'''
+Descripttion: 
+version: 0.x
+Author: zhai
+Date: 2026-01-28 11:17:59
+LastEditors: zhai
+LastEditTime: 2026-02-05 14:36:23
+'''
 """
 Descripttion:
 version: 0.x
@@ -45,7 +53,7 @@ from db import init_db, close_db, ensure_root_directory
 from routes.vfs.views import router as vfs_router
 from routes.engine.views import router as engine_router
 from routes.flow.views import router as flow_router
-from node import IOT_BLOCKS_ALL, DAQ_BLOCKS_ALL
+from node import IOT_BLOCKS_ALL, DAQ_BLOCKS_ALL, AI_LLM_BLOCKS_ALL
 
 DB_PATH = "vfs.db"
 USER_ID = "default"
@@ -84,5 +92,6 @@ if __name__ == "__main__":
     # 应用启动时注册所有预定义的业务类型
     register_static_blocks("WAVE", DAQ_BLOCKS_ALL)
     register_static_blocks("IOT", IOT_BLOCKS_ALL)
+    register_static_blocks("AI", AI_LLM_BLOCKS_ALL)
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
