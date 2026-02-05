@@ -9,8 +9,7 @@ import uuid
 from flow.block import BaseBlock
 from utils.singleton import singleton
 from utils.mqtt_client import MqttClientEx
-from paho.mqtt import client as mqtt
-
+from paho.mqtt import subscribe
 
 class FlowMqttClient(MqttClientEx):
     """
@@ -27,8 +26,6 @@ class FlowMqttClient(MqttClientEx):
         self._wildcard_callbacks: Dict[str, List[Callable[[Any], None]]] = defaultdict(
             list
         )
-        # 用于异步等待连接的 Event
-        self._connected_event: Optional[asyncio.Event] = None
 
     def register_topic_callback(self, topic: str, callback: Callable):
         """注册特定 Topic 的回调"""
@@ -48,25 +45,12 @@ class FlowMqttClient(MqttClientEx):
         if topic in self._topic_callbacks:
             if callback in self._topic_callbacks[topic]:
                 self._topic_callbacks[topic].remove(callback)
+        if topic in self._wildcard_callbacks:
+            if callback in self._wildcard_callbacks[topic]:
+                self._wildcard_callbacks[topic].remove(callback)
         # 注意：这里一般不取消订阅(Unsubscribe)，因为可能还有其他 Block 在监听同一个 Topic
 
-    async def _wait_for_connected(self, timeout: float = 10.0) -> bool:
-        """异步等待连接建立"""
-        if self.is_connected:
-            return True
-
-        self._connected_event = asyncio.Event()
-        try:
-            await asyncio.wait_for(self._connected_event.wait(), timeout=timeout)
-            return self.is_connected
-        except asyncio.TimeoutError:
-            return False
-
     def on_connect(self, client, userdata, flags, rc):
-        # 通知等待连接的异步任务
-        if self._connected_event is not None:
-            self._connected_event.set()
-
         # 重连后重新订阅所有注册的 Topic
         topics = list(self._topic_callbacks.keys()) + list(
             self._wildcard_callbacks.keys()
@@ -89,13 +73,14 @@ class FlowMqttClient(MqttClientEx):
                 except Exception as e:
                     self.print_error(f"Callback error on {topic}: {e}")
 
-        # 2. 简单的通配符处理 (仅演示 #，实际需更严谨匹配)
+        # 2. 通配符匹配，使用 paho 的 topic_matches_sub
         for sub_topic, cbs in self._wildcard_callbacks.items():
-            # 这里使用了 paho 自带的 topic_matches_sub 逻辑会更好，
-            # 但为了不引入额外依赖，这里简化处理，或者假设用户使用 paho.mqtt.client.topic_matches_sub
-            if mqtt.topic_matches_sub(sub_topic, topic):
+            if subscribe.topic_matches_sub(sub_topic, topic):
                 for cb in cbs:
-                    cb({"topic": topic, "payload": payload, "qos": msg.qos})
+                    try:
+                        cb({"topic": topic, "payload": payload, "qos": msg.qos})
+                    except Exception as e:
+                        self.print_error(f"Wildcard callback error on {sub_topic} for {topic}: {e}")
 
     def on_error(self, client, userdata, msg):
         self.print_error(f"Error: {msg}")
@@ -105,6 +90,7 @@ class FlowMqttClient(MqttClientEx):
 
     def on_offline(self, msg):
         pass  # 可根据需要实现系统级通知
+
 
 
 @singleton
@@ -166,7 +152,6 @@ class MqttClientManager:
             if client:
                 client.disconnect()
 
-
 mqtt_manager = MqttClientManager()
 
 
@@ -212,7 +197,7 @@ class MqttPublishBlock(BaseBlock):
         # 3. 获取 Client 并等待连接建立
         client = mqtt_manager.get_client(host, port, username, password)
 
-        if not await client._wait_for_connected(timeout=5.0):
+        if not client.wait_for_connected(timeout=5.0):
             raise RuntimeError(f"Failed to connect to MQTT broker: {host}:{port}")
 
         success = client.publish(topic, payload, qos=qos)

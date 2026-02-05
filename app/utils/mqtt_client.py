@@ -1,15 +1,15 @@
 import json
 import logging
 from time import sleep
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Dict, List, Tuple
 import paho.mqtt.client as mqtt
 from abc import ABC, abstractmethod
 from paho.mqtt.reasoncodes import ReasonCode
 import threading
 import time
-import asyncio
 import uuid
-
+from collections import defaultdict
+from paho.mqtt import subscribe
 
 # 上线和下线消息主题
 online_topic = "$SYS/brokers/+/clients/+/connected"
@@ -58,24 +58,37 @@ class MqttClientEx(ABC):
         self._check_active = threading.Event()  # 新增控制标志
         self._check_thread = None
 
+        # 用于等待连接的 Event（只保留同步版本）
+        self._connected_thread_event = threading.Event()
+
         # logger
         self._logger = logger
 
-    def connect(self):
-        # 自动启动检查线程
-        if self._check_thread is None:
+    def connect(self, block: bool = False, timeout: float = 15.0) -> bool:
+        if self.is_connected:
+            return True
+        if not self._check_thread:
+            self._connect_once()
             self._start_connection_checker()
+
+        if block:
+            return self.wait_for_connected(timeout)
+        return self.is_connected
 
     def disconnect(self):
         self._stop_connection_checker()
-        if self.is_connected:
+        self._stop_task_timer()
+        if self.is_connected and self.mqtt_client:
             self.mqtt_client.disconnect()
+            self.is_connected = False
+            self.is_loop_start = False
 
-    def  publish(self, topic: str, data: str, qos=0) -> bool:
+    def publish(self, topic: str, data: str, qos=0, wait: bool = False) -> bool:
         if self.is_connected:
             try:
                 message = self.mqtt_client.publish(topic, data, qos)
-                message.wait_for_publish()
+                if wait:
+                    message.wait_for_publish()
             except Exception as e:
                 self.print_error(f"paho mqtt publish exception: {e}")
                 return False
@@ -83,51 +96,62 @@ class MqttClientEx(ABC):
         return False
 
     # 发布 RPC 请求
-    def rpc_publish(self, topic, payload, pub_callback=None, ret_callback=None):
+    def rpc_publish(self, topic, payload, pub_callback=None, ret_callback=None, timeout=15.0):
         # 生成唯一的回复ID
         reply_id = generate_mqtt_reply_id()
         rpc_data = {"reply_id": reply_id, "payload": payload}
 
         # 发布到指定的 RPC 请求主题
-        self.publish(topic, json.dumps(rpc_data), qos=0)
+        self.publish(topic, json.dumps(rpc_data), qos=1)  # 使用 qos=1 确保可靠
 
         # 执行发布后的回调
         if pub_callback:
             pub_callback()
 
-        # 设置返回回调
+        # 设置返回回调并添加超时清理
         if ret_callback:
             self.callback_map[reply_id] = ret_callback
 
-    def connect_loop(self):
-        if self._connect_once():
-            return
+            # 添加一次性超时任务
+            def timeout_callback():
+                if reply_id in self.callback_map:
+                    callback = self.callback_map.pop(reply_id)
+                    try:
+                        callback({"error": "timeout"})  # 传递超时错误
+                    except Exception as e:
+                        self.print_error(f"RPC timeout callback error: {e}")
 
-        sleep(self.reconnect_delay)
-        self.print_info(f"retrying to connect with mqtt-broker")
-        self.connect_loop()
+            self.add_task(interval=timeout, callback=timeout_callback, once=True)
 
     def add_task(
         self,
         interval: float,
         callback: Callable[[], Any],
         task_id: Optional[str] = None,
-    ) -> None:
+        once: bool = False,
+    ) -> str:
         """
         添加定时任务
         :param interval: 任务执行间隔（秒）
         :param callback: 任务回调函数
         :param task_id: 任务唯一标识（可选）
+        :param once: 是否一次性任务
+        :return: task_id
         """
+        if task_id is None:
+            task_id = str(uuid.uuid4())
+
         with self._tasks_lock:  # 加锁
             self._tasks.append(
                 {
                     "interval": interval,
                     "callback": callback,
-                    "last_run": 0,
-                    "task_id": task_id,  # 任务唯一标识
+                    "last_run": time.time(),
+                    "task_id": task_id,
+                    "once": once,
                 }
             )
+        return task_id
 
     def remove_task(self, task_id):
         """
@@ -186,7 +210,7 @@ class MqttClientEx(ABC):
     # rpc 回调函数
     def _on_rpc_callback(self, topic, msg):
         data = json.loads(msg)
-        reply_id = data["reply_id"]
+        reply_id = data.get("reply_id")
         if reply_id in self.callback_map:
             callback = self.callback_map.pop(reply_id)
             if callback:
@@ -235,9 +259,6 @@ class MqttClientEx(ABC):
 
     def _on_connect(self, mqttc, userdata, flags, reason_code: ReasonCode, properties):
         self.print_info(f"Received connect() status [{reason_code}]")
-        # v1
-        # self.is_connected = reason_code == mqtt.MQTT_ERR_SUCCESS
-        # v2
         self.is_connected = not reason_code.is_failure
 
         if self.is_connected:
@@ -259,6 +280,9 @@ class MqttClientEx(ABC):
             """连接成功时启动心跳"""
             self._start_task_timer()  # 连接成功后启动心跳
 
+            # 通知等待事件
+            self._connected_thread_event.set()
+
         else:
             err_msg = "mqtt error: " + reason_code.getName()
             self.on_error(mqttc, userdata, err_msg)
@@ -269,9 +293,10 @@ class MqttClientEx(ABC):
         self.is_connected = False
         self.is_loop_start = False
         self.on_disconnect(client, userdata, reason_code)
-
         # loop_stop() 不能写在on_disconnect 回调里, 否则 threading.current_thread() == client._thread
         # 客户端无法清除client._thread 子进程，以后再使用loop_start()就无效了
+
+
         self._stop_task_timer()  # 断开时停止
 
     def _on_subscribe(self, client, userdata, mid, reason_codes, properties):
@@ -285,38 +310,51 @@ class MqttClientEx(ABC):
         self.on_message(client, userdata, msg)
 
     def _start_task_timer(self):
-        """启动task线程"""
         self._stop_task_timer()
         self._task_active.set()
 
-        async def task_loop():
+        def task_loop():
             while self._task_active.is_set():
                 cur_time = time.time()
+                with self._tasks_lock:
+                    tasks = self._tasks.copy()
 
-                with self._tasks_lock:  # 加锁
-                    tasks_to_run = self._tasks.copy()  # 复制任务列表，避免长时间持有锁
-
-                if not tasks_to_run:
-                    await asyncio.sleep(0.1)
+                if not tasks:
+                    time.sleep(0.1)
                     continue
 
-                for task in tasks_to_run:
+                to_remove = []  # 收集要移除的任务
+                for task in tasks:
                     elapsed = cur_time - task["last_run"]
                     if elapsed >= task["interval"]:
-                        if self.is_connected:
-                            await task["callback"]()
-                        task["last_run"] = cur_time
+                        if self.is_connected or task.get("once", False):  # 对于超时，不依赖 is_connected
+                            try:
+                                task["callback"]()
+                            except Exception as e:
+                                self.print_error(f"Task error: {e}")
+                        if task.get("once", False):
+                            to_remove.append(task["task_id"])
+                        else:
+                            task["last_run"] = cur_time  # 周期任务更新 last_run
 
-                # 计算最小等待时间
-                next_run_times = [task["interval"] - (cur_time - task["last_run"]) for task in self._tasks]
-                sleep_time = max(0, min(next_run_times))
-                if sleep_time > 0:
-                    await asyncio.sleep(sleep_time)
+                # 移除一次性任务
+                if to_remove:
+                    with self._tasks_lock:
+                        self._tasks = [t for t in self._tasks if t["task_id"] not in to_remove]
 
-        def wrap_task_loop():
-            asyncio.run(task_loop())
+                # 计算下次 sleep
+                if self._tasks:
+                    next_wait = min(
+                        (t["interval"] - (cur_time - t["last_run"]) for t in self._tasks),
+                        default=0.1
+                    )
+                    time.sleep(max(0, next_wait))
+                else:
+                    time.sleep(0.1)
 
-        self._task_thread = threading.Thread(target=wrap_task_loop, name="mqtt_task_thread", daemon=True)
+        self._task_thread = threading.Thread(
+            target=task_loop, name="mqtt_task_timer", daemon=True
+        )
         self._task_thread.start()
 
     def _stop_task_timer(self):
@@ -348,6 +386,17 @@ class MqttClientEx(ABC):
             self._check_thread.join(timeout=2)  # 等待线程结束
         self._check_thread = None
 
+    def wait_for_connected(self, timeout: float = 15.0) -> bool:
+        """阻塞等待连接成功"""
+        if self.is_connected:
+            return True
+            
+        self._connected_thread_event.clear()
+        # 确保已经尝试连接
+        if not self.is_loop_start:
+            self._connect_once()
+            
+        return self._connected_thread_event.wait(timeout=timeout)
+
     def __del__(self):
-        # 确保线程安全退出
-        pass
+        self.disconnect()
