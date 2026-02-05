@@ -334,7 +334,6 @@ onUnmounted(() => {
             <FileList
               :files="executionOutputs"
               :show-header="false"
-              header-title="输出文件"
               :show-delete="false"
               @open="() => {}"
               @download="() => {}"

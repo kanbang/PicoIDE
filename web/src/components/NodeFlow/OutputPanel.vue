@@ -343,7 +343,7 @@ defineExpose({
 
     <div class="panel-body">
       <!-- 输出中心标签页 -->
-      <div v-show="activeTab === 'output'">
+      <div v-show="activeTab === 'output'" class="output-tab">
         <!-- 运行状态横幅 -->
         <section v-if="executionStatus" class="status-banner" :class="executionStatus">
           <div class="banner-main">
@@ -353,16 +353,16 @@ defineExpose({
                 <path
                   d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
               </svg>
-              <svg v-else-if="executionStatus === 'completed'" width="18" height="18" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor">
+              <svg v-else-if="executionStatus === 'completed'" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
               <svg v-else-if="executionStatus === 'stopping'" class="spin" width="18" height="18" viewBox="0 0 24 24"
                 fill="none" stroke="currentColor">
                 <rect x="9" y="9" width="6" height="6" fill="currentColor" />
               </svg>
-              <svg v-else-if="executionStatus === 'stopped'" width="18" height="18" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor">
+              <svg v-else-if="executionStatus === 'stopped'" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor">
                 <rect x="9" y="9" width="6" height="6" fill="currentColor" />
               </svg>
               <svg v-else width="18" height="18" viewBox="0 0 24 24" stroke="currentColor">
@@ -388,14 +388,8 @@ defineExpose({
         </div>
 
         <!-- 使用公共 FileList 组件 -->
-        <FileList
-          :files="outputFiles"
-          :show-header="false"
-          header-title="输出文件"
-          @open="(file) => emit('file-opened', file)"
-          @download="(file) => emit('file-downloaded', file)"
-          @delete="deleteFile"
-        />
+        <FileList :files="outputFiles" :show-header="false" @open="(file) => emit('file-opened', file)"
+          @download="(file) => emit('file-downloaded', file)" @delete="deleteFile" />
       </div>
 
       <!-- 历史记录标签页 -->
@@ -518,6 +512,12 @@ defineExpose({
   color: #fff;
 }
 
+.output-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 /* 主体内容区 */
 .panel-body {
   flex: 1;
@@ -638,7 +638,7 @@ defineExpose({
 
 /* 错误警告通知 */
 .notif-area {
-  margin: 0 12px 12px 12px;
+  padding: 0;
 }
 
 .notif-item {

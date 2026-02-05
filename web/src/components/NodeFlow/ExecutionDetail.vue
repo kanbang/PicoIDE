@@ -100,7 +100,6 @@ onMounted(() => {
       :show-header="true"
       :show-delete="false"
       header-title="输出文件"
-      :compact="true"
     />
   </div>
 </template>

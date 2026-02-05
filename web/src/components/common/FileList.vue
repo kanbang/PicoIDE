@@ -153,6 +153,7 @@ function deleteFile(file: OutputFile) {
   width: 100%;
   overflow: hidden;
   background: #1e1e1e;
+  gap: 6px;
 }
 
 .file-header {

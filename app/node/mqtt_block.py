@@ -194,11 +194,6 @@ class MqttPublishBlock(BaseBlock):
         # 3. 获取 Client 并发送
         client = mqtt_manager.get_client(host, port, username, password)
 
-        # 检查连接状态
-        if not client.is_connected:
-            # 尝试触发一次连接检查（虽然 Manager 会自动重连，但这里可以做个防御）
-            client._check_connection()
-
         success = client.publish(topic, payload, qos=qos)
 
         if success:
