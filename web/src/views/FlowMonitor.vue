@@ -658,6 +658,7 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   background: #1e1e1e;
+  padding: 8px;
 }
 
 /* 未选择时的提示 */

@@ -522,7 +522,7 @@ defineExpose({
 .panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
+  padding: 8px;
 }
 
 /* 运行状态横幅 */

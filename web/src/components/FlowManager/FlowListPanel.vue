@@ -178,14 +178,14 @@ function handleSelect(id: string) {
 .panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 8px;
 }
 
 /* 文件网格 */
 .file-grid {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .file-card {

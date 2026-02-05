@@ -59,7 +59,7 @@ function deleteFile(file: OutputFile) {
     </div>
 
     <!-- 内容区域 -->
-    <div class="file-body" >
+    <div class="file-body">
       <!-- 空状态 -->
       <div v-if="files.length === 0" class="empty-state">
         <div class="empty-illustration">
@@ -80,12 +80,7 @@ function deleteFile(file: OutputFile) {
 
       <!-- 文件列表 -->
       <div v-else class="file-items">
-        <div
-          v-for="file in files"
-          :key="file.file_id"
-          class="file-card"
-          :class="file.file_type"
-        >
+        <div v-for="file in files" :key="file.file_id" class="file-card" :class="file.file_type">
           <div class="card-icon" :data-type="file.file_type">
             <template v-if="file.file_type === 'html'">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -191,7 +186,7 @@ function deleteFile(file: OutputFile) {
 .file-body {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 0px;
+  padding: 0px;
 }
 
 .empty-state {
@@ -225,7 +220,8 @@ function deleteFile(file: OutputFile) {
 .file-items {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  padding: 0;
+  gap: 6px;
 }
 
 .file-card {
