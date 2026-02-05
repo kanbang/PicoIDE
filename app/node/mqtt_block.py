@@ -27,6 +27,8 @@ class FlowMqttClient(MqttClientEx):
         self._wildcard_callbacks: Dict[str, List[Callable[[Any], None]]] = defaultdict(
             list
         )
+        # 用于异步等待连接的 Event
+        self._connected_event: Optional[asyncio.Event] = None
 
     def register_topic_callback(self, topic: str, callback: Callable):
         """注册特定 Topic 的回调"""
@@ -48,7 +50,23 @@ class FlowMqttClient(MqttClientEx):
                 self._topic_callbacks[topic].remove(callback)
         # 注意：这里一般不取消订阅(Unsubscribe)，因为可能还有其他 Block 在监听同一个 Topic
 
+    async def _wait_for_connected(self, timeout: float = 10.0) -> bool:
+        """异步等待连接建立"""
+        if self.is_connected:
+            return True
+
+        self._connected_event = asyncio.Event()
+        try:
+            await asyncio.wait_for(self._connected_event.wait(), timeout=timeout)
+            return self.is_connected
+        except asyncio.TimeoutError:
+            return False
+
     def on_connect(self, client, userdata, flags, rc):
+        # 通知等待连接的异步任务
+        if self._connected_event is not None:
+            self._connected_event.set()
+
         # 重连后重新订阅所有注册的 Topic
         topics = list(self._topic_callbacks.keys()) + list(
             self._wildcard_callbacks.keys()
@@ -191,8 +209,11 @@ class MqttPublishBlock(BaseBlock):
         if not isinstance(payload, str):
             payload = json.dumps(payload) if payload is not None else ""
 
-        # 3. 获取 Client 并发送
+        # 3. 获取 Client 并等待连接建立
         client = mqtt_manager.get_client(host, port, username, password)
+
+        if not await client._wait_for_connected(timeout=5.0):
+            raise RuntimeError(f"Failed to connect to MQTT broker: {host}:{port}")
 
         success = client.publish(topic, payload, qos=qos)
 
