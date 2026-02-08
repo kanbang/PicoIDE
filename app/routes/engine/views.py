@@ -17,7 +17,7 @@ from pathlib import Path
 import logging
 import time
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import asdict
 
 from node.daq import DAQ_BLOCKS
@@ -168,7 +168,7 @@ async def execute(
                 scripts_path="/",
                 scripts_hash=scripts_hash,
                 status="running",
-                start_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
                 total_nodes=len(flow.nodes),
             )
 
@@ -194,7 +194,7 @@ async def execute(
             # 更新 Execution 状态为完成
             if execution:
                 execution.status = "completed"
-                execution.end_time = datetime.now()
+                execution.end_time = datetime.now(timezone.utc)
                 execution.execution_time = time.time() - start_time
                 execution.executed_nodes = execution.total_nodes
                 execution.result = str(result)[:1000] if result else None
@@ -226,7 +226,7 @@ async def execute(
             # 更新 Execution 状态为失败
             if execution:
                 execution.status = "failed"
-                execution.end_time = datetime.now()
+                execution.end_time = datetime.now(timezone.utc)
                 execution.execution_time = time.time() - start_time
                 execution.result = f"Error: {str(e)}"[:1000]
                 await execution.save()
@@ -318,7 +318,7 @@ async def execute_saved(
                 scripts_path=request.scripts_path,
                 scripts_hash=scripts_hash,
                 status="running",
-                start_time=datetime.now(),
+                start_time=datetime.now(timezone.utc),
                 total_nodes=len(graph.get("nodes", [])),
             )
 
@@ -328,7 +328,7 @@ async def execute_saved(
             # 更新 Execution 状态为完成
             if execution:
                 execution.status = "completed"
-                execution.end_time = datetime.now()
+                execution.end_time = datetime.now(timezone.utc)
                 execution.execution_time = time.time() - start_time
                 execution.executed_nodes = execution.total_nodes
                 execution.result = str(result)[:1000] if result else None
@@ -355,7 +355,7 @@ async def execute_saved(
             # 更新 Execution 状态为失败
             if execution:
                 execution.status = "failed"
-                execution.end_time = datetime.now()
+                execution.end_time = datetime.now(timezone.utc)
                 execution.execution_time = time.time() - start_time
                 execution.result = f"Error: {str(e)}"[:1000]
                 await execution.save()
@@ -433,7 +433,7 @@ async def cleanup_tag_execution(user_id: str, tag: str):
     for old_exec in old_executions:
         # 2. 软删除关联的 Output 记录
         await Output.filter(execution_id=old_exec.execution_id).update(
-            is_deleted=True, deleted_at=datetime.now()
+            is_deleted=True, deleted_at=datetime.now(timezone.utc)
         )
 
         # 3. 删除旧的 Execution 记录
@@ -875,7 +875,7 @@ async def delete_execution(execution_id: str) -> Dict[str, Any]:
 
         # 软删除关联的 Output 记录
         output_count = await Output.filter(execution_id=execution_id).update(
-            is_deleted=True, deleted_at=datetime.now()
+            is_deleted=True, deleted_at=datetime.now(timezone.utc)
         )
 
         # 删除 Execution 记录
@@ -1000,7 +1000,7 @@ async def delete_tag_execution(tag: str) -> Dict[str, Any]:
             # 软删除关联的 Output 记录
             output_count = await Output.filter(
                 execution_id=execution.execution_id
-            ).update(is_deleted=True, deleted_at=datetime.now())
+            ).update(is_deleted=True, deleted_at=datetime.now(timezone.utc))
             total_outputs += output_count
 
             # 删除 Execution 记录

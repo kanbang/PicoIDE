@@ -1,3 +1,11 @@
+/*
+ * @Descripttion: 
+ * @version: 0.x
+ * @Author: zhai
+ * @Date: 2026-02-08 19:01:54
+ * @LastEditors: zhai
+ * @LastEditTime: 2026-02-08 19:15:04
+ */
 /**
  * 格式化工具函数
  */
