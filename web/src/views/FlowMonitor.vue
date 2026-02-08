@@ -5,24 +5,46 @@
  * @Date: 2026-02-04
 -->
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import {
   getRunningFlows,
   getExecution,
   getExecutionOutputs,
   stopExecution,
   streamExecutionEvents,
+  getFlow,
+  getBlocks,
   type ExecutionRecord,
-  type OutputFile
+  type OutputFile,
+  type FlowItem
 } from '@/api';
 import LogViewer from '@/components/common/LogViewer.vue';
 import FileList from '@/components/common/FileList.vue';
 import type { LogEvent } from '@/components/common/types';
-import { toLogEvent } from '@/components/common/types';
+import { toLogEvent, type BlockDefinition } from '@/components/common/types';
 import { formatAbsoluteTime, getStatusText } from '@/utils/formatters';
+import { BaklavaEditor, useBaklava } from '@baklavajs/renderer-vue';
+import { BuildBlock } from '@/components/NodeFlow/BlockBuilder.js';
+import '@baklavajs/themes/dist/syrup-dark.css';
+
+// Baklava 编辑器
+const baklava = useBaklava();
+const editor = baklava.editor;
+
+// 配置编辑器
+baklava.settings.sidebar.enabled = false;
+baklava.settings.enableMinimap = true;
+baklava.settings.toolbar.enabled = false;
 
 // 当前 tab
-const currentTab = ref<'logs' | 'outputs'>('logs');
+const currentTab = ref<'logs' | 'outputs' | 'graph'>('logs');
+
+// Flow 编辑器相关
+const flowData = ref<any>(null);
+const blocks = ref<BlockDefinition[]>([]);
+const selectedFlowId = ref<string | null>(null);
+const loadingFlow = ref(false);
+const flowError = ref<string | null>(null);
 
 // 运行中的执行列表
 const runningExecutions = ref<ExecutionRecord[]>([]);
@@ -77,10 +99,70 @@ async function selectExecution(executionId: string) {
     await loadExecutionOutputs(executionId);
     // 订阅 SSE 流
     subscribeToExecution(executionId);
+    // 加载 Flow 图（如果有 flow_id）
+    if (selectedExecution.value?.flow_id) {
+      await loadFlowGraph(selectedExecution.value.flow_id);
+    } else {
+      flowData.value = null;
+      blocks.value = [];
+      selectedFlowId.value = null;
+    }
   } catch (e: any) {
     error.value = e.message || '加载执行详情失败';
     console.error('Failed to load execution:', e);
   }
+}
+
+// 加载 Flow 图
+async function loadFlowGraph(flowId: string) {
+  loadingFlow.value = true;
+  flowError.value = null;
+  try {
+    // 并行加载 flow 和 blocks
+    const [flowResult, blocksData] = await Promise.all([
+      getFlow(flowId),
+      getBlocks()
+    ]);
+
+    selectedFlowId.value = flowId;
+    flowData.value = flowResult.flow;
+    blocks.value = blocksData || [];
+
+    // 注册 blocks 并加载 flow
+    registerBlocks(blocks.value);
+    if (flowData.value) {
+      editor.load(flowData.value);
+    }
+  } catch (e: any) {
+    flowError.value = e.message || '加载 Flow 失败';
+    console.error('Failed to load flow:', e);
+  } finally {
+    loadingFlow.value = false;
+  }
+}
+
+// 注册 Blocks
+function registerBlocks(blockDefs: BlockDefinition[]) {
+  // 清空现有节点
+  const graph = editor.graph;
+  [...graph.nodes].forEach(node => graph.removeNode(node));
+  [...graph.connections].forEach(conn => graph.removeConnection(conn));
+
+  // 注册新的 block 类型
+  blockDefs.forEach((blockDef) => {
+    try {
+      const Block = BuildBlock({
+        name: blockDef.name,
+        inputs: blockDef.inputs,
+        outputs: blockDef.outputs,
+        options: blockDef.options
+      });
+      const category = 'category' in blockDef ? blockDef.category : undefined;
+      editor.registerNodeType(Block, { category });
+    } catch (error) {
+      console.error(`注册节点 ${blockDef.name} 失败:`, error);
+    }
+  });
 }
 
 // 加载执行输出文件
@@ -316,6 +398,13 @@ onUnmounted(() => {
             >
               输出文件 ({{ executionOutputs.length }})
             </button>
+            <button
+              v-if="selectedExecution?.flow_id"
+              :class="['tab-btn', { active: currentTab === 'graph' }]"
+              @click="currentTab = 'graph'"
+            >
+              Flow 图
+            </button>
           </div>
 
           <!-- 实时日志 -->
@@ -330,7 +419,7 @@ onUnmounted(() => {
           </div>
 
           <!-- 输出文件 -->
-          <div v-else class="outputs-panel">
+          <div v-else-if="currentTab === 'outputs'" class="outputs-panel">
             <FileList
               :files="executionOutputs"
               :show-header="false"
@@ -339,6 +428,22 @@ onUnmounted(() => {
               @download="() => {}"
               @delete="deleteFile"
             />
+          </div>
+
+          <!-- Flow 图 -->
+          <div v-else-if="currentTab === 'graph'" class="graph-panel">
+            <div v-if="loadingFlow" class="loading-overlay">
+              <div class="loading-spinner"></div>
+              <div class="loading-text">加载 Flow 图...</div>
+            </div>
+            <div v-else-if="flowError" class="error-message">
+              {{ flowError }}
+            </div>
+            <div v-else-if="!flowData" class="empty-graph">
+              <div class="empty-icon">📊</div>
+              <p>暂无 Flow 图数据</p>
+            </div>
+            <BaklavaEditor v-else :view-model="baklava" :blocks="blocks" />
           </div>
         </template>
 
@@ -658,6 +763,78 @@ onUnmounted(() => {
   overflow-y: auto;
   background: #1e1e1e;
   padding: 8px;
+}
+
+/* Flow 图面板 */
+.graph-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #1e1e1e;
+  position: relative;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 30, 30, 0.8);
+  z-index: 10;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #3c3c3c;
+  border-top-color: #4caf50;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  margin-top: 16px;
+  color: #888;
+  font-size: 14px;
+}
+
+.empty-graph {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: #666;
+}
+
+.empty-graph .empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.2;
+}
+
+.empty-graph p {
+  font-size: 14px;
+}
+
+/* Baklava 样式覆盖 */
+.graph-panel :deep(.baklava-editor) {
+  height: 100%;
+  width: 100%;
+}
+
+.graph-panel :deep(.baklava-node-palette) {
+  display: none !important;
 }
 
 /* 未选择时的提示 */

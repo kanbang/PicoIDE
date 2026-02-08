@@ -10,6 +10,15 @@
  * 公共类型定义 - 供多个组件复用
  */
 
+// Block 定义类型
+export interface BlockDefinition {
+  name: string;
+  inputs?: Array<{ name: string }>;
+  outputs?: Array<{ name: string }>;
+  options?: Array<{ name: string; type: string; value?: any; items?: any[]; min?: number; max?: number; title?: string; }>;
+  category?: string;
+}
+
 // 日志事件类型
 export interface LogEvent {
   type: string;

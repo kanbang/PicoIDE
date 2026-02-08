@@ -54,6 +54,7 @@ import { toLogEvent } from '../common/types';
 import SplitPane from '@/components/common/Splitter.vue';
 import SplitterVertical from '@/components/common/SplitterVertical.vue';
 import "@baklavajs/themes/dist/syrup-dark.css";
+import { type BlockDefinition } from '@/components/common/types';
 
 // --- 常量与 Emits ---
 const SAVE_COMMAND_ID = "SAVE";
@@ -261,14 +262,6 @@ function registerCustomCommands(): void {
 }
 
 // --- Props & Blocks Logic ---
-interface BlockDefinition {
-  name: string;
-  inputs?: Array<{ name: string }>;
-  outputs?: Array<{ name: string }>;
-  options?: Array<{ name: string; type: string; value?: any; items?: any[]; min?: number; max?: number; title?: string; }>;
-  category?: string;
-}
-
 interface Props {
   flow?: any;
   flowId?: string;

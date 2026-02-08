@@ -34,5 +34,5 @@ export type {
 } from './execute';
 
 // 导出 schemas 相关 API
-export { getFlows, createFlow, updateFlow, deleteFlow, duplicateFlow } from './flows';
+export { getFlows, createFlow, updateFlow, deleteFlow, duplicateFlow, getFlow } from './flows';
 export type { FlowItem, CreateFlowRequest, UpdateFlowRequest } from './flows';

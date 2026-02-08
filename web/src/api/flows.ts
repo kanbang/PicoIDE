@@ -54,3 +54,10 @@ export async function deleteFlow(id: string): Promise<void> {
 export async function duplicateFlow(id: string, name: string): Promise<FlowItem> {
   return await api.post(`/flows/${id}/duplicate`, { name });
 }
+
+/**
+ * 获取单个 flow
+ */
+export async function getFlow(id: string): Promise<FlowItem> {
+  return await api.get(`/flows/${id}`);
+}
