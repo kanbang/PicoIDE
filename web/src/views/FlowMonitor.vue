@@ -25,6 +25,7 @@ import { toLogEvent, type BlockDefinition } from '@/components/common/types';
 import { formatAbsoluteTime, getStatusText } from '@/utils/formatters';
 import { BaklavaEditor, useBaklava } from '@baklavajs/renderer-vue';
 import { BuildBlock } from '@/components/NodeFlow/BlockBuilder.js';
+import RefreshIcon from '@/components/icons/Refresh.vue';
 import '@baklavajs/themes/dist/syrup-dark.css';
 
 // Baklava 编辑器
@@ -289,7 +290,8 @@ onUnmounted(() => {
         <div class="sidebar-header">
           <h3>运行中的 Flow</h3>
           <button class="refresh-btn" @click="loadRunningFlows" :disabled="loading">
-            {{ loading ? '刷新中...' : '刷新' }}
+            <RefreshIcon v-if="!loading" />
+            <span v-else>刷新中...</span>
           </button>
         </div>
 
@@ -303,12 +305,9 @@ onUnmounted(() => {
         </div>
 
         <div v-else class="execution-list">
-          <div
-            v-for="exec in runningExecutions"
-            :key="exec.execution_id"
+          <div v-for="exec in runningExecutions" :key="exec.execution_id"
             :class="['execution-item', { active: selectedExecutionId === exec.execution_id }]"
-            @click="selectExecution(exec.execution_id)"
-          >
+            @click="selectExecution(exec.execution_id)">
             <div class="execution-header">
               <span class="execution-id">{{ exec.execution_id }}</span>
               <span class="execution-status" :style="{ color: getStatusText(exec.status).color }">
@@ -333,16 +332,14 @@ onUnmounted(() => {
           <div class="detail-header">
             <div class="execution-info">
               <h2>{{ selectedExecution.execution_id }}</h2>
-              <span :class="['status-badge', selectedExecution.status]" :style="{ background: getStatusText(selectedExecution.status).color }">
+              <span :class="['status-badge', selectedExecution.status]"
+                :style="{ background: getStatusText(selectedExecution.status).color }">
                 {{ getStatusText(selectedExecution.status).text }}
               </span>
             </div>
             <div class="execution-actions">
-              <button
-                v-if="selectedExecution.status === 'running'"
-                class="stop-btn"
-                @click="handleStop(selectedExecution.execution_id)"
-              >
+              <button v-if="selectedExecution.status === 'running'" class="stop-btn"
+                @click="handleStop(selectedExecution.execution_id)">
                 停止执行
               </button>
             </div>
@@ -356,11 +353,13 @@ onUnmounted(() => {
             </div>
             <div class="detail-row">
               <span class="label">结束时间:</span>
-              <span class="value">{{ selectedExecution.end_time ? formatAbsoluteTime(selectedExecution.end_time) : '-' }}</span>
+              <span class="value">{{ selectedExecution.end_time ? formatAbsoluteTime(selectedExecution.end_time) : '-'
+                }}</span>
             </div>
             <div class="detail-row">
               <span class="label">执行时长:</span>
-              <span class="value">{{ selectedExecution.execution_time ? formatExecutionTime(selectedExecution.execution_time) : '-' }}</span>
+              <span class="value">{{ selectedExecution.execution_time ?
+                formatExecutionTime(selectedExecution.execution_time) : '-' }}</span>
             </div>
             <div class="detail-row">
               <span class="label">总节点数:</span>
@@ -386,48 +385,28 @@ onUnmounted(() => {
 
           <!-- Tab 切换 -->
           <div class="detail-tabs">
-            <button
-              :class="['tab-btn', { active: currentTab === 'logs' }]"
-              @click="currentTab = 'logs'"
-            >
+            <button :class="['tab-btn', { active: currentTab === 'logs' }]" @click="currentTab = 'logs'">
               实时日志 ({{ executionLogs.length }})
             </button>
-            <button
-              :class="['tab-btn', { active: currentTab === 'outputs' }]"
-              @click="currentTab = 'outputs'"
-            >
+            <button :class="['tab-btn', { active: currentTab === 'outputs' }]" @click="currentTab = 'outputs'">
               输出文件 ({{ executionOutputs.length }})
             </button>
-            <button
-              v-if="selectedExecution?.flow_id"
-              :class="['tab-btn', { active: currentTab === 'graph' }]"
-              @click="currentTab = 'graph'"
-            >
+            <button v-if="selectedExecution?.flow_id" :class="['tab-btn', { active: currentTab === 'graph' }]"
+              @click="currentTab = 'graph'">
               Flow 图
             </button>
           </div>
 
           <!-- 实时日志 -->
           <div v-if="currentTab === 'logs'" class="logs-panel">
-            <LogViewer
-              :events="executionLogs"
-              :is-loading="loading"
-              :show-filter="true"
-              :show-header="true"
-              @clear="clearLogs"
-            />
+            <LogViewer :events="executionLogs" :is-loading="loading" :show-filter="true" :show-header="true"
+              @clear="clearLogs" />
           </div>
 
           <!-- 输出文件 -->
           <div v-else-if="currentTab === 'outputs'" class="outputs-panel">
-            <FileList
-              :files="executionOutputs"
-              :show-header="false"
-              :show-delete="false"
-              @open="() => {}"
-              @download="() => {}"
-              @delete="deleteFile"
-            />
+            <FileList :files="executionOutputs" :show-header="false" :show-delete="false" @open="() => { }"
+              @download="() => { }" @delete="deleteFile" />
           </div>
 
           <!-- Flow 图 -->
@@ -505,15 +484,17 @@ onUnmounted(() => {
   background: transparent;
   border: none;
   color: #888;
-  width: 28px;
+  width: auto;
+  min-width: 70px;
   height: 28px;
   border-radius: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   transition: all 0.2s;
-  padding: 0;
+  padding: 0 6px;
 }
 
 .refresh-btn:hover:not(:disabled) {
@@ -522,8 +503,8 @@ onUnmounted(() => {
 }
 
 .refresh-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
 }
 
 .refresh-btn:disabled {
@@ -583,7 +564,7 @@ onUnmounted(() => {
   background: #2d2d30;
   border-color: #444;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .execution-item.active {
@@ -620,7 +601,7 @@ onUnmounted(() => {
   color: #888;
 }
 
-.execution-meta > span {
+.execution-meta>span {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -634,10 +615,23 @@ onUnmounted(() => {
 }
 
 /* 滚动条美化 */
-.execution-list::-webkit-scrollbar { width: 10px; }
-.execution-list::-webkit-scrollbar-track { background: transparent; }
-.execution-list::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; border: 3px solid #252526; }
-.execution-list::-webkit-scrollbar-thumb:hover { background: #444; }
+.execution-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.execution-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.execution-list::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
+  border: 3px solid #252526;
+}
+
+.execution-list::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
 
 /* 右侧详情面板 */
 .detail-panel {
@@ -799,7 +793,9 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-text {
