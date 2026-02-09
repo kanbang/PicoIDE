@@ -23,7 +23,7 @@ import FileList from '@/components/common/FileList.vue';
 import type { LogEvent } from '@/components/common/types';
 import { toLogEvent, type BlockDefinition } from '@/components/common/types';
 import { formatAbsoluteTime, getStatusText } from '@/utils/formatters';
-import { BaklavaEditor, useBaklava } from '@baklavajs/renderer-vue';
+import { BaklavaEditor, useBaklava, Commands } from '@baklavajs/renderer-vue';
 import { BuildBlock } from '@/components/NodeFlow/BlockBuilder.js';
 import RefreshIcon from '@/components/icons/Refresh.vue';
 import '@baklavajs/themes/dist/syrup-dark.css';
@@ -46,6 +46,9 @@ const blocks = ref<BlockDefinition[]>([]);
 const selectedFlowId = ref<string | null>(null);
 const loadingFlow = ref(false);
 const flowError = ref<string | null>(null);
+
+// 用于缩放命令的 hook token
+const zoomToFitToken = Symbol('ZoomToFit');
 
 // 运行中的执行列表
 const runningExecutions = ref<ExecutionRecord[]>([]);
@@ -133,7 +136,21 @@ async function loadFlowGraph(flowId: string) {
     registerBlocks(blocks.value);
     if (flowData.value) {
       editor.load(flowData.value);
+      // 使用 renderNode hook 来监听节点渲染完成
+      baklava.hooks.renderNode.subscribe(zoomToFitToken, ({ node, el }) => {
+        // 第一个节点渲染完成后执行缩放命令
+        nextTick(() => {
+          baklava.commandHandler.executeCommand<Commands.ZoomToFitGraphCommand>(
+            Commands.ZOOM_TO_FIT_GRAPH_COMMAND,
+            true
+          );
+        });
+        // 只需要监听第一个节点，之后移除监听器
+        baklava.hooks.renderNode.unsubscribe(zoomToFitToken);
+      });
     }
+
+
   } catch (e: any) {
     flowError.value = e.message || '加载 Flow 失败';
     console.error('Failed to load flow:', e);
@@ -290,8 +307,8 @@ onUnmounted(() => {
         <div class="sidebar-header">
           <h3>运行中的 Flow</h3>
           <button class="refresh-btn" @click="loadRunningFlows" :disabled="loading">
-            <RefreshIcon v-if="!loading" />
-            <span v-else>刷新中...</span>
+            <RefreshIcon :class="{ spinning: loading }" />
+            <span>{{ loading ? '刷新中...' : '刷新' }}</span>
           </button>
         </div>
 
@@ -354,7 +371,7 @@ onUnmounted(() => {
             <div class="detail-row">
               <span class="label">结束时间:</span>
               <span class="value">{{ selectedExecution.end_time ? formatAbsoluteTime(selectedExecution.end_time) : '-'
-                }}</span>
+              }}</span>
             </div>
             <div class="detail-row">
               <span class="label">执行时长:</span>
@@ -505,6 +522,10 @@ onUnmounted(() => {
 .refresh-btn svg {
   width: 20px;
   height: 20px;
+}
+
+.refresh-btn svg.spinning {
+  animation: spin 1s linear infinite;
 }
 
 .refresh-btn:disabled {
