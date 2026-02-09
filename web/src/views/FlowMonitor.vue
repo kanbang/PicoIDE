@@ -5,7 +5,7 @@
  * @Date: 2026-02-04
 -->
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue';
 import {
   getRunningFlows,
   getExecution,
@@ -14,6 +14,7 @@ import {
   streamExecutionEvents,
   getFlow,
   getBlocks,
+  getExecutions,
   type ExecutionRecord,
   type OutputFile,
   type FlowItem
@@ -58,6 +59,23 @@ const runningExecutions = ref<ExecutionRecord[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
+// 历史执行列表
+const historyExecutions = ref<ExecutionRecord[]>([]);
+const loadingHistory = ref(false);
+const historyError = ref<string | null>(null);
+const historyTotal = ref(0);
+const historyOffset = ref(0);
+const historyLimit = ref(50);
+
+// 视图模式：'running' | 'history'
+const viewMode = ref<'running' | 'history'>('running');
+
+// 时间段筛选
+type TimeRange = 'today' | 'yesterday' | 'last7days' | 'last30days' | 'custom';
+const timeRange = ref<TimeRange>('today');
+const customStartTime = ref<string>('');
+const customEndTime = ref<string>('');
+
 // 当前选中的执行
 const selectedExecutionId = ref<string | null>(null);
 const selectedExecution = ref<ExecutionRecord | null>(null);
@@ -69,6 +87,88 @@ const sseConnections = new Map<string, EventSource>();
 
 // 计算属性
 const hasRunningFlows = computed(() => runningExecutions.value.length > 0);
+const hasHistoryData = computed(() => historyExecutions.value.length > 0);
+const currentExecutions = computed(() => viewMode.value === 'running' ? runningExecutions.value : historyExecutions.value);
+const sidebarTitle = computed(() => viewMode.value === 'running' ? '运行中的 Flow' : '历史记录');
+
+// 获取时间范围的时间戳
+function getTimeRangeParams() {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  switch (timeRange.value) {
+    case 'today':
+      return {
+        start_time: startOfDay.toISOString(),
+        end_time: now.toISOString()
+      };
+    case 'yesterday':
+      const yesterday = new Date(startOfDay);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayEnd = new Date(startOfDay);
+      yesterdayEnd.setMilliseconds(yesterdayEnd.getMilliseconds() - 1);
+      return {
+        start_time: yesterday.toISOString(),
+        end_time: yesterdayEnd.toISOString()
+      };
+    case 'last7days':
+      const sevenDaysAgo = new Date(startOfDay);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      return {
+        start_time: sevenDaysAgo.toISOString(),
+        end_time: now.toISOString()
+      };
+    case 'last30days':
+      const thirtyDaysAgo = new Date(startOfDay);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      return {
+        start_time: thirtyDaysAgo.toISOString(),
+        end_time: now.toISOString()
+      };
+    case 'custom':
+      return {
+        start_time: customStartTime.value ? new Date(customStartTime.value).toISOString() : undefined,
+        end_time: customEndTime.value ? new Date(customEndTime.value).toISOString() : undefined
+      };
+    default:
+      return {};
+  }
+}
+
+// 加载历史记录
+async function loadHistoryExecutions() {
+  loadingHistory.value = true;
+  historyError.value = null;
+  try {
+    const timeParams = getTimeRangeParams();
+    const result = await getExecutions({
+      ...timeParams,
+      limit: historyLimit.value,
+      offset: historyOffset.value
+    });
+    historyExecutions.value = result.executions;
+    historyTotal.value = result.count;
+  } catch (e: any) {
+    historyError.value = e.message || '加载历史记录失败';
+    console.error('Failed to load history executions:', e);
+  } finally {
+    loadingHistory.value = false;
+  }
+}
+
+// 切换视图模式
+function switchViewMode(mode: 'running' | 'history') {
+  viewMode.value = mode;
+  selectedExecutionId.value = null;
+  selectedExecution.value = null;
+  executionLogs.value = [];
+  executionOutputs.value = [];
+  if (mode === 'running') {
+    loadRunningFlows();
+  } else {
+    loadHistoryExecutions();
+  }
+}
 
 // 加载正在运行的 flows
 async function loadRunningFlows() {
@@ -104,8 +204,13 @@ async function selectExecution(executionId: string) {
     selectedExecution.value = await getExecution(executionId);
     // 加载输出文件
     await loadExecutionOutputs(executionId);
-    // 订阅 SSE 流
-    subscribeToExecution(executionId);
+    // 只有正在运行的执行才订阅 SSE 流
+    if (selectedExecution.value?.status === 'running') {
+      subscribeToExecution(executionId);
+    } else {
+      // 历史执行清空日志
+      executionLogs.value = [];
+    }
     // 加载 Flow 图（如果有 flow_id）
     if (selectedExecution.value?.flow_id) {
       await loadFlowGraph(selectedExecution.value.flow_id);
@@ -302,6 +407,14 @@ onMounted(() => {
   loadRunningFlows();
 });
 
+// 监听时间段变化
+watch(timeRange, () => {
+  if (viewMode.value === 'history') {
+    historyOffset.value = 0;
+    loadHistoryExecutions();
+  }
+});
+
 // 组件卸载
 onUnmounted(() => {
   // 关闭所有 SSE 连接
@@ -316,24 +429,54 @@ onUnmounted(() => {
       <!-- 左侧：运行中的 Flow 列表 -->
       <div class="sidebar">
         <div class="sidebar-header">
-          <h3>运行中的 Flow</h3>
-          <button class="refresh-btn" @click="loadRunningFlows" :disabled="loading">
+          <div class="view-tabs">
+            <button :class="['view-tab', { active: viewMode === 'running' }]" @click="switchViewMode('running')">
+              运行中
+            </button>
+            <button :class="['view-tab', { active: viewMode === 'history' }]" @click="switchViewMode('history')">
+              历史记录
+            </button>
+          </div>
+          <button v-if="viewMode === 'running'" class="refresh-btn" @click="loadRunningFlows" :disabled="loading">
             <RefreshIcon :class="{ spinning: loading }" />
-            <span>{{ loading ? '刷新中...' : '刷新' }}</span>
           </button>
         </div>
 
-        <div v-if="error" class="error-message">
-          {{ error }}
+        <!-- 时间段筛选（仅历史记录模式显示） -->
+        <div v-if="viewMode === 'history'" class="time-filter">
+          <select v-model="timeRange" class="time-range-select">
+            <option value="today">今天</option>
+            <option value="yesterday">昨天</option>
+            <option value="last7days">最近 7 天</option>
+            <option value="last30days">最近 30 天</option>
+            <option value="custom">自定义</option>
+          </select>
+          <div v-if="timeRange === 'custom'" class="custom-time-inputs">
+            <input type="datetime-local" v-model="customStartTime" class="time-input" placeholder="开始时间" />
+            <span class="time-separator">至</span>
+            <input type="datetime-local" v-model="customEndTime" class="time-input" placeholder="结束时间" />
+            <button class="apply-filter-btn" @click="loadHistoryExecutions" :disabled="loadingHistory">
+              应用
+            </button>
+          </div>
         </div>
 
-        <div v-else-if="!hasRunningFlows && !loading" class="empty-state">
+        <div v-if="error || historyError" class="error-message">
+          {{ error || historyError }}
+        </div>
+
+        <div v-else-if="viewMode === 'running' && !hasRunningFlows && !loading" class="empty-state">
           <div class="empty-icon">📭</div>
           <p>暂无正在运行的 Flow</p>
         </div>
 
+        <div v-else-if="viewMode === 'history' && !hasHistoryData && !loadingHistory" class="empty-state">
+          <div class="empty-icon">📭</div>
+          <p>暂无历史记录</p>
+        </div>
+
         <div v-else class="execution-list">
-          <div v-for="exec in runningExecutions" :key="exec.execution_id"
+          <div v-for="exec in currentExecutions" :key="exec.execution_id"
             :class="['execution-item', { active: selectedExecutionId === exec.execution_id }]"
             @click="selectExecution(exec.execution_id)">
             <div class="execution-header">
@@ -414,7 +557,7 @@ onUnmounted(() => {
           <!-- Tab 切换 -->
           <div class="detail-tabs">
             <button :class="['tab-btn', { active: currentTab === 'logs' }]" @click="currentTab = 'logs'">
-              实时日志 ({{ executionLogs.length }})
+              {{ selectedExecution?.status === 'running' ? '实时日志' : '日志' }} ({{ executionLogs.length }})
             </button>
             <button :class="['tab-btn', { active: currentTab === 'outputs' }]" @click="currentTab = 'outputs'">
               输出文件 ({{ executionOutputs.length }})
@@ -458,7 +601,7 @@ onUnmounted(() => {
         <!-- 未选择执行时的提示 -->
         <div v-else class="empty-selection">
           <div class="empty-icon">📋</div>
-          <p>请从左侧选择一个正在运行的 Flow 查看详情</p>
+          <p>请从左侧选择一个执行记录查看详情</p>
         </div>
       </div>
     </div>
@@ -492,12 +635,43 @@ onUnmounted(() => {
 
 .sidebar-header {
   height: 48px;
-  padding: 0 16px;
+  padding: 0 12px;
   border-bottom: 1px solid #3c3c3c;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+  gap: 8px;
+}
+
+/* 视图切换 tabs */
+.view-tabs {
+  display: flex;
+  gap: 4px;
+  height: 100%;
+  align-items: center;
+}
+
+.view-tab {
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  height: 100%;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.view-tab:hover {
+  color: #e0e0e0;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.view-tab.active {
+  color: #4caf50;
+  border-bottom-color: #4caf50;
 }
 
 .sidebar-header h3 {
@@ -541,6 +715,78 @@ onUnmounted(() => {
 }
 
 .refresh-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 时间段筛选 */
+.time-filter {
+  padding: 12px;
+  border-bottom: 1px solid #3c3c3c;
+  background: #252526;
+}
+
+.time-range-select {
+  width: 100%;
+  padding: 6px 10px;
+  background: #3c3c3c;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+}
+
+.time-range-select:focus {
+  border-color: #4caf50;
+}
+
+.custom-time-inputs {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.time-input {
+  flex: 1;
+  min-width: 140px;
+  padding: 6px 10px;
+  background: #3c3c3c;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 11px;
+  outline: none;
+}
+
+.time-input:focus {
+  border-color: #4caf50;
+}
+
+.time-separator {
+  color: #888;
+  font-size: 12px;
+}
+
+.apply-filter-btn {
+  padding: 6px 12px;
+  background: #4caf50;
+  border: none;
+  color: white;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.apply-filter-btn:hover:not(:disabled) {
+  background: #45a049;
+}
+
+.apply-filter-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }

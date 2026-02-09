@@ -219,6 +219,8 @@ export async function getExecutions(params?: {
   include_outputs?: boolean;
   limit?: number;
   offset?: number;
+  start_time?: string;
+  end_time?: string;
 }): Promise<{
   executions: ExecutionRecord[];
   count: number;
