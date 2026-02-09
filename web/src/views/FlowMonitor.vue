@@ -36,6 +36,9 @@ const editor = baklava.editor;
 baklava.settings.sidebar.enabled = false;
 baklava.settings.enableMinimap = true;
 baklava.settings.toolbar.enabled = false;
+baklava.settings.zoomToFit.paddingLeft = 50;
+
+
 
 // 当前 tab
 const currentTab = ref<'logs' | 'outputs' | 'graph'>('logs');

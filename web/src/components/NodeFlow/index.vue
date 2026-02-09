@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-17 17:01:06
  * @LastEditors: zhai
- * @LastEditTime: 2026-02-04 15:44:57
+ * @LastEditTime: 2026-02-09 13:03:16
 -->
 <template>
   <div class="nodeflow-container">
@@ -176,6 +176,8 @@ function configureEditorSettings(): void {
   baklava.settings.sidebar.resizable = true;
   baklava.settings.enableMinimap = true;
   baklava.settings.toolbar.enabled = true;
+  baklava.settings.zoomToFit.paddingLeft = 50;
+
 }
 configureEditorSettings();
 
