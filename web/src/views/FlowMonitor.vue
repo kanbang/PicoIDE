@@ -283,6 +283,14 @@ function clearLogs() {
   executionLogs.value = [];
 }
 
+// 双击缩放图
+function handleZoomToFit() {
+  baklava.commandHandler.executeCommand<Commands.ZoomToFitGraphCommand>(
+    Commands.ZOOM_TO_FIT_GRAPH_COMMAND,
+    true
+  );
+}
+
 // 删除文件
 function deleteFile() {
   // FlowMonitor 中文件只读，不支持删除
@@ -430,7 +438,7 @@ onUnmounted(() => {
           </div>
 
           <!-- Flow 图 -->
-          <div v-else-if="currentTab === 'graph'" class="graph-panel">
+          <div v-else-if="currentTab === 'graph'" class="graph-panel" @dblclick="handleZoomToFit">
             <div v-if="loadingFlow" class="loading-overlay">
               <div class="loading-spinner"></div>
               <div class="loading-text">加载 Flow 图...</div>
@@ -443,6 +451,7 @@ onUnmounted(() => {
               <p>暂无 Flow 图数据</p>
             </div>
             <BaklavaEditor v-else :view-model="baklava" :blocks="blocks" />
+            <div class="graph-hint">双击自适应视图</div>
           </div>
         </template>
 
@@ -855,6 +864,20 @@ onUnmounted(() => {
 
 .graph-panel :deep(.baklava-node-palette) {
   display: none !important;
+}
+
+.graph-hint {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  font-size: 11px;
+  color: rgba(136, 136, 136, 0.7);
+  background: rgba(30, 30, 30, 0.3);
+  padding: 6px 10px;
+  border-radius: 4px;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 0.3s;
 }
 
 /* 未选择时的提示 */

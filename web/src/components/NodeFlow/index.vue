@@ -16,8 +16,9 @@
           <SplitterVertical ref="consoleSplitterRef" :min="150" :max="0.7" :initial-size="350" button-side="bottom"
             v-model:visible="consolePanelVisible">
             <template #1>
-              <div class="editor-wrapper">
+              <div class="editor-wrapper" @dblclick="handleZoomToFit">
                 <BaklavaEditor :view-model="baklava" :blocks="blocks" />
+                <div class="graph-hint">双击自适应视图</div>
               </div>
             </template>
 
@@ -40,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { BaklavaEditor, useBaklava, DEFAULT_TOOLBAR_COMMANDS } from "@baklavajs/renderer-vue";
+import { BaklavaEditor, useBaklava, DEFAULT_TOOLBAR_COMMANDS, Commands } from "@baklavajs/renderer-vue";
 import { defineComponent, defineEmits, defineProps, h, onMounted, onUnmounted, nextTick, ref, watch, markRaw, computed } from 'vue';
 import SaveIcon from '@/components/icons/Save.vue';
 import RunIcon from '@/components/icons/Run.vue';
@@ -124,6 +125,14 @@ function hideOutputPanel() {
 // --- 文件处理回调 ---
 function handleFileOpened(file: any) {
   console.log('文件已打开:', file.filename);
+}
+
+// 双击缩放图
+function handleZoomToFit() {
+  baklava.commandHandler.executeCommand<Commands.ZoomToFitGraphCommand>(
+    Commands.ZOOM_TO_FIT_GRAPH_COMMAND,
+    true
+  );
 }
 
 function handleFileDownloaded(file: any) {
@@ -604,5 +613,24 @@ defineExpose({
 .nodeflow-container :deep(.baklava-editor) {
   height: 100%;
   width: 100%;
+}
+
+/* 编辑器提示 */
+.editor-wrapper {
+  position: relative;
+}
+
+.graph-hint {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  font-size: 11px;
+  color: rgba(136, 136, 136, 0.7);
+  background: rgba(30, 30, 30, 0.3);
+  padding: 6px 10px;
+  border-radius: 4px;
+  pointer-events: none;
+  user-select: none;
+  transition: opacity 0.3s;
 }
 </style>
