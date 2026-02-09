@@ -674,13 +674,14 @@ async def get_executions(
             query = query.filter(scripts_hash=scripts_hash)
 
         # 时间范围过滤
-        # 直接使用字符串比较（Tortoise ORM 会自动处理字符串参数）
-        # 注意：不需要转换为 datetime 对象，直接比较字符串即可
+        # 将 ISO 字符串转换为 datetime 对象，以支持不同的 ISO 格式
         if start_time:
-            query = query.filter(start_time__gte=start_time)
+            start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+            query = query.filter(start_time__gte=start_dt)
 
         if end_time:
-            query = query.filter(start_time__lte=end_time)
+            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+            query = query.filter(start_time__lte=end_dt)
 
         executions = (
             await query.order_by("-start_time").limit(limit).offset(offset).all()
