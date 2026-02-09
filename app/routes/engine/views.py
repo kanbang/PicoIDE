@@ -634,6 +634,8 @@ async def get_executions(
     include_outputs: bool = False,
     limit: int = 20,
     offset: int = 0,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     获取执行历史列表
@@ -647,9 +649,12 @@ async def get_executions(
     - include_outputs: 是否包含输出文件列表（当 flow_id 指定时）
     - limit: 返回数量限制
     - offset: 偏移量
+    - start_time: 开始时间（ISO 格式）
+    - end_time: 结束时间（ISO 格式）
     """
     try:
         from db import Execution
+        from datetime import datetime
 
         query = Execution.filter(user_id=USER_ID)
 
@@ -667,6 +672,15 @@ async def get_executions(
 
         if scripts_hash:
             query = query.filter(scripts_hash=scripts_hash)
+
+        # 时间范围过滤
+        # 直接使用字符串比较（Tortoise ORM 会自动处理字符串参数）
+        # 注意：不需要转换为 datetime 对象，直接比较字符串即可
+        if start_time:
+            query = query.filter(start_time__gte=start_time)
+
+        if end_time:
+            query = query.filter(start_time__lte=end_time)
 
         executions = (
             await query.order_by("-start_time").limit(limit).offset(offset).all()

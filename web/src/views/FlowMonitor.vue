@@ -16,8 +16,7 @@ import {
   getBlocks,
   getExecutions,
   type ExecutionRecord,
-  type OutputFile,
-  type FlowItem
+  type OutputFile
 } from '@/api';
 import LogViewer from '@/components/common/LogViewer.vue';
 import FileList from '@/components/common/FileList.vue';
@@ -63,9 +62,6 @@ const error = ref<string | null>(null);
 const historyExecutions = ref<ExecutionRecord[]>([]);
 const loadingHistory = ref(false);
 const historyError = ref<string | null>(null);
-const historyTotal = ref(0);
-const historyOffset = ref(0);
-const historyLimit = ref(50);
 
 // 视图模式：'running' | 'history'
 const viewMode = ref<'running' | 'history'>('running');
@@ -89,9 +85,8 @@ const sseConnections = new Map<string, EventSource>();
 const hasRunningFlows = computed(() => runningExecutions.value.length > 0);
 const hasHistoryData = computed(() => historyExecutions.value.length > 0);
 const currentExecutions = computed(() => viewMode.value === 'running' ? runningExecutions.value : historyExecutions.value);
-const sidebarTitle = computed(() => viewMode.value === 'running' ? '运行中的 Flow' : '历史记录');
 
-// 获取时间范围的时间戳
+
 function getTimeRangeParams() {
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -105,8 +100,8 @@ function getTimeRangeParams() {
     case 'yesterday':
       const yesterday = new Date(startOfDay);
       yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayEnd = new Date(startOfDay);
-      yesterdayEnd.setMilliseconds(yesterdayEnd.getMilliseconds() - 1);
+      // 昨天结束时间是今天开始时间减 1 毫秒
+      const yesterdayEnd = new Date(startOfDay.getTime() - 1);
       return {
         start_time: yesterday.toISOString(),
         end_time: yesterdayEnd.toISOString()
@@ -126,10 +121,16 @@ function getTimeRangeParams() {
         end_time: now.toISOString()
       };
     case 'custom':
-      return {
-        start_time: customStartTime.value ? new Date(customStartTime.value).toISOString() : undefined,
-        end_time: customEndTime.value ? new Date(customEndTime.value).toISOString() : undefined
-      };
+      const params: Record<string, string | undefined> = {};
+      if (customStartTime.value) {
+        const dt = new Date(customStartTime.value);
+        params.start_time = dt.toISOString();
+      }
+      if (customEndTime.value) {
+        const dt = new Date(customEndTime.value);
+        params.end_time = dt.toISOString();
+      }
+      return params;
     default:
       return {};
   }
@@ -141,13 +142,8 @@ async function loadHistoryExecutions() {
   historyError.value = null;
   try {
     const timeParams = getTimeRangeParams();
-    const result = await getExecutions({
-      ...timeParams,
-      limit: historyLimit.value,
-      offset: historyOffset.value
-    });
+    const result = await getExecutions(timeParams);
     historyExecutions.value = result.executions;
-    historyTotal.value = result.count;
   } catch (e: any) {
     historyError.value = e.message || '加载历史记录失败';
     console.error('Failed to load history executions:', e);
@@ -410,7 +406,6 @@ onMounted(() => {
 // 监听时间段变化
 watch(timeRange, () => {
   if (viewMode.value === 'history') {
-    historyOffset.value = 0;
     loadHistoryExecutions();
   }
 });
@@ -576,8 +571,8 @@ onUnmounted(() => {
 
           <!-- 输出文件 -->
           <div v-else-if="currentTab === 'outputs'" class="outputs-panel">
-            <FileList :files="executionOutputs" :show-header="false" :show-delete="false" @open="() => { }"
-              @download="() => { }" @delete="deleteFile" />
+            <FileList :files="executionOutputs" :show-header="false" :show-delete="false"
+              @open="() => { }" @download="() => { }" @delete="deleteFile" />
           </div>
 
           <!-- Flow 图 -->
@@ -674,15 +669,6 @@ onUnmounted(() => {
   border-bottom-color: #4caf50;
 }
 
-.sidebar-header h3 {
-  margin: 0;
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #eee;
-  font-weight: 600;
-}
-
 .refresh-btn {
   background: transparent;
   border: none;
@@ -705,12 +691,12 @@ onUnmounted(() => {
   color: #fff;
 }
 
-.refresh-btn svg {
+.refresh-btn :deep(svg) {
   width: 20px;
   height: 20px;
 }
 
-.refresh-btn svg.spinning {
+.refresh-btn :deep(svg.spinning) {
   animation: spin 1s linear infinite;
 }
 
