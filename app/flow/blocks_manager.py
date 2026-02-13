@@ -37,7 +37,7 @@ STATIC_BLOCKS_MAP: Dict[str, list[type[BaseBlock]]] = {
 
 
 
-def build_blocks_from_scripts(self, scripts: List[str] = None) -> List[type[Block]]:
+def build_blocks_from_scripts(scripts: List[str] = None) -> List[type[Block]]:
     """
     从脚本动态构建 Block
 

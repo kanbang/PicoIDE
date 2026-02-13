@@ -4,21 +4,21 @@ version: 0.x
 Author: zhai
 Date: 2026-01-12 18:16:30
 LastEditors: zhai
-LastEditTime: 2026-02-03 11:31:50
+LastEditTime: 2026-02-13 14:34:11
 '''
 from flow.block import Block as Block
 from flow.engine import ComputeEngine as ComputeEngine
 from flow.engine_manager import EngineManager as EngineManager
 from flow.collector import FileCollector as FileCollector
 from flow.setting import settings as settings
-from flow.blocks_manager import blocks_registry, register_static_blocks
+from flow.blocks_manager import blocks_registry, register_static_blocks, build_blocks_from_scripts
 from typing import Dict, List, Type, Optional, Callable, Awaitable, Any
 import uuid
 
 
 def make_dynamic_engine(blocks: List[Block], scripts: List[str]):
     """创建动态引擎（已废弃，建议直接使用 register_business）"""
-    script_blocks = blocks_registry._build_blocks_from_scripts(scripts)
+    script_blocks = build_blocks_from_scripts(scripts)
     script_blocks.extend(blocks)
     engine_instance = ComputeEngine()
     engine_instance.set_blocks(script_blocks)
@@ -27,7 +27,7 @@ def make_dynamic_engine(blocks: List[Block], scripts: List[str]):
 
 def get_dynamic_blocks_json(blocks: List[Block], scripts: List[str] = None):
     """获取所有 blocks 的 JSON 配置"""
-    script_blocks = blocks_registry._build_blocks_from_scripts(scripts)
+    script_blocks = build_blocks_from_scripts(scripts)
     script_blocks.extend(blocks)
     return [b().export_config() for b in script_blocks]
 
