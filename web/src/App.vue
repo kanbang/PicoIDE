@@ -11,11 +11,12 @@ import SingleNodeFlow from '@/views/NodeFlowDemo.vue';
 import SchemaManagerExample from '@/views/FlowManagerApiDemo.vue';
 import TinyCode from '@/views/TinyCode.vue';
 import FlowMonitor from '@/views/FlowMonitor.vue';
+import Documentation from '@/views/Documentation.vue';
 
 const TAB_STORAGE_KEY = 'picoide_active_tab';
 
 // 当前激活的标签页
-const activeTab = ref<'single' | 'manager' | 'tinycode' | 'monitor'>('single');
+const activeTab = ref<'single' | 'manager' | 'tinycode' | 'monitor' | 'docs'>('single');
 
 // 使用 Pinia store
 const businessStore = useBusinessStore();
@@ -23,13 +24,13 @@ const businessStore = useBusinessStore();
 // 从 localStorage 恢复 tab 状态
 function restoreTabFromStorage() {
   const savedTab = localStorage.getItem(TAB_STORAGE_KEY);
-  if (savedTab && ['single', 'manager', 'tinycode', 'monitor'].includes(savedTab)) {
-    activeTab.value = savedTab as 'single' | 'manager' | 'tinycode' | 'monitor';
+  if (savedTab && ['single', 'manager', 'tinycode', 'monitor', 'docs'].includes(savedTab)) {
+    activeTab.value = savedTab as 'single' | 'manager' | 'tinycode' | 'monitor' | 'docs';
   }
 }
 
 // 切换标签页
-function switchTab(tab: 'single' | 'manager' | 'tinycode' | 'monitor') {
+function switchTab(tab: 'single' | 'manager' | 'tinycode' | 'monitor' | 'docs') {
   activeTab.value = tab;
   localStorage.setItem(TAB_STORAGE_KEY, tab);
 }
@@ -62,8 +63,11 @@ onMounted(() => {
         <button :class="['tab-button', { active: activeTab === 'monitor' }]" @click="switchTab('monitor')">
           Running Flows
         </button>
+        <button :class="['tab-button', { active: activeTab === 'docs' }]" @click="switchTab('docs')">
+          Documentation
+        </button>
       </div>
-      
+
       <!-- Business 选择框 -->
       <div class="business-selector">
         <label for="business-select">业务:</label>
@@ -82,6 +86,7 @@ onMounted(() => {
       <SchemaManagerExample v-else-if="activeTab === 'manager'" />
       <TinyCode v-else-if="activeTab === 'tinycode'" />
       <FlowMonitor v-else-if="activeTab === 'monitor'" />
+      <Documentation v-else-if="activeTab === 'docs'" />
     </div>
   </div>
 </template>
