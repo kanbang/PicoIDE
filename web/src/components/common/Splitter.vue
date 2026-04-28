@@ -19,8 +19,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 // 使用 defineModel 处理双向绑定
 const isSidebarVisible = defineModel('visible', {
-  default: true,
-  local: true
+  default: true
 });
 
 const containerRef = ref<HTMLElement | null>(null);

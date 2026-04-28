@@ -860,7 +860,7 @@ async def get_execution_outputs(
 
         return {
             "execution_id": execution_id,
-            "outputs": output_files,
+            "output_files": output_files,
             "count": len(output_files),
             "limit": limit,
             "offset": offset,

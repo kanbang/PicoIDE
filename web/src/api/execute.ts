@@ -4,7 +4,7 @@
  * @Author: zhai
  * @Date: 2026-01-12 20:11:28
  * @LastEditors: zhai
- * @LastEditTime: 2026-02-04 15:02:50
+ * @LastEditTime: 2026-03-05 19:29:21
  */
 /**
  * Blocks 相关 API
@@ -46,6 +46,15 @@ export interface OutputFile {
   block_name?: string;
   can_open: boolean;
   can_download: boolean;
+}
+export interface RuntimeEvent {
+  execution_id?: string;
+  type?: string;
+  source?: string;  // engine / block type
+  message?: string;
+  data?: any;
+  ts?: number;  // timestamp in seconds
+  [key: string]: any;
 }
 
 /**
@@ -129,12 +138,12 @@ export async function getFlowExecutions(
   if (status) {
     url += `&status=${status}`;
   }
-  const result = await api.get(url);
+  const result = await api.get(url) as any;
   return {
-    executions: result.executions,
-    total: result.count,
-    limit: result.limit,
-    offset: result.offset,
+    executions: result.data?.executions ?? [],
+    total: result.data?.count ?? 0,
+    limit: result.data?.limit ?? limit,
+    offset: result.data?.offset ?? offset,
   };
 }
 
@@ -244,6 +253,7 @@ export interface ExecutionRecord {
   execution_id: string;
   flow_id: string;
   status: string;
+  source?: string;
   start_time: string;
   end_time: string | null;
   execution_time: number;

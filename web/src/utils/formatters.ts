@@ -93,5 +93,5 @@ export function getFileIconType(fileType: string): string {
     'excel': 'table',
     'default': 'file'
   };
-  return iconMap[fileType] || iconMap['default'];
+  return iconMap[fileType] ?? iconMap['default'] ?? 'file';
 }

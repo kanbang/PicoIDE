@@ -241,7 +241,7 @@ async function loadFlowGraph(flowId: string) {
     if (flowData.value) {
       editor.load(flowData.value);
       // 使用 renderNode hook 来监听节点渲染完成
-      baklava.hooks.renderNode.subscribe(zoomToFitToken, ({ node, el }) => {
+      baklava.hooks.renderNode.subscribe(zoomToFitToken, (data) => {
         // 第一个节点渲染完成后执行缩放命令
         nextTick(() => {
           baklava.commandHandler.executeCommand<Commands.ZoomToFitGraphCommand>(
@@ -251,6 +251,7 @@ async function loadFlowGraph(flowId: string) {
         });
         // 只需要监听第一个节点，之后移除监听器
         baklava.hooks.renderNode.unsubscribe(zoomToFitToken);
+        return data;
       });
     }
 
@@ -277,7 +278,7 @@ function registerBlocks(blockDefs: BlockDefinition[]) {
         name: blockDef.name,
         inputs: blockDef.inputs,
         outputs: blockDef.outputs,
-        options: blockDef.options
+        options: blockDef.options as any
       });
       const category = 'category' in blockDef ? blockDef.category : undefined;
       editor.registerNodeType(Block, { category });
@@ -291,7 +292,7 @@ function registerBlocks(blockDefs: BlockDefinition[]) {
 async function loadExecutionOutputs(executionId: string) {
   try {
     const result = await getExecutionOutputs(executionId);
-    executionOutputs.value = result.outputs || [];
+    executionOutputs.value = result.output_files || [];
   } catch (e: any) {
     console.error('Failed to load execution outputs:', e);
   }

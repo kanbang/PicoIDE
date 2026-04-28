@@ -99,7 +99,7 @@ function formatData(data: any): string {
 }
 
 // 获取事件图标
-function getEventIcon(event: LogEvent) {
+function getEventIcon(event: LogEvent): { svg: string; color: string } {
   const type = event.type?.toLowerCase() || 'info';
 
   const icons: Record<string, { svg: string; color: string }> = {
@@ -185,7 +185,16 @@ function getEventIcon(event: LogEvent) {
     }
   };
 
-  return icons[type] || icons.info;
+  const defaultIcon: { svg: string; color: string } = {
+    svg: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="7" x2="12" y2="12" stroke-linecap="round"/>
+      <circle cx="12" cy="16" r="0.5" fill="currentColor"/>
+    </svg>`,
+    color: '#2196f3'
+  };
+
+  return icons[type] ?? defaultIcon;
 }
 
 // 暴露方法

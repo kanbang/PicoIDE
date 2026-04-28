@@ -3,7 +3,11 @@ import { ref, watch, computed, nextTick } from 'vue';
 import NodeFlow from '../NodeFlow/index.vue';
 import Modal from '../common/Modal.vue';
 import SplitPane from '../common/Splitter.vue';
-import FlowList, { type FlowItem } from './FlowListPanel.vue'; // 引入新组件
+import FlowList from './FlowListPanel.vue';
+import type { FlowItem } from './FlowListPanel.vue';
+
+// 导出 FlowItem 类型供外部使用
+export type { FlowItem } from './FlowListPanel.vue';
 
 // Props
 interface Props {

@@ -14,7 +14,8 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import Toast, { ToastProps } from './Toast.vue';
+import Toast from './Toast.vue';
+import type { ToastProps } from './Toast.vue';
 
 interface ToastItem extends ToastProps {
   id: number;

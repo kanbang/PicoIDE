@@ -42,7 +42,7 @@
 
 <script setup lang="ts">
 import { BaklavaEditor, useBaklava, DEFAULT_TOOLBAR_COMMANDS, Commands } from "@baklavajs/renderer-vue";
-import { defineComponent, defineEmits, defineProps, h, onMounted, onUnmounted, nextTick, ref, watch, markRaw, computed } from 'vue';
+import { defineComponent, h, onMounted, onUnmounted, nextTick, ref, watch, markRaw, computed } from 'vue';
 import SaveIcon from '@/components/icons/Save.vue';
 import RunIcon from '@/components/icons/Run.vue';
 import StopIcon from '@/components/icons/Stop.vue';
@@ -56,6 +56,7 @@ import SplitPane from '@/components/common/Splitter.vue';
 import SplitterVertical from '@/components/common/SplitterVertical.vue';
 import "@baklavajs/themes/dist/syrup-dark.css";
 import { type BlockDefinition } from '@/components/common/types';
+import type { BlockOptionDefinition } from './BlockBuilder';
 
 // --- 常量与 Emits ---
 const SAVE_COMMAND_ID = "SAVE";
@@ -295,7 +296,7 @@ function registerBlocks(blocks: BlockDefinition[] = []) {
         name: blockDef.name,
         inputs: blockDef.inputs,
         outputs: blockDef.outputs,
-        options: blockDef.options
+        options: blockDef.options as BlockOptionDefinition[] | undefined
       });
       const category = 'category' in blockDef ? blockDef.category : undefined;
       editor.registerNodeType(Block, { category });
@@ -321,8 +322,12 @@ const nodeEvents = ['update', 'titleChanged'];
 const updaterToken = Symbol('ChangeDetection');
 
 function setupChangeDetection() {
-  graphEvents.forEach(prop => editor.graphEvents[prop].subscribe(updaterToken, handleChange));
-  nodeEvents.forEach(prop => editor.nodeEvents[prop].subscribe(updaterToken, handleChange));
+  graphEvents.forEach(prop => {
+    (editor.graphEvents as any)[prop].subscribe(updaterToken, handleChange);
+  });
+  nodeEvents.forEach(prop => {
+    (editor.nodeEvents as any)[prop].subscribe(updaterToken, handleChange);
+  });
   setupNodeDragObserver();
 }
 
@@ -386,8 +391,12 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  graphEvents.forEach(prop => editor.graphEvents[prop].unsubscribe(updaterToken));
-  nodeEvents.forEach(prop => editor.nodeEvents[prop].unsubscribe(updaterToken));
+  graphEvents.forEach(prop => {
+    (editor.graphEvents as any)[prop].unsubscribe(updaterToken);
+  });
+  nodeEvents.forEach(prop => {
+    (editor.nodeEvents as any)[prop].unsubscribe(updaterToken);
+  });
   disconnectSSE();
 });
 

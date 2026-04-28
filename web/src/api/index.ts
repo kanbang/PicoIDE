@@ -27,10 +27,11 @@ export {
   streamExecutionEvents,
   getExecutions
 } from './execute';
-export type { 
-  ExecuteRequest, 
+export type {
+  ExecuteRequest,
   ExecuteResponse,
-  ExecutionRecord
+  ExecutionRecord,
+  OutputFile
 } from './execute';
 
 // 导出 schemas 相关 API

@@ -85,8 +85,9 @@ async function handleRun(flow: any) {
       outputPanel.setExecutionStatus('completed', result.execution_time);
       outputPanel.setOutputFiles(result.output_files || []);
 
-      if (result.output_files?.length > 0) {
-        showSuccess(`执行成功，生成 ${result.output_files.length} 个文件`);
+      const outputFiles = result.output_files;
+      if (outputFiles && outputFiles.length > 0) {
+        showSuccess(`执行成功，生成 ${outputFiles.length} 个文件`);
       } else {
         showInfo('执行完成，无输出文件');
       }

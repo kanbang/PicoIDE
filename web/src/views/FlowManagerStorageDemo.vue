@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import FlowManager, { FlowItem } from '@/components/FlowManager/index.vue'; // 确保路径正确，原代码是 @/components/...
+import FlowManager, { type FlowItem } from '@/components/FlowManager/index.vue'; // 确保路径正确，原代码是 @/components/...
 import { getBlocks } from '@/api/index';
 
 const STORAGE_KEY = 'flow_manager_example_data';
@@ -62,7 +62,7 @@ function handleCreate(flow: FlowItem): void {
 
 // 处理保存事件
 function handleSave(id: string, data: any): void {
-  const flow = flows.value.find(s => s.id === id);
+  const flow = flows.value.find((s: FlowItem) => s.id === id);
   if (flow) {
     flow.flow = data;
     saveToStorage();
@@ -71,7 +71,7 @@ function handleSave(id: string, data: any): void {
 
 // 处理删除事件
 function handleDelete(id: string): void {
-  const index = flows.value.findIndex(s => s.id === id);
+  const index = flows.value.findIndex((s: FlowItem) => s.id === id);
   if (index > -1) {
     flows.value.splice(index, 1);
     saveToStorage();
@@ -80,7 +80,7 @@ function handleDelete(id: string): void {
 
 // 处理重命名事件
 function handleRename(id: string, newName: string): void {
-  const flow = flows.value.find(s => s.id === id);
+  const flow = flows.value.find((s: FlowItem) => s.id === id);
   if (flow) {
     flow.name = newName;
     saveToStorage();
@@ -90,7 +90,7 @@ function handleRename(id: string, newName: string): void {
 // 处理复制事件
 function handleDuplicate(originalId: string, newFlow: FlowItem): void {
   // 生成 ID
-  const newFlowWithId = {
+  const newFlowWithId: FlowItem = {
     ...newFlow,
     id: crypto.randomUUID()
   };

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { defineProps, defineEmits } from 'vue';
 
 // 定义接口 (建议最好提取到单独的 types.ts 文件中)
 export interface FlowItem {

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import FlowManager, { FlowItem } from '@/components/FlowManager/index.vue';
+import FlowManager from '@/components/FlowManager/index.vue';
+import type { FlowItem } from '@/components/FlowManager/index.vue';
 import {
   getBlocks, getFlows, createFlow, updateFlow,
   deleteFlow, duplicateFlow, executeBlocks, executeSavedFlow, stopExecution,
-  FlowItem as ApiFlowItem
+  type FlowItem as ApiFlowItem
 } from '@/api/index';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
 
@@ -31,7 +32,7 @@ async function loadFlows() {
     flows.value = await getFlows();
     // 默认选中第一个
     if (flows.value.length > 0 && !selectedFlowId.value) {
-      selectedFlowId.value = flows.value[0].id;
+      selectedFlowId.value = flows.value[0]!.id;
     }
   } catch (error) {
     showError('加载 Flow 列表失败');
@@ -69,9 +70,9 @@ async function handleDelete(id: string) {
       if (flows.value.length > 1) {
         const currentIndex = flows.value.findIndex(s => s.id === id);
         if (currentIndex == flows.value.length - 1) {
-          newSelectedId = flows.value[currentIndex - 1].id;
+          newSelectedId = flows.value[currentIndex - 1]!.id;
         } else {
-          newSelectedId = flows.value[currentIndex + 1].id;
+          newSelectedId = flows.value[currentIndex + 1]!.id;
         }
       }
     }

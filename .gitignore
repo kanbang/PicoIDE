@@ -1,0 +1,9 @@
+web-code/vscode/
+web/public/vscode/
+*.pyc
+
+app/output/
+app/docs/
+app/build/
+node_flow_engine
+/app/node_flow_engine.zip
