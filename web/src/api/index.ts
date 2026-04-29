@@ -17,7 +17,6 @@ export { api } from './request';
 // 导出 blocks 相关 API
 export {
   getBlocks,
-  executeBlocks,
   executeSavedFlow,
   getFlowExecutions,
   getExecutionOutputs,
@@ -28,8 +27,7 @@ export {
   getExecutions
 } from './execute';
 export type {
-  ExecuteRequest,
-  ExecuteResponse,
+  StartExecutionResponse,
   ExecutionRecord,
   OutputFile
 } from './execute';

@@ -2,6 +2,7 @@
  * Schemas 相关 API
  */
 import { api } from './request';
+import { isTempFlowItem } from '@/utils/tempFlow';
 
 export interface FlowItem {
   id: string;
@@ -24,7 +25,8 @@ export interface UpdateFlowRequest {
  * 获取所有 flows
  */
 export async function getFlows(): Promise<FlowItem[]> {
-  return await api.get('/flows');
+  const flows = await api.get('/flows') as FlowItem[];
+  return flows.filter(flow => !isTempFlowItem(flow));
 }
 
 /**

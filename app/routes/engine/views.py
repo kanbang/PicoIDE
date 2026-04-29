@@ -23,7 +23,7 @@ from dataclasses import asdict
 from node.daq import DAQ_BLOCKS
 from flow.demo_blocks import DEMO_BLOCKS
 
-from .schema import ExecuteRequest, ExecuteResponse, ExecuteSavedRequest
+from .schema import ExecuteSavedRequest, StartExecutionResponse
 from routes.dependencies import get_business
 from flow.blocks_manager import blocks_registry
 from flow import (
@@ -47,8 +47,22 @@ import json
 logger = logging.getLogger(__name__)
 
 USER_ID = "default"
+EXECUTION_EPHEMERAL_RETENTION_SECONDS = 300
 
 router = APIRouter(prefix="/api/engine", tags=["engine"])
+
+
+async def _cleanup_execution_runtime_state(
+    execution_id: str,
+    delay_seconds: int = EXECUTION_EPHEMERAL_RETENTION_SECONDS,
+):
+    """Delay cleanup so late SSE subscribers can still replay terminal events."""
+    try:
+        await asyncio.sleep(delay_seconds)
+        RuntimeEventBus().cleanup(execution_id)
+        await file_collector.clear_execution(execution_id)
+    except Exception:
+        logger.exception(f"Failed to cleanup runtime state for execution {execution_id}")
 
 
 async def load_scripts_from_db(directory: str, business: str) -> List[str]:
@@ -114,133 +128,7 @@ async def get_blocks_endpoint(business: Annotated[str, Depends(get_business)]):
         raise HTTPException(500, f"Failed to get blocks: {str(e)}")
 
 
-@router.post("/execute", response_model=ExecuteResponse)
-async def execute(
-    request: ExecuteRequest, business: Annotated[str, Depends(get_business)]
-):
-    """
-    执行图计算（直接执行）
-
-    执行流程：
-    1. 验证请求参数
-    2. 加载自定义脚本
-    3. 解析图结构
-    4. 创建执行记录
-    5. 执行计算
-    6. 收集输出文件并保存到数据库
-    7. 更新执行状态
-    8. 返回结果
-    """
-
-    try:
-        if not request.flow or not request.flow.graph:
-            raise HTTPException(400, "flow.graph is required")
-
-        logger.info(f"Execute request - Business: {business}")
-
-        flow = request.flow.graph
-
-        # 1. 加载自定义脚本
-        scripts = request.scripts or []
-        scripts_db = await load_scripts_from_db("/", business)
-        scripts.extend(scripts_db)
-
-        # 3. 注册业务对应的 Block 模板（包含静态和动态 blocks）
-        await register_business_engine(business.upper(), scripts)
-
-        # 4. 计算脚本哈希
-        from utils.helpers import calculate_scripts_hash
-
-        scripts_hash = calculate_scripts_hash(scripts)
-
-        # 5. 创建执行ID
-        execution_id = create_execution_id()
-
-        # 6. 根据配置决定是否创建 Execution 记录
-        execution = None
-        if settings.ENABLE_DB_WRITE:
-            from db import Execution
-
-            execution = await Execution.create(
-                execution_id=execution_id,
-                user_id=USER_ID,
-                source="direct",
-                scripts_path="/",
-                scripts_hash=scripts_hash,
-                status="running",
-                start_time=datetime.now(timezone.utc),
-                total_nodes=len(flow.nodes),
-            )
-
-        # 7. 记录执行开始时间
-        start_time = time.time()
-
-        # 8. 执行 flow（传递 execution_id 和 business）
-        try:
-            result = await run_business(
-                business.upper(), flow.model_dump(by_alias=True), execution_id, USER_ID
-            )
-
-            # 收集输出文件
-            # 根据配置决定从数据库还是收集器获取
-            if settings.ENABLE_DB_WRITE:
-                output_files = await output_file_manager.get_execution_files(
-                    execution_id
-                )
-            else:
-                # 从文件收集器获取（轻量化模式）
-                output_files = await file_collector.get_files(execution_id)
-
-            # 更新 Execution 状态为完成
-            if execution:
-                execution.status = "completed"
-                execution.end_time = datetime.now(timezone.utc)
-                execution.execution_time = time.time() - start_time
-                execution.executed_nodes = execution.total_nodes
-                execution.result = str(result)[:1000] if result else None
-                await execution.save()
-
-            # 9. 构建响应
-            response = {
-                "ok": True,
-                "result": result,
-                "output_files": output_files,
-                "execution_id": execution_id,
-                "execution_time": time.time() - start_time,
-                "timestamp": datetime.now().isoformat(),
-                "stats": {
-                    "total_nodes": len(flow.nodes),
-                    "executed_nodes": len(flow.nodes),
-                    "failed_nodes": 0,
-                    "total_connections": len(flow.connections),
-                    "execution_time": time.time() - start_time,
-                },
-            }
-            logger.info(
-                f"执行完成，耗时: {response['execution_time']:.3f}s，输出文件: {len(output_files)}"
-            )
-
-            return response
-
-        except Exception as e:
-            # 更新 Execution 状态为失败
-            if execution:
-                execution.status = "failed"
-                execution.end_time = datetime.now(timezone.utc)
-                execution.execution_time = time.time() - start_time
-                execution.result = f"Error: {str(e)}"[:1000]
-                await execution.save()
-            raise
-
-    except ValueError as e:
-        logger.error(f"参数验证失败: {str(e)}")
-        raise HTTPException(400, detail=f"参数错误: {str(e)}")
-    except Exception as e:
-        logger.error(f"执行失败: {str(e)}", exc_info=True)
-        raise HTTPException(500, f"Execution failed: {str(e)}")
-
-
-@router.post("/execute-saved", response_model=ExecuteResponse)
+@router.post("/execute-saved", response_model=StartExecutionResponse)
 async def execute_saved(
     request: ExecuteSavedRequest, business: Annotated[str, Depends(get_business)]
 ):
@@ -324,28 +212,33 @@ async def execute_saved(
 
         start_time = time.time()
 
-        async def _on_execution_done(result):
-            # 更新 Execution 状态为完成
+        async def _on_execution_done(terminal_status):
+            # Persist the final execution status.
             if execution:
-                execution.status = "completed"
+                execution.status = terminal_status or "completed"
                 execution.end_time = datetime.now(timezone.utc)
                 execution.execution_time = time.time() - start_time
-                execution.executed_nodes = execution.total_nodes
-                execution.result = str(result)[:1000] if result else None
+                if execution.status == "completed":
+                    execution.executed_nodes = execution.total_nodes
+                execution.result = (
+                    str(terminal_status)[:1000] if terminal_status else None
+                )
                 await execution.save()
 
-            # 根据配置决定从数据库还是收集器获取
+            # Load generated files from DB or in-memory collector.
             if settings.ENABLE_DB_WRITE:
                 output_files = await output_file_manager.get_execution_files(
                     execution_id
                 )
             else:
-                # 从文件收集器获取（轻量化模式）
-                output_files = file_collector.get_files(execution_id)
+                # Lightweight mode uses the in-memory collector.
+                output_files = await file_collector.get_files(execution_id)
 
+            final_status = execution.status if execution else (terminal_status or "completed")
             logger.info(
-                f"从数据库执行完成，耗时: {time.time() - start_time:.3f}s，输出文件: {len(output_files)}"
+                f"Execution persisted with status {final_status}, duration: {time.time() - start_time:.3f}s, output files: {len(output_files)}"
             )
+            asyncio.create_task(_cleanup_execution_runtime_state(execution_id))
 
         try:
             await async_start_flow(
@@ -359,27 +252,18 @@ async def execute_saved(
                 execution.execution_time = time.time() - start_time
                 execution.result = f"Error: {str(e)}"[:1000]
                 await execution.save()
-            logger.error(f"后台执行失败: {str(e)}", exc_info=True)
+            logger.error(f"后台执行启动失败: {str(e)}", exc_info=True)
+            raise HTTPException(500, f"Failed to start execution: {str(e)}")
 
-        # 9. 立即返回 execution_id，让前端可以立即订阅 SSE
         return {
             "ok": True,
-            "result": "",  # 异步模式下结果为空
-            "output_files": [],  # 异步模式下输出文件列表为空
             "execution_id": execution_id,
-            "execution_time": 0.0,  # 异步模式下执行时间为 0
+            "status": "running",
             "timestamp": (
                 execution.start_time.isoformat()
                 if execution
                 else datetime.now().isoformat()
             ),
-            "stats": {
-                "total_nodes": len(graph.get("nodes", [])),
-                "executed_nodes": 0,  # 执行中
-                "failed_nodes": 0,
-                "total_connections": len(graph.get("connections", [])),
-                "execution_time": 0.0,
-            },
         }
 
     except HTTPException:
@@ -404,6 +288,15 @@ async def stop_execution(
         raise HTTPException(400, "Missing execution_id")
 
     if not await async_stop_flow(execution_id, business):
+        if settings.ENABLE_DB_WRITE:
+            from db import Execution
+
+            existing = await Execution.filter(
+                user_id=USER_ID, execution_id=execution_id
+            ).first()
+            if existing and existing.status in {"completed", "failed", "stopped"}:
+                return {"ok": True}
+
         raise HTTPException(
             404,
             f"Execution {execution_id} not found, not running, or not belonging to this business",
@@ -505,6 +398,8 @@ async def get_output_file(file_id: str):
     获取输出文件内容
     """
     try:
+        file_info = None
+
         # 先尝试从数据库获取文件信息
         if settings.ENABLE_DB_WRITE:
             file_info = await output_file_manager.get_file_info(file_id)
@@ -583,12 +478,7 @@ async def delete_output_file(file_id: str) -> Dict[str, Any]:
             parts = file_id.rsplit("_", 1)
             if len(parts) == 2:
                 execution_id = parts[0]
-                files = await file_collector.get_files(execution_id)
-                # 从收集器中移除该文件
-                file_collector._files[execution_id] = [
-                    f for f in files if f["file_id"] != file_id
-                ]
-                success = True
+                success = await file_collector.remove_file(execution_id, file_id)
 
         if not success:
             raise HTTPException(404, f"文件不存在: {file_id}")

@@ -255,7 +255,7 @@ class BaseBlock(Block):
     ) -> str:
         """
         Handles file writing/appending with unique naming, directory management,
-        and event emission. Returns the file_id.
+        and file registration. Returns the file_id.
         """
         try:
             # Generate timestamps and unique suffix
@@ -326,41 +326,11 @@ class BaseBlock(Block):
 
                 await file_collector.add_file(execution_id, self.NAME, file_info)
 
-                # 发出文件创建事件
-                await self.event_bus.emit(
-                    RuntimeEvent(
-                        execution_id,
-                        RuntimeEventType.FILE,
-                        self.NAME,
-                        f"Created file: {unique_filename}",
-                        data={
-                            "file_id": file_id,
-                            "action": "create",
-                        },
-                    )
-                )
-
                 if not unique:
                     self._file_ids[file_key] = file_id
             else:
-                # Append: Emit update event and update database
                 file_id = self._file_ids[file_key]
-                # 更新数据库中的文件大小
                 await file_collector.update_file(execution_id, file_id, file_size)
-                
-                # 发出事件通知
-                await self.event_bus.emit(
-                    RuntimeEvent(
-                        execution_id,
-                        RuntimeEventType.FILE,
-                        self.NAME,
-                        f"Appended to file: {unique_filename}",
-                        data={
-                            "file_id": file_id,
-                            "action": "append",
-                        },
-                    )
-                )
 
             return file_id
         except Exception as e:

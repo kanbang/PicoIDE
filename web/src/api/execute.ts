@@ -1,5 +1,5 @@
 /*
- * @Descripttion: 
+ * @Descripttion:
  * @version: 0.x
  * @Author: zhai
  * @Date: 2026-01-12 20:11:28
@@ -7,7 +7,7 @@
  * @LastEditTime: 2026-03-05 19:29:21
  */
 /**
- * Blocks 相关 API
+ * Execution-related API
  */
 import { api } from './request';
 
@@ -15,25 +15,11 @@ export interface BlocksResponse {
   blocks: any[];
 }
 
-export interface ExecuteRequest {
-  scripts?: string[];
-  flow?: Record<string, any>;
-}
-
-export interface ExecuteResponse {
+export interface StartExecutionResponse {
   ok: boolean;
-  result?: any;
-  output_files?: OutputFile[];
-  execution_id?: string;
-  execution_time?: number;
-  timestamp?: string;
-  stats?: {
-    total_nodes: number;
-    executed_nodes: number;
-    failed_nodes: number;
-    total_connections: number;
-    execution_time: number;
-  };
+  execution_id: string;
+  status: string;
+  timestamp: string;
 }
 
 export interface OutputFile {
@@ -47,55 +33,40 @@ export interface OutputFile {
   can_open: boolean;
   can_download: boolean;
 }
+
 export interface RuntimeEvent {
   execution_id?: string;
   type?: string;
-  source?: string;  // engine / block type
+  source?: string;
   message?: string;
   data?: any;
-  ts?: number;  // timestamp in seconds
+  ts?: number;
   [key: string]: any;
 }
 
-/**
- * 获取所有可用的 blocks
- */
+const TERMINAL_EVENT_TYPES = new Set([
+  'execution_completed',
+  'execution_failed',
+  'execution_stopped',
+]);
+
 export async function getBlocks(): Promise<any[]> {
   const data: BlocksResponse = await api.get('/engine/blocks');
   return data.blocks || [];
 }
 
-/**
- * 执行 block 计算
- */
-export async function executeBlocks(request: ExecuteRequest): Promise<ExecuteResponse> {
-  return await api.post('/engine/execute', request);
-}
-
-/**
- * 执行已保存的 Flow
- */
-export async function executeSavedFlow(flowId: string): Promise<ExecuteResponse> {
+export async function executeSavedFlow(flowId: string): Promise<StartExecutionResponse> {
   return await api.post('/engine/execute-saved', { flow_id: flowId });
 }
 
-/**
- * 停止执行
- */
 export async function stopExecution(executionId: string): Promise<{ ok: boolean }> {
   return await api.post('/engine/stop', { execution_id: executionId });
 }
 
-/**
- * 获取所有输出文件
- */
 export async function getOutputFiles(): Promise<OutputFile[]> {
   return await api.get('/engine/output-files');
 }
 
-/**
- * 获取输出文件内容
- */
 export async function getOutputFile(fileId: string): Promise<Blob> {
   const url = `/api/engine/output-files/${fileId}`;
   const response = await fetch(url);
@@ -105,23 +76,14 @@ export async function getOutputFile(fileId: string): Promise<Blob> {
   return await response.blob();
 }
 
-/**
- * 删除输出文件
- */
 export async function deleteOutputFile(fileId: string): Promise<any> {
   return await api.delete(`/engine/output-files/${fileId}`);
 }
 
-/**
- * 清理旧输出文件
- */
 export async function cleanupOutputFiles(maxAgeHours: number = 24): Promise<any> {
   return await api.delete(`/engine/output-files/cleanup?max_age_hours=${maxAgeHours}`);
 }
 
-/**
- * 获取指定 Flow 的所有执行记录（包含输出文件）
- */
 export async function getFlowExecutions(
   flowId: string,
   status?: string,
@@ -147,9 +109,6 @@ export async function getFlowExecutions(
   };
 }
 
-/**
- * 获取指定执行的所有输出文件
- */
 export async function getExecutionOutputs(executionId: string): Promise<{
   execution_id: string;
   output_files: OutputFile[];
@@ -158,16 +117,10 @@ export async function getExecutionOutputs(executionId: string): Promise<{
   return result;
 }
 
-/**
- * 删除执行记录
- */
 export async function deleteExecution(executionId: string): Promise<any> {
   return await api.delete(`/engine/executions/${executionId}`);
 }
 
-/**
- * 获取正在运行的 flows
- */
 export async function getRunningFlows(): Promise<{
   ok: boolean;
   running_executions: string[];
@@ -176,19 +129,28 @@ export async function getRunningFlows(): Promise<{
   return await api.get('/engine/running');
 }
 
-/**
- * 获取执行详情
- */
 export async function getExecution(executionId: string): Promise<ExecutionRecord> {
   return await api.get(`/engine/executions/${executionId}`);
 }
 
-/**
- * 流式获取执行事件 (SSE)
- */
-export function streamExecutionEvents(executionId: string, onMessage: (event: RuntimeEvent) => void, onError?: (error: string) => void, onEnd?: () => void): EventSource {
+export function streamExecutionEvents(
+  executionId: string,
+  onMessage: (event: RuntimeEvent) => void,
+  onError?: (error: string) => void,
+  onEnd?: () => void
+): EventSource {
   const url = `/api/engine/stream/${executionId}`;
   const eventSource = new EventSource(url);
+  let ended = false;
+
+  const finalize = () => {
+    if (ended) {
+      return;
+    }
+    ended = true;
+    onEnd?.();
+    eventSource.close();
+  };
 
   eventSource.onmessage = (event) => {
     try {
@@ -198,14 +160,16 @@ export function streamExecutionEvents(executionId: string, onMessage: (event: Ru
         return;
       }
       onMessage(data);
-    } catch (e) {
-      console.error('Failed to parse SSE event:', e);
+      if (TERMINAL_EVENT_TYPES.has(data.type)) {
+        finalize();
+      }
+    } catch (error) {
+      console.error('Failed to parse SSE event:', error);
     }
   };
 
   eventSource.addEventListener('end', () => {
-    onEnd?.();
-    eventSource.close();
+    finalize();
   });
 
   eventSource.onerror = () => {
@@ -216,9 +180,6 @@ export function streamExecutionEvents(executionId: string, onMessage: (event: Ru
   return eventSource;
 }
 
-/**
- * 获取所有执行历史
- */
 export async function getExecutions(params?: {
   status?: string;
   source?: string;
@@ -246,8 +207,6 @@ export async function getExecutions(params?: {
   }
   return await api.get(`/engine/executions?${queryParams.toString()}`);
 }
-
-// ==================== 类型定义 ====================
 
 export interface ExecutionRecord {
   execution_id: string;

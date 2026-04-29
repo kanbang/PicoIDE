@@ -97,6 +97,11 @@ const isRunning = ref(false);
 const isSSEConnecting = ref(false);
 const isSSEConnected = ref(false);
 const eventSourceRef = ref<EventSource | null>(null);
+const TERMINAL_EVENT_TYPES = new Set([
+  'execution_completed',
+  'execution_failed',
+  'execution_stopped',
+]);
 
 // --- 外部控制方法 (保持 API 兼容) ---
 
@@ -423,6 +428,24 @@ function connectSSE(executionId: string) {
   try {
     const eventSource = new EventSource(url);
     eventSourceRef.value = eventSource;
+    let executionEnded = false;
+
+    const finalizeExecution = () => {
+      if (executionEnded) {
+        return;
+      }
+      executionEnded = true;
+      eventSource.close();
+      if (eventSourceRef.value === eventSource) {
+        eventSourceRef.value = null;
+      }
+      isSSEConnected.value = false;
+      isSSEConnecting.value = false;
+      isRunning.value = false;
+      if (currentExecutionId.value) {
+        emit('executionEnded', currentExecutionId.value);
+      }
+    };
 
     eventSource.onopen = () => {
       isSSEConnecting.value = false;
@@ -479,6 +502,9 @@ function connectSSE(executionId: string) {
           // 同时分发到 OutputPanel
           if (outputPanelRef.value) {
             outputPanelRef.value.handleLogEvent(eventData);
+          }
+          if (TERMINAL_EVENT_TYPES.has(eventData.type)) {
+            finalizeExecution();
           }
         }
       } catch (error) {
@@ -548,7 +574,7 @@ function setCurrentExecutionId(executionId: string | null) {
     // 延迟连接，确保后端执行已开始
     consolePanelVisible.value = true;
     isRunning.value = true;
-    setTimeout(() => connectSSE(executionId), 500);
+    connectSSE(executionId);
   } else {
     disconnectSSE();
   }

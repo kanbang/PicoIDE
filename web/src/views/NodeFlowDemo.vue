@@ -1,114 +1,153 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import NodeFlow from '@/components/NodeFlow/index.vue';
-import { getBlocks, executeBlocks } from '@/api/index';
-import { showSuccess, showError, showInfo } from '@/utils/toast';
+import {
+  createFlow,
+  executeSavedFlow,
+  getBlocks,
+  stopExecution,
+  updateFlow,
+} from '@/api/index';
 import { useBusinessStore } from '@/stores/business';
+import { buildTempFlowName, buildTempFlowPayload } from '@/utils/tempFlow';
+import { showError, showInfo, showSuccess } from '@/utils/toast';
 
 const businessStore = useBusinessStore();
 
-// 根据 business 动态生成存储键
 const STORAGE_KEY = computed(() => `nodeflow_flow_${businessStore.business}`);
+const TEMP_FLOW_ID_KEY = computed(() => `nodeflow_temp_flow_id_${businessStore.business}`);
+const TEMP_FLOW_NAME = computed(() => buildTempFlowName(businessStore.business));
 
-// --- 响应式状态 ---
 const blocks = ref<any[]>([]);
 const hasUnsavedChanges = ref(false);
 const nodeFlowRef = ref<InstanceType<typeof NodeFlow> | null>(null);
+const currentExecutionId = ref<string | null>(null);
 
-// --- 数据加载逻辑 ---
-
-// 加载节点定义 (Blocks)
 async function loadBlocks() {
   try {
     blocks.value = await getBlocks();
   } catch (error) {
-    console.error('加载节点失败:', error);
+    console.error('Failed to load blocks:', error);
     showError('无法获取节点定义，请检查网络');
   }
 }
 
-// 从本地存储还原画布
 function loadFromStorage(): void {
   const savedSchema = localStorage.getItem(STORAGE_KEY.value);
-  if (savedSchema) {
-    try {
-      const flow = JSON.parse(savedSchema);
-      // 调用 NodeFlow 暴露的 loadFlow 方法
-      nodeFlowRef.value?.loadFlow(flow);
-    } catch (e) {
-      console.error('解析本地存储失败:', e);
-    }
+  if (!savedSchema) {
+    return;
+  }
+
+  try {
+    const flow = JSON.parse(savedSchema);
+    nodeFlowRef.value?.loadFlow(flow);
+  } catch (error) {
+    console.error('Failed to parse local flow:', error);
   }
 }
 
-// --- 事件处理 ---
-
-// 处理保存：持久化到本地
 function handleSave(data: any): void {
   localStorage.setItem(STORAGE_KEY.value, JSON.stringify(data));
   hasUnsavedChanges.value = false;
   showSuccess('保存成功');
 }
 
-// 处理未保存状态：用于 UI 提示或路由守卫
 function handleUnsavedChanges(changes: boolean): void {
   hasUnsavedChanges.value = changes;
 }
 
-// 处理运行逻辑
+async function ensureRemoteTempFlow(flow: any): Promise<string> {
+  const flowId = localStorage.getItem(TEMP_FLOW_ID_KEY.value);
+  const remoteFlow = buildTempFlowPayload(flow);
+
+  if (flowId) {
+    try {
+      await updateFlow(flowId, {
+        name: TEMP_FLOW_NAME.value,
+        flow: remoteFlow,
+      });
+      return flowId;
+    } catch (error) {
+      console.warn('Failed to update temp flow, recreating it:', error);
+      localStorage.removeItem(TEMP_FLOW_ID_KEY.value);
+    }
+  }
+
+  const createdFlow = await createFlow({
+    name: TEMP_FLOW_NAME.value,
+    flow: remoteFlow,
+  });
+
+  localStorage.setItem(TEMP_FLOW_ID_KEY.value, createdFlow.id);
+  return createdFlow.id;
+}
+
 async function handleRun(flow: any) {
-  if (!nodeFlowRef.value) return;
+  if (!nodeFlowRef.value) {
+    return;
+  }
 
-  // 1. 自动展开输出面板 (利用 NodeFlow 暴露的 API)
   nodeFlowRef.value.showOutputPanel();
-
   const outputPanel = nodeFlowRef.value.outputPanelRef;
 
   try {
-    console.log('开始执行流程...', flow);
-
-    // 2. 更新 UI 状态为运行中
     if (outputPanel) {
+      outputPanel.resetExecutionOutput();
       outputPanel.setExecutionStatus('running');
     }
 
-    // 3. 调用后端执行 API
-    const result = await executeBlocks({ scripts: [], flow: flow });
+    const flowId = await ensureRemoteTempFlow(flow);
+    const result = await executeSavedFlow(flowId);
 
-    // 4. 设置 SSE 面板的 execution_id（如果返回）
-    if (result.execution_id) {
-      nodeFlowRef.value.setCurrentExecutionId(result.execution_id);
-    }
+    currentExecutionId.value = result.execution_id;
+    nodeFlowRef.value.setCurrentExecutionId(result.execution_id);
 
-    // 5. 处理执行结果
-    if (outputPanel) {
-      outputPanel.setExecutionStatus('completed', result.execution_time);
-      outputPanel.setOutputFiles(result.output_files || []);
-
-      const outputFiles = result.output_files;
-      if (outputFiles && outputFiles.length > 0) {
-        showSuccess(`执行成功，生成 ${outputFiles.length} 个文件`);
-      } else {
-        showInfo('执行完成，无输出文件');
-      }
-    }
-
+    showSuccess(`开始执行，执行 ID: ${result.execution_id}`);
   } catch (error: any) {
-    console.error('运行出错:', error);
+    console.error('Execution failed:', error);
 
-    // 6. 更新 UI 状态为失败
     if (outputPanel) {
       outputPanel.setExecutionStatus('failed');
       outputPanel.setErrors([error?.message || String(error)]);
     }
 
-    showError('运行失败: ' + (error?.message || '未知错误'));
+    showError('执行失败: ' + (error?.message || '未知错误'));
   }
 }
 
-// --- 生命周期 ---
+async function handleStop(executionId?: string) {
+  const idToStop = executionId || currentExecutionId.value;
+  if (!idToStop) {
+    showError('没有正在执行的流程可停止');
+    return;
+  }
+
+  try {
+    const outputPanel = nodeFlowRef.value?.outputPanelRef;
+    if (outputPanel) {
+      outputPanel.setExecutionStatus('stopping');
+    }
+
+    const result = await stopExecution(idToStop);
+    if (result.ok) {
+      showInfo('已发送停止请求');
+    } else {
+      showError('停止执行失败');
+    }
+  } catch (error: any) {
+    console.error('Stop execution failed:', error);
+    showError('停止执行失败: ' + (error?.message || '未知错误'));
+  }
+}
+
+function handleExecutionEnded(executionId: string) {
+  if (currentExecutionId.value === executionId) {
+    currentExecutionId.value = null;
+    nodeFlowRef.value?.setCurrentExecutionId(null);
+  }
+}
+
 onMounted(async () => {
-  // 先加载 Blocks 定义，确保画布渲染节点时能找到对应的 Block 类型
   await loadBlocks();
   loadFromStorage();
 });
@@ -116,18 +155,16 @@ onMounted(async () => {
 
 <template>
   <div class="single-node-flow-container">
-    <NodeFlow 
-      ref="nodeFlowRef" 
-      :blocks="blocks" 
-      :show-run="true" 
-      @run="handleRun" 
+    <NodeFlow
+      ref="nodeFlowRef"
+      :blocks="blocks"
+      :show-run="true"
+      @run="handleRun"
+      @stop="handleStop"
+      @executionEnded="handleExecutionEnded"
       @save="handleSave"
-      @unsaved-changes="handleUnsavedChanges" 
+      @unsaved-changes="handleUnsavedChanges"
     />
-    
-    <!-- <div v-if="hasUnsavedChanges" class="unsaved-badge">
-      未保存的更改
-    </div> -->
   </div>
 </template>
 
@@ -138,19 +175,5 @@ onMounted(async () => {
   position: relative;
   overflow: hidden;
   background-color: #1a1a1a;
-}
-
-.unsaved-badge {
-  position: absolute;
-  top: 10px;
-  right: 80px; /* 避开 Toolbar */
-  padding: 4px 12px;
-  background: rgba(255, 152, 0, 0.2);
-  border: 1px solid #ff9800;
-  color: #ff9800;
-  border-radius: 4px;
-  font-size: 12px;
-  pointer-events: none;
-  z-index: 1000;
 }
 </style>

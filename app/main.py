@@ -4,7 +4,7 @@ version: 0.x
 Author: zhai
 Date: 2026-01-07 14:28:11
 LastEditors: zhai
-LastEditTime: 2026-04-28 13:58:41
+LastEditTime: 2026-04-28 14:19:54
 '''
 
 """
@@ -45,7 +45,7 @@ def GetBaseDir():
         root_path = Path(sys.executable).resolve()
     else:
         # 如果是普通的脚本，使用 __file__
-        root_path = Path(__file__).resolve().parent
+        root_path = Path(__file__).resolve()
 
     print("PROJECT_ROOT:", root_path)
     print("BASE_DIR:", root_path.parent)

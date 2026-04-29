@@ -144,6 +144,10 @@ class EngineManager:
         execution = engine.executions.get(execution_id)
         if not execution:
             raise RuntimeError(f"启动执行 {execution_id} 失败。")
+        if execution.shutdown_event.is_set() and execution.failed and not execution.running_tasks:
+            failure_message = execution.failure_message or f"Execution {execution_id} failed."
+            del engine.executions[execution_id]
+            raise RuntimeError(failure_message)
         wait_task = asyncio.create_task(execution.shutdown_event.wait())
         await self.register_execution(
             execution_id, wait_task, engine, business_id, user_id
@@ -152,8 +156,11 @@ class EngineManager:
         def done_callback(t):
             asyncio.create_task(self.remove_execution(execution_id))
             if on_done:
-                # 目前传递None作为结果；未来可扩展为实际结果
-                asyncio.create_task(on_done(None))
+                if execution.failed:
+                    terminal_status = "failed"
+                else:
+                    terminal_status = "stopped" if t.cancelled() else "completed"
+                asyncio.create_task(on_done(terminal_status))
 
         wait_task.add_done_callback(done_callback)
 
@@ -178,7 +185,5 @@ class EngineManager:
         on_done: Optional[Callable[[Any], Awaitable[None]]] = None,
     ):
         """在现有引擎上启动执行。"""
-        if not hasattr(engine, "run"):
-            raise ValueError("无效的引擎实例。")
         await self._start_execution_internal(engine, business_id, execution_id, user_id, on_done)
 

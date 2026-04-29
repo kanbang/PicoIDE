@@ -22,6 +22,8 @@ class Execution:
         self.id = exec_id
         self.engine = engine
         self.status = EngineStatus.IDLE
+        self.failed = False
+        self.failure_message: Optional[str] = None
         self.shutdown_event = asyncio.Event()
         self.running_tasks: Set[asyncio.Task] = set()
         self.start_time: Optional[float] = None
@@ -45,7 +47,7 @@ class Execution:
         if self.shutdown_event.is_set():
             return
         block = self.instances[n_id]
-        is_streaming = getattr(block, "STREAMING", False)
+        is_streaming = block.STREAMING
         while not self.shutdown_event.is_set():
             try:
                 await block.on_compute(self.id)  # 假设统一为 async_on_compute
@@ -85,9 +87,17 @@ class Execution:
                         f"Node[{block.NAME}] {n_id} failed: {str(e)}",
                     )
                 )
-                if not is_source:  # 只源节点重试
-                    break
-                await asyncio.sleep(1)  # 重试延迟
+                if is_source:
+                    await asyncio.sleep(1)
+                    continue
+                self.failed = True
+                self.failure_message = str(e)
+                self.shutdown_event.set()
+                current_task = asyncio.current_task()
+                for running_task in list(self.running_tasks):
+                    if running_task is not current_task:
+                        running_task.cancel()
+                break
 
     async def _trigger_successors(self, n_id: str):
         if self.shutdown_event.is_set():
@@ -113,7 +123,13 @@ class Execution:
     def _task_done(self, task: asyncio.Task):
         self.running_tasks.discard(task)
         if not self.running_tasks:
-            asyncio.create_task(self.engine._complete_execution(self.id, self.shutdown_event.is_set()))
+            if self.failed:
+                final_status = "failed"
+            elif self.shutdown_event.is_set():
+                final_status = "stopped"
+            else:
+                final_status = "completed"
+            asyncio.create_task(self.engine._complete_execution(self.id, final_status))
 
     async def run(self):
         if self.status != EngineStatus.IDLE:
@@ -140,6 +156,8 @@ class Execution:
         )
         sources = [n for n, d in self.engine._graph.in_degree() if d == 0]
         if not sources:
+            self.failed = True
+            self.failure_message = "No source nodes found in flow!"
             self.engine.logger.error("No source nodes found in flow!")
             await self.engine.event_bus.emit(
                 RuntimeEvent(
@@ -160,7 +178,7 @@ class Execution:
     async def stop(self):
         if self.status != EngineStatus.RUNNING:
             return
-        await self.engine._complete_execution(self.id, is_stopped=True)
+        await self.engine._complete_execution(self.id, "stopped")
 
 class ComputeEngine:
     def __init__(self, logger: Optional[logging.Logger] = None):
@@ -177,8 +195,7 @@ class ComputeEngine:
         if self.executions:
             raise RuntimeError("Cannot set blocks while executions are running.")
         for cls in block_classes:
-            if hasattr(cls, "NAME"):
-                self.block_registry[cls.NAME] = cls
+            self.block_registry[cls.NAME] = cls
         self.logger.info(f"Registered {len(block_classes)} block types.")
 
     def set_flow(self, flow: Dict[str, Any]):
@@ -206,13 +223,23 @@ class ComputeEngine:
             self.logger.warning("Graph contains cycles. Ensure blocks handle feedback loops properly.")
         self.logger.info(f"Flow compiled: {len(flow['nodes'])} nodes.")
 
-    def _on_file_generated(self, execution_id: str, node_type: str, file_info: Dict[str, Any]):
+    def _on_file_generated(
+        self,
+        execution_id: str,
+        node_type: str,
+        file_info: Dict[str, Any],
+        action: str = "create",
+    ):
         file_event = RuntimeEvent(
             execution_id=execution_id,
             type=RuntimeEventType.FILE,
             source=node_type,
-            message=f"Generated file: {file_info['filename']}",
-            data={"file": file_info},
+            message=(
+                f"Appended to file: {file_info['filename']}"
+                if action == "append"
+                else f"Generated file: {file_info['filename']}"
+            ),
+            data={"action": action, "file": file_info},
             ts=time.time(),
         )
         asyncio.create_task(self.event_bus.emit(file_event))
@@ -242,20 +269,27 @@ class ComputeEngine:
         for exec_id in list(self.executions.keys()):
             await self.stop_execution(exec_id)
 
-    async def _complete_execution(self, exec_id: str, is_stopped: bool):
+    async def _complete_execution(self, exec_id: str, final_status: str):
         async with self._exec_locks[exec_id]:
             execution = self.executions.get(exec_id)
             if not execution:
                 return
             duration = time.time() - execution.start_time if execution.start_time else 0
-            event_type = RuntimeEventType.EXECUTION_STOPPED if is_stopped else RuntimeEventType.EXECUTION_COMPLETED
-            message = "Execution stopped by user" if is_stopped else "Execution completed"
+            if final_status == "failed":
+                event_type = RuntimeEventType.EXECUTION_FAILED
+                message = execution.failure_message or "Execution failed"
+            elif final_status == "stopped":
+                event_type = RuntimeEventType.EXECUTION_STOPPED
+                message = "Execution stopped by user"
+            else:
+                event_type = RuntimeEventType.EXECUTION_COMPLETED
+                message = "Execution completed"
             await self.event_bus.emit(
                 RuntimeEvent(
                     exec_id, event_type, "engine", message, data={"duration": duration}
                 )
             )
-            if is_stopped:
+            if final_status == "stopped":
                 execution.shutdown_event.set()
                 if execution.running_tasks:
                     self.logger.info(f"Cancelling {len(execution.running_tasks)} tasks for {exec_id}...")
@@ -268,4 +302,4 @@ class ComputeEngine:
             execution.ready_ports.clear()
             execution.status = EngineStatus.IDLE
             del self.executions[exec_id]
-            self.logger.info(f"Execution {exec_id} {'stopped' if is_stopped else 'completed'}.")
+            self.logger.info(f"Execution {exec_id} {final_status}.")

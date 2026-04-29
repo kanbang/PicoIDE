@@ -35,6 +35,14 @@ USER_ID = "default"
 router = APIRouter(prefix="/api/flows", tags=["flows"])
 
 
+def is_temp_flow(db_flow: Flow) -> bool:
+    flow_data = db_flow.flow
+    if not isinstance(flow_data, dict):
+        return False
+    meta = flow_data.get("__meta")
+    return isinstance(meta, dict) and meta.get("is_temp") is True
+
+
 def to_flow_item(db_flow: Flow) -> FlowItem:
     """将数据库模型转换为 FlowItem"""
     return FlowItem(
@@ -52,10 +60,11 @@ async def list_flows(business: Annotated[str, Depends(get_business)]):
     """
     try:
         flows = await get_flows(USER_ID, business)
+        flows = [f for f in flows if not is_temp_flow(f)]
         return [to_flow_item(f) for f in flows]
     except Exception as e:
         raise HTTPException(500, f"Failed to list flows: {str(e)}")
-
+    
 
 @router.post("", response_model=FlowItem)
 async def create_new_flow(request: CreateFlowRequest, business: Annotated[str, Depends(get_business)]):

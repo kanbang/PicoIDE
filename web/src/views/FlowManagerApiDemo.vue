@@ -4,7 +4,7 @@ import FlowManager from '@/components/FlowManager/index.vue';
 import type { FlowItem } from '@/components/FlowManager/index.vue';
 import {
   getBlocks, getFlows, createFlow, updateFlow,
-  deleteFlow, duplicateFlow, executeBlocks, executeSavedFlow, stopExecution,
+  deleteFlow, duplicateFlow, executeSavedFlow, stopExecution,
   type FlowItem as ApiFlowItem
 } from '@/api/index';
 import { showSuccess, showError, showInfo } from '@/utils/toast';
@@ -145,21 +145,15 @@ async function handleRun(id: string, flow: any) {
     const result = await executeSavedFlow(id);
 
     // 6. 设置 SSE 面板的 execution_id（开始接收流式日志）
-    if (result.execution_id) {
-      nodeFlowInstance.setCurrentExecutionId(result.execution_id);
-      currentExecutionId.value = result.execution_id;
-    }
+    nodeFlowInstance.setCurrentExecutionId(result.execution_id);
+    currentExecutionId.value = result.execution_id;
 
     // 7. 更新输出面板结果
     if (outputPanel) {
-      outputPanel.setOutputFiles(result.output_files || []);
-      if (result.ok) {
-        // 更新 UI 为运行中状态
-        outputPanel.setExecutionStatus('running');
-        showSuccess(`开始执行，执行 ID: ${result.execution_id}`);
-      } else {
-        showInfo('执行请求已发送，但返回失败状态');
-      }
+      // 更新 UI 为运行中状态
+      outputPanel.resetExecutionOutput();
+      outputPanel.setExecutionStatus('running');
+      showSuccess(`开始执行，执行 ID: ${result.execution_id}`);
     }
 
   } catch (error: any) {

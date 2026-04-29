@@ -194,6 +194,14 @@ defineExpose({
       show();
     }
   },
+  resetExecutionOutput: () => {
+    outputFiles.value = [];
+    errors.value = [];
+    warnings.value = [];
+    executionDuration.value = 0;
+    executionStartTime = null;
+    show();
+  },
   setOutputFiles: (files: OutputFile[]) => {
     outputFiles.value = files;
     if (files.length > 0) {
@@ -278,10 +286,15 @@ defineExpose({
     // 处理文件事件
     if (eventData.type === 'file' && eventData.data?.file) {
       const newFile = eventData.data.file;
-      if (!outputFiles.value.some(f => f.file_id === newFile.file_id)) {
+      const existingIndex = outputFiles.value.findIndex(f => f.file_id === newFile.file_id);
+      if (existingIndex === -1) {
         outputFiles.value = [...outputFiles.value, newFile];
-        show();
+      } else {
+        outputFiles.value = outputFiles.value.map((file, index) =>
+          index === existingIndex ? { ...file, ...newFile } : file
+        );
       }
+      show();
       return;
     }
 

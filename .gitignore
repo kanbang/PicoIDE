@@ -7,3 +7,14 @@ app/docs/
 app/build/
 node_flow_engine
 /app/node_flow_engine.zip
+app/web/vscode/
+app/vfs.db
+app/data_log.csv
+app/data_log.html
+app/poetry.lock
+app/vfs.db-shm
+app/vfs.db-wal
+app/main.spec
+app/web/
+web/package-lock.json
+node_flow_engine.zip
